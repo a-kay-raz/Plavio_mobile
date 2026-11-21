@@ -55,11 +55,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,8 +82,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pulsestream.app.data.CatalogRow
+import com.pulsestream.app.data.LiveTvChannel
+import com.pulsestream.app.data.LiveTvOnDemandRepository
+import com.pulsestream.app.data.LiveTvSportsRepository
+import com.pulsestream.app.data.LiveTvSportsState
+import com.pulsestream.app.data.LiveTvVodEpisode
+import com.pulsestream.app.data.LiveTvVodItem
+import com.pulsestream.app.data.LiveTvVodKind
 import com.pulsestream.app.data.currentProgram
 import com.pulsestream.app.data.isPlayableLiveStreamUrl
+import com.pulsestream.app.data.matchSportsChannels
+import com.pulsestream.app.data.normalizeSportsName
 import com.pulsestream.app.data.nextProgram
 import com.pulsestream.app.data.LIVE_SOURCE_RESOLUTION_TIMEOUT_MS
 import com.pulsestream.app.data.liveResolutionFailureMessage
@@ -134,6 +147,8 @@ internal class LiveViewModel(
     private var providerChannels: List<com.pulsestream.app.data.LiveTvChannel> = emptyList()
     /** M3U channels synthesized for EPG matching (id "m3u|<url>", name only). */
     private var m3uChannelsForEpg: List<com.pulsestream.app.data.LiveTvChannel> = emptyList()
+    /** Provider + M3U rows (the rows backing LiveTvChannel ids) — for sports taps. */
+    private var channelRows: List<CatalogRow> = emptyList()
     /** Provider rows cache: same 15-min TTL as the addon TV rows. */
     private var providerCache: Pair<Long, Pair<List<CatalogRow>, List<String>>>? = null
     private var providerCacheSignature: String? = null
@@ -170,6 +185,7 @@ internal class LiveViewModel(
                         com.pulsestream.app.data.LiveTvChannel(id = "m3u|${meta.id}", name = meta.name, streamUrl = meta.id)
                     }
                 }
+                channelRows = provider.first + m3u.rows
                 uiState = if (rows.isEmpty() && m3u.rows.isEmpty() && provider.first.isEmpty()) {
                     // A failed playlist must say so, not show the generic
                     // "no live TV" empty state.
@@ -340,9 +356,28 @@ internal class LiveViewModel(
     /** Provider channel by its id ("xtream:123" / "stalker:5"), for playback. */
     fun providerChannel(id: String): com.pulsestream.app.data.LiveTvChannel? =
         providerChannels.firstOrNull { it.id == id }
+
+    /** All provider + M3U channels — the pool sports matching runs against. */
+    fun allLiveTvChannels(): List<com.pulsestream.app.data.LiveTvChannel> =
+        providerChannels + m3uChannelsForEpg
+
+    /** (row, meta) behind a provider/M3U channel id, so a sports tap can play it. */
+    fun channelRowFor(channelId: String): Pair<CatalogRow, MetaPreview>? {
+        for (row in channelRows) {
+            val meta = row.items.firstOrNull { it.id == channelId } ?: continue
+            return row to meta
+        }
+        return null
+    }
 }
 
 private fun channelKey(row: CatalogRow, meta: MetaPreview) = "${row.addonId}|${meta.id}"
+
+/**
+ * Live tab sections (Nuvio LiveTvScreen has Channels / Guide / Sports /
+ * OnDemand; Plavio has no guide grid, so Channels / Sports / On Demand).
+ */
+private enum class LiveTvSection { Channels, Sports, OnDemand }
 
 /**
  * The Live tab: TV channels from addons + M3U playlists, with pinned
@@ -372,6 +407,15 @@ fun LiveScreen(
     var resolveError by remember { mutableStateOf<String?>(null) }
     var showSearch by remember { mutableStateOf(false) }
     var showM3uDialog by remember { mutableStateOf(false) }
+    /** Live tab section (Step 32): Channels / Sports scores / On Demand. */
+    var section by remember { mutableStateOf(LiveTvSection.Channels) }
+    /** Sports filter: "all", "live", or a league id. */
+    var sportsFilter by rememberSaveable { mutableStateOf("all") }
+    /** On Demand kind + category; null category = All. */
+    var vodKind by remember { mutableStateOf(com.pulsestream.app.data.LiveTvVodKind.Movies) }
+    var vodCategory by rememberSaveable { mutableStateOf<String?>(null) }
+    /** Series whose episode sheet is open (On Demand). */
+    var vodSeries by remember { mutableStateOf<com.pulsestream.app.data.LiveTvVodItem?>(null) }
     /** Selected category chip; null = All. */
     var category by remember { mutableStateOf<String?>(null) }
     /** Bumped to re-read favorites/recents after a toggle. */
@@ -390,6 +434,40 @@ fun LiveScreen(
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    // ---- Step 32: Sports scores + On Demand --------------------------------
+    val sportsState by LiveTvSportsRepository.uiState.collectAsState()
+    val vodState by LiveTvOnDemandRepository.uiState.collectAsState()
+
+    LaunchedEffect(section) {
+        if (section == LiveTvSection.Sports) {
+            LiveTvSportsRepository.refreshIfStale()
+        }
+    }
+    LaunchedEffect(section, vodKind) {
+        if (section == LiveTvSection.OnDemand) {
+            LiveTvOnDemandRepository.ensureLoaded(vodKind, repository.settings)
+        }
+    }
+    LaunchedEffect(vodSeries) {
+        vodSeries?.let { LiveTvOnDemandRepository.ensureEpisodes(it.remoteId, repository.settings) }
+    }
+    // Sports → channel matching (Nuvio matchSportsChannels), over the
+    // provider + M3U channels the VM already holds. Recomputed when the
+    // channel load state changes too, so matches appear once providers load.
+    val sportsMatches by produceState(
+        emptyMap<String, List<LiveTvChannel>>(),
+        sportsState.events, section, vm.uiState
+    ) {
+        if (section != LiveTvSection.Sports) {
+            value = emptyMap()
+            return@produceState
+        }
+        val normalized = vm.allLiveTvChannels().map { it to normalizeSportsName(it.name) }
+        value = sportsState.events.associate { event ->
+            "${event.league.id}:${event.id}" to matchSportsChannels(event, normalized)
+        }
     }
 
     fun channelRef(row: CatalogRow, meta: MetaPreview) = TvChannelRef(
@@ -582,6 +660,57 @@ fun LiveScreen(
         }
     }
 
+    /** Play a provider/M3U channel found by sports matching (Step 32). */
+    fun playMatchedChannel(channel: LiveTvChannel) {
+        val (row, meta) = vm.channelRowFor(channel.id) ?: return
+        // Zap list from the loaded rows (provider rows stay out, Step 31 rule).
+        val content = vm.uiState as? LiveUiState.Content
+        val flatList = content?.let { c ->
+            (c.rows + c.m3uRows).flatMap { r -> r.items.map { channelRef(r, it) } }
+                .filter { it.addonId != "xtream" && it.addonId != "stalker" }
+        } ?: emptyList()
+        playChannel(row, meta, flatList)
+    }
+
+    /** Play an On Demand movie through the regular player (Step 32). */
+    fun playVodMovie(item: LiveTvVodItem) {
+        val playback = LiveTvOnDemandRepository.moviePlayback(item, repository.settings) ?: return
+        onPlay(
+            PlaybackRequest(
+                streamUrl = playback.streamUrl,
+                title = playback.title,
+                poster = playback.posterUrl,
+                videoId = playback.id,
+                isMovie = true,
+                type = "movie",
+                streamLabel = "Xtream VOD",
+                sourceName = "Xtream",
+                headers = playback.headers
+            )
+        )
+    }
+
+    /** Play an On Demand episode through the regular player (Step 32). */
+    fun playVodEpisode(series: LiveTvVodItem, episode: LiveTvVodEpisode) {
+        val playback = LiveTvOnDemandRepository.episodePlayback(series, episode)
+        onPlay(
+            PlaybackRequest(
+                streamUrl = playback.streamUrl,
+                title = playback.title,
+                poster = playback.posterUrl,
+                videoId = playback.id,
+                season = playback.seasonNumber ?: 0,
+                episode = playback.episodeNumber ?: 0,
+                type = "series",
+                seriesName = playback.title,
+                episodeTitle = playback.episodeTitle,
+                streamLabel = "Xtream VOD",
+                sourceName = "Xtream",
+                headers = playback.headers
+            )
+        )
+    }
+
     Column(Modifier.fillMaxSize()) {
         // ---- Header ----
         Row(
@@ -622,7 +751,12 @@ fun LiveScreen(
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Search live channels…") },
+                placeholder = {
+                    Text(
+                        if (section == LiveTvSection.OnDemand) "Search on demand…"
+                        else "Search live channels…"
+                    )
+                },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -631,7 +765,64 @@ fun LiveScreen(
             )
         }
 
-        when (val state = vm.uiState) {
+        // Section switcher (Step 32): Channels / Sports scores / On Demand.
+        // Sports is keyless (ESPN); On Demand needs the Xtream login.
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(bottom = 8.dp)
+        ) {
+            item(key = "section|channels") {
+                FilterChip(
+                    selected = section == LiveTvSection.Channels,
+                    onClick = { section = LiveTvSection.Channels },
+                    label = { Text("Channels") },
+                    colors = chipColors()
+                )
+            }
+            item(key = "section|sports") {
+                val hasLive = sportsState.events.any { it.state == LiveTvSportsState.Live }
+                FilterChip(
+                    selected = section == LiveTvSection.Sports,
+                    onClick = { section = LiveTvSection.Sports },
+                    label = { Text(if (hasLive) "Sports • Live" else "Sports") },
+                    colors = chipColors()
+                )
+            }
+            item(key = "section|vod") {
+                FilterChip(
+                    selected = section == LiveTvSection.OnDemand,
+                    onClick = { section = LiveTvSection.OnDemand },
+                    label = { Text("On Demand") },
+                    colors = chipColors()
+                )
+            }
+        }
+
+        if (section == LiveTvSection.Sports) {
+            LiveTvSportsSection(
+                sportsState = sportsState,
+                matchedChannels = sportsMatches,
+                filter = sportsFilter,
+                onFilterSelected = { sportsFilter = it },
+                onChannelClick = ::playMatchedChannel,
+                onRefresh = { LiveTvSportsRepository.refresh() }
+            )
+        } else if (section == LiveTvSection.OnDemand) {
+            LiveTvOnDemandSection(
+                vodState = vodState,
+                kind = vodKind,
+                onKindSelected = { vodKind = it; vodCategory = null },
+                categoryId = vodCategory,
+                onCategorySelected = { vodCategory = it },
+                searchQuery = query,
+                xtreamConfigured = LiveTvOnDemandRepository.activeSettings(repository.settings) != null,
+                onGoToLiveTvSettings = onGoToLiveTvSettings,
+                onMovieClick = ::playVodMovie,
+                onSeriesClick = { vodSeries = it },
+                onRefresh = { LiveTvOnDemandRepository.refresh(vodKind, repository.settings) }
+            )
+        } else when (val state = vm.uiState) {
             is LiveUiState.Loading -> LoadingState("Finding live channels…")
             is LiveUiState.Error -> ErrorState(state.message, onRetry = { vm.load() })
             is LiveUiState.Empty -> EmptyState(
@@ -1135,6 +1326,20 @@ fun LiveScreen(
                 }
             )
         }
+    }
+
+    // On Demand series sheet (Step 32): episodes for the tapped series.
+    vodSeries?.let { series ->
+        LiveTvSeriesSheet(
+            series = series,
+            episodesState = vodState.episodes[series.remoteId]
+                ?: com.pulsestream.app.data.LiveTvVodEpisodesState(),
+            onEpisodeClick = { episode ->
+                playVodEpisode(series, episode)
+                vodSeries = null
+            },
+            onDismiss = { vodSeries = null }
+        )
     }
 }
 
