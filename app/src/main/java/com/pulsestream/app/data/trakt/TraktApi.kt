@@ -451,6 +451,59 @@ class TraktApi {
     data class TraktList(val id: String, val name: String, val description: String?)
 
     /** The user's personal lists. Throws on failure. */
+    /** One in-progress playback row from /sync/playback (Step 62). */
+    data class TraktPlaybackRow(
+        val type: String, // "movie" | "episode"
+        val imdbId: String?,
+        val title: String,
+        val season: Int,
+        val episode: Int,
+        val progressPercent: Double,
+        val pausedAtMs: Long
+    )
+
+    /** In-progress playback from another device (Step 62). Throws on failure. */
+    suspend fun getPlaybackProgress(accessToken: String): List<TraktPlaybackRow> = withContext(Dispatchers.IO) {
+        val request = authed(accessToken).url("$API_BASE/sync/playback").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Trakt playback failed (HTTP ${response.code})")
+            }
+            val arr = org.json.JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            val out = mutableListOf<TraktPlaybackRow>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                val type = item.optString("type")
+                val progress = item.optDouble("progress", 0.0)
+                if (progress <= 0.0) continue
+                val pausedAtMs = parseWatchedAtMs(item.optString("paused_at").takeIf { it.isNotBlank() })
+                when (type) {
+                    "movie" -> {
+                        val movie = item.optJSONObject("movie") ?: continue
+                        val imdb = movie.optJSONObject("ids")?.optString("imdb")
+                            ?.takeIf { it.startsWith("tt") }
+                        out += TraktPlaybackRow(
+                            type = "movie", imdbId = imdb, title = movie.optString("title"),
+                            season = 0, episode = 0, progressPercent = progress, pausedAtMs = pausedAtMs
+                        )
+                    }
+                    "episode" -> {
+                        val show = item.optJSONObject("show") ?: continue
+                        val ep = item.optJSONObject("episode") ?: continue
+                        val imdb = show.optJSONObject("ids")?.optString("imdb")
+                            ?.takeIf { it.startsWith("tt") }
+                        out += TraktPlaybackRow(
+                            type = "episode", imdbId = imdb, title = show.optString("title"),
+                            season = ep.optInt("season", 0), episode = ep.optInt("number", 0),
+                            progressPercent = progress, pausedAtMs = pausedAtMs
+                        )
+                    }
+                }
+            }
+            out
+        }
+    }
+
     suspend fun getLists(accessToken: String): List<TraktList> = withContext(Dispatchers.IO) {
         val request = authed(accessToken).url("$API_BASE/users/me/lists").get().build()
         client.newCall(request).execute().use { response ->
