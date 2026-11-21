@@ -100,6 +100,10 @@ fun PlaybackSettingsScreen(
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
     var audioLang by remember { mutableStateOf(settings.preferredAudioLanguage) }
     var audioLangPickerOpen by remember { mutableStateOf(false) }
+    // Step 38: secondary preferred audio language (fallback when the
+    // primary has no track).
+    var secondaryAudioLang by remember { mutableStateOf(settings.secondaryPreferredAudioLanguage) }
+    var secondaryAudioLangPickerOpen by remember { mutableStateOf(false) }
     var bufferPresetOpen by remember { mutableStateOf(false) }
     var diskCacheOpen by remember { mutableStateOf(false) }
     var watchedThresholdOpen by remember { mutableStateOf(false) }
@@ -273,6 +277,19 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
+                        // Step 38: tried when no track matches the primary.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Audiotrack,
+                            title = "Secondary audio language",
+                            subtitle = if (secondaryAudioLang.isNullOrBlank()) {
+                                "Not set"
+                            } else {
+                                "Auto-plays ${audioLanguageName(secondaryAudioLang!!)} when the primary language has no track"
+                            },
+                            onClick = { secondaryAudioLangPickerOpen = true }
+                        )
+                    },
+                    {
                         SettingsNavRow(
                             icon = Icons.Filled.Speed,
                             title = "Buffer preset",
@@ -415,6 +432,18 @@ fun PlaybackSettingsScreen(
                 settings.preferredAudioLanguage = lang
                 audioLang = lang
                 audioLangPickerOpen = false
+            }
+        )
+    }
+
+    if (secondaryAudioLangPickerOpen) {
+        AudioLanguagePickerDialog(
+            initial = secondaryAudioLang,
+            onDismiss = { secondaryAudioLangPickerOpen = false },
+            onDone = { lang ->
+                settings.secondaryPreferredAudioLanguage = lang
+                secondaryAudioLang = lang
+                secondaryAudioLangPickerOpen = false
             }
         )
     }

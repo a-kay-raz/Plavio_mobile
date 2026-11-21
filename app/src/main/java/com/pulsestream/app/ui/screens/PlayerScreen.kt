@@ -219,7 +219,10 @@ import com.pulsestream.app.data.resolveSubtitleFiles
 import com.pulsestream.app.data.shiftSubtitles
 import com.pulsestream.app.data.formatOffsetMs
 import com.pulsestream.app.data.Video
+import com.pulsestream.app.data.SdhFilteringTextOutput
+import com.pulsestream.app.data.detectTrackLanguageVariant
 import com.pulsestream.app.data.subtitleLangMatches
+import com.pulsestream.app.data.subtitleTypeface
 import com.pulsestream.app.data.simkl.SimklManager
 import com.pulsestream.app.data.scrobble.ScrobbleManager
 import com.pulsestream.app.data.trakt.TraktManager
@@ -598,9 +601,14 @@ fun PlayerScreen(
                     }
                     // Preferred audio language (Settings > Playback): when the
                     // title's audio tracks include it, ExoPlayer picks it
-                    // automatically at playback start.
-                    if (!audioPref.isNullOrBlank()) {
-                        params.setPreferredAudioLanguages(audioPref)
+                    // automatically at playback start. Step 38: the secondary
+                    // language is passed too, as the fallback order.
+                    val audioPrefs = listOfNotNull(
+                        audioPref?.takeIf { it.isNotBlank() },
+                        settings.secondaryPreferredAudioLanguage?.takeIf { it.isNotBlank() },
+                    ).distinct()
+                    if (audioPrefs.isNotEmpty()) {
+                        params.setPreferredAudioLanguages(*audioPrefs.toTypedArray())
                     }
                     setParameters(params)
                 }
@@ -647,7 +655,17 @@ fun PlayerScreen(
                 android.graphics.Color.TRANSPARENT,
                 edge,
                 settings.subtitleEdgeColor,
-                if (settings.subtitleBold) android.graphics.Typeface.DEFAULT_BOLD else null
+                // Step 38: the user's picked subtitle font (built-in face or
+                // an imported ttf/otf); bold is synthesized onto it.
+                run {
+                    val base = subtitleTypeface(pv.context, settings.subtitleFontId)
+                        ?: android.graphics.Typeface.DEFAULT
+                    if (settings.subtitleBold) {
+                        android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD)
+                    } else {
+                        base
+                    }
+                }
             )
         )
         val fontSp = settings.subtitleFontSizeSp
@@ -1227,26 +1245,41 @@ fun PlayerScreen(
      */
     fun applyPreferredAudioLanguage() {
         if (userPickedAudio) return
-        val pref = settings.preferredAudioLanguage?.takeIf { it.isNotBlank() } ?: return
+        // Step 38: ordered targets — primary, then secondary (Nuvio
+        // resolvePreferredAudioLanguageTargets, Plavio-native). The first
+        // target that has a matching track wins.
+        val targets = listOfNotNull(
+            settings.preferredAudioLanguage?.takeIf { it.isNotBlank() },
+            settings.secondaryPreferredAudioLanguage?.takeIf { it.isNotBlank() },
+        ).distinct()
+        if (targets.isEmpty()) return
         val p = player
-        // Already playing the preferred language — nothing to tighten.
+        // Variant-aware match: a track's es-419/es or pt-br/pt variant comes
+        // from its language tag + label (e.g. "Español (Latinoamérica)").
+        fun trackLanguage(format: Format): String =
+            detectTrackLanguageVariant(format.language, format.label, null)
+        // Already playing a preferred language — nothing to tighten.
         val alreadySelected = p.currentTracks.groups
             .filter { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
             .any { g ->
                 (0 until g.length).any { i ->
-                    g.isTrackSelected(i) && subtitleLangMatches(g.getTrackFormat(i).language, pref)
+                    g.isTrackSelected(i) && targets.any { t ->
+                        subtitleLangMatches(trackLanguage(g.getTrackFormat(i)), t)
+                    }
                 }
             }
         if (alreadySelected) return
-        val match = p.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_AUDIO }
-            .firstNotNullOfOrNull { g ->
-                (0 until g.length).firstOrNull { i ->
-                    subtitleLangMatches(g.getTrackFormat(i).language, pref)
-                }?.let { idx -> g to idx }
-            } ?: return
+        val match = targets.firstNotNullOfOrNull { target ->
+            p.currentTracks.groups
+                .filter { it.type == C.TRACK_TYPE_AUDIO }
+                .firstNotNullOfOrNull { g ->
+                    (0 until g.length).firstOrNull { i ->
+                        subtitleLangMatches(trackLanguage(g.getTrackFormat(i)), target)
+                    }?.let { idx -> g to idx }
+                }
+        } ?: return
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .setPreferredAudioLanguages(pref)
+            .setPreferredAudioLanguages(*targets.toTypedArray())
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
             .setOverrideForType(TrackSelectionOverride(match.first.mediaTrackGroup, listOf(match.second)))
             .build()
@@ -3082,6 +3115,14 @@ fun PlayerScreen(
                 factory = { ctx ->
                     PlayerView(ctx).also { pv ->
                         pv.player = player
+                        // Step 38: route cues through the SDH filter when the
+                        // toggle is on — the delegate is the PlayerView's own
+                        // SubtitleView, so rendering is otherwise unchanged.
+                        pv.subtitleView?.let { sv ->
+                            player.setTextOutput(
+                                SdhFilteringTextOutput(sv) { settings.subtitleSdhFilter }
+                            )
+                        }
                         pv.useController = false
                         pv.isFocusable = false
                         pv.isFocusableInTouchMode = false
@@ -3098,6 +3139,11 @@ fun PlayerScreen(
                 },
                 update = { pv ->
                     pv.player = player
+                    pv.subtitleView?.let { sv ->
+                        player.setTextOutput(
+                            SdhFilteringTextOutput(sv) { settings.subtitleSdhFilter }
+                        )
+                    }
                     applySubtitleStyle(pv)
                 },
                 modifier = Modifier.fillMaxSize()
