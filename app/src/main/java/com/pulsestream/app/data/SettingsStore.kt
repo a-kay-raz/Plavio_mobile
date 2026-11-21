@@ -520,6 +520,16 @@ class SettingsStore(context: Context) {
         get() = prefFloat(KEY_NEXT_EPISODE_THRESHOLD_MINUTES, 2f).coerceIn(0f, 3.5f)
         set(value) = prefs.edit().putFloat(KEY_NEXT_EPISODE_THRESHOLD_MINUTES, value.coerceIn(0f, 3.5f)).apply()
 
+    /** Reuse last link (Nuvio streamReuseLastLinkEnabled): default OFF — replaying a title reuses its last played link within the TTL instead of re-resolving sources. */
+    var reuseLastLinkEnabled: Boolean
+        get() = prefs.getBoolean(KEY_REUSE_LAST_LINK_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_REUSE_LAST_LINK_ENABLED, value).apply()
+
+    /** Reuse last link cache window, hours (Nuvio streamReuseLastLinkCacheHours): default 24. */
+    var reuseLastLinkCacheHours: Int
+        get() = prefInt(KEY_REUSE_LAST_LINK_CACHE_HOURS, 24).coerceIn(1, 168)
+        set(value) = prefs.edit().putInt(KEY_REUSE_LAST_LINK_CACHE_HOURS, value.coerceIn(1, 168)).apply()
+
     /** Skip-button offset (Nuvio skipIntroOffsetSeconds): shifts when the intro skip button appears, seconds, -60..60, default 0. Positive = later into the intro. */
     var skipIntroOffsetSeconds: Int
         get() = prefInt(KEY_SKIP_INTRO_OFFSET_SECONDS, 0).coerceIn(-60, 60)
@@ -1126,6 +1136,8 @@ class SettingsStore(context: Context) {
         private const val KEY_NEXT_EPISODE_THRESHOLD_MODE = "next_episode_threshold_mode"
         private const val KEY_NEXT_EPISODE_THRESHOLD_PERCENT = "next_episode_threshold_percent"
         private const val KEY_NEXT_EPISODE_THRESHOLD_MINUTES = "next_episode_threshold_minutes"
+        private const val KEY_REUSE_LAST_LINK_ENABLED = "reuse_last_link_enabled"
+        private const val KEY_REUSE_LAST_LINK_CACHE_HOURS = "reuse_last_link_cache_hours"
         private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
         private const val KEY_AUTO_SKIP_SEGMENT_TYPES = "auto_skip_segment_types"
         private const val KEY_SEASON_VIEW_MODE = "season_view_mode"
