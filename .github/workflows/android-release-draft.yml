@@ -42,6 +42,13 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default `packages` asks sdkmanager for the
+          # obsolete `tools` package ("Failed to find package 'tools'",
+          # exit 1 — killed runs 44883021738 + 44883946590 in ~20s
+          # before any build; android-ci breaks the same way).
+          # platform-tools alone is all this build needs.
+          packages: platform-tools
 
       - name: Set up Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
