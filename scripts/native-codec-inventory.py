@@ -16,7 +16,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LIBRARIES = {
     "arm64-v8a": ("AArch64", "ELF64"),
-    "armeabi-v7a": ("ARM", "ELF32"),
 }
 PAGE_SIZE = 16 * 1024
 AUDIO_DECODERS = {

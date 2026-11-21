@@ -18,6 +18,10 @@ android {
         targetSdk = 35
         versionCode = 153
         versionName = "0.14.5"
+        // Android arm64 only: no armeabi-v7a / x86 native libs in the APK.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
         // Sentry DSN — a client ingest key (public by design, send-only).
         // Passed at build time via -PSENTRY_DSN=... like the gate key.
         buildConfigField(

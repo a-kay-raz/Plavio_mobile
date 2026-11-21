@@ -4,20 +4,6 @@
 
 A beautiful open-source streaming app for Android with a built-in player. Install addons to browse movies, series, and live TV. An account is optional; the app also offers optional cloud sync and opt-in telemetry.
 
-> This source package is the phone app. Plavio TV is a separate app — out now for Android TV and Fire TV; its source ships with the TV releases.
-
-## Preview
-
-| Home | Live |
-|---|---|
-| ![Plavio home screen](screenshots/pulse-home.png) | ![Plavio live TV](screenshots/pulse-live.png) |
-| Settings | Addons |
-| ![Plavio settings](screenshots/pulse-settings.png) | ![Plavio addon manager](screenshots/pulse-addons.png) |
-| Library | Search |
-| ![Plavio library](screenshots/pulse-library.png) | ![Plavio search](screenshots/pulse-search.png) |
-| Streams | Integrations |
-| ![Plavio streams](screenshots/pulse-streams.png) | ![Plavio integrations](screenshots/pulse-integrations.png) |
-
 ## Features
 
 - **Install addons** — paste any addon manifest URL (`…/manifest.json`) and browse its catalogs
@@ -37,9 +23,7 @@ A beautiful open-source streaming app for Android with a built-in player. Instal
 
 ## Get the app
 
-Download the latest APK from the [Releases](../../releases) page and install it on your Android phone (Android 8.0+).
-
-**Plavio TV** is out too — for Android TV and Fire TV, with the same addons on the big screen. Get it from [plavio.site](https://plavio.site) or the TV releases here.
+Download the latest APK from the [Releases](../../releases) page and install it on your Android phone (Android 8.0+, arm64).
 
 ## Add an addon
 
@@ -99,7 +83,7 @@ app/src/main/java/com/pulsestream/app/
 
 ## Data use and privacy
 
-Plavio can be used without a Plavio Cloud account. Signing in enables profile restore and automatic versioned backups of portable settings, watchlist, Continue Watching, custom lists/membership and addon metadata to its Supabase-backed service. Ordinary snapshots omit supported integration secrets and protect configured addon URL components. You can separately enable passphrase-protected, end-to-end encrypted sync of supported integration keys and full configured addon URLs; another device needs the same passphrase to unlock them after profile restore. Ordinary library metadata is not covered by that credential encryption. Downloads, device permissions and cloud-login sessions are not portable backup content. Profile switching uses replace-and-restore with local recovery, but is not a parental-control or device-security boundary; real multi-device conflicts and backend authorization remain to be verified. Optional telemetry is disabled by default; enabling it allows Firebase Analytics/Crashlytics collection and optional install-statistics requests. See the [Privacy Policy](site/privacy.html) for data fields, third-party requests, retention uncertainties and controls. Bundled policy changes are source-only until separately published.
+Plavio can be used without a Plavio Cloud account. Signing in enables profile restore and automatic versioned backups of portable settings, watchlist, Continue Watching, custom lists/membership and addon metadata to its Supabase-backed service. Ordinary snapshots omit supported integration secrets and protect configured addon URL components. You can separately enable passphrase-protected, end-to-end encrypted sync of supported integration keys and full configured addon URLs; another device needs the same passphrase to unlock them after profile restore. Ordinary library metadata is not covered by that credential encryption. Downloads, device permissions and cloud-login sessions are not portable backup content. Profile switching uses replace-and-restore with local recovery, but is not a parental-control or device-security boundary; real multi-device conflicts and backend authorization remain to be verified. Optional telemetry is disabled by default; enabling it allows Firebase Analytics/Crashlytics collection and optional install-statistics requests. See the [Privacy Policy](https://plavio.site/privacy.html) for data fields, third-party requests, retention uncertainties and controls.
 
 The app ships with configured addons. Addon URLs and requests can contain credentials or viewing/search identifiers; addon operators receive the requests sent to their servers. Do not publicly share an addon URL containing a key or token. Addon bundle sharing blocks URLs that appear to contain credentials, but detection is heuristic and not exhaustive.
 
