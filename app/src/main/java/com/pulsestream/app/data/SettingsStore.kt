@@ -949,6 +949,109 @@ class SettingsStore(context: Context) {
         set(value) = prefs.edit()
             .putString(KEY_M3U_LISTS, value.joinToString("\n")).apply()
 
+    // ------------------------------------------------------------------
+    // Live TV providers (Nuvio LiveTvStorage): Xtream Codes + Stalker
+    // Portal. Passwords live in the encrypted secret store; the rest are
+    // plain prefs. The Live tab reads these on every load.
+    // ------------------------------------------------------------------
+
+    /** Xtream Codes panel URL (e.g. http://panel.example:8080). */
+    var liveTvXtreamServerUrl: String
+        get() = prefs.getString(KEY_LIVE_TV_XTREAM_SERVER, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LIVE_TV_XTREAM_SERVER, value.trim()).apply()
+
+    /** Xtream Codes username. */
+    var liveTvXtreamUsername: String
+        get() = prefs.getString(KEY_LIVE_TV_XTREAM_USERNAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LIVE_TV_XTREAM_USERNAME, value.trim()).apply()
+
+    /** Xtream Codes password (encrypted secret, null = not configured). */
+    var liveTvXtreamPassword: String?
+        get() = getSecret(KEY_LIVE_TV_XTREAM_PASSWORD)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_LIVE_TV_XTREAM_PASSWORD, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** Xtream provider enabled (default true — a configured provider loads). */
+    var liveTvXtreamEnabled: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_TV_XTREAM_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_LIVE_TV_XTREAM_ENABLED, value).apply()
+
+    /** Stalker Portal URL (portal.php, or the panel base URL). */
+    var liveTvStalkerPortalUrl: String
+        get() = prefs.getString(KEY_LIVE_TV_STALKER_PORTAL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LIVE_TV_STALKER_PORTAL, value.trim()).apply()
+
+    /** Stalker Portal MAC address (e.g. 00:1A:79:XX:XX:XX). */
+    var liveTvStalkerMac: String
+        get() = prefs.getString(KEY_LIVE_TV_STALKER_MAC, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LIVE_TV_STALKER_MAC, value.trim().uppercase()).apply()
+
+    /** Stalker Portal username (optional — many portals need only the MAC). */
+    var liveTvStalkerUsername: String
+        get() = prefs.getString(KEY_LIVE_TV_STALKER_USERNAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LIVE_TV_STALKER_USERNAME, value.trim()).apply()
+
+    /** Stalker Portal password (encrypted secret, null = not configured). */
+    var liveTvStalkerPassword: String?
+        get() = getSecret(KEY_LIVE_TV_STALKER_PASSWORD)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_LIVE_TV_STALKER_PASSWORD, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** Stalker provider enabled (default true — a configured portal loads). */
+    var liveTvStalkerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_TV_STALKER_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_LIVE_TV_STALKER_ENABLED, value).apply()
+
+    /** Manually added XMLTV guide sources, as a JSON array of {id, name, url, isEnabled}. */
+    var liveTvEpgSources: List<LiveTvEpgSource>
+        get() {
+            val raw = prefs.getString(KEY_LIVE_TV_EPG_SOURCES, null) ?: return emptyList()
+            return runCatching {
+                val array = org.json.JSONArray(raw)
+                List(array.length()) { i ->
+                    val obj = array.getJSONObject(i)
+                    LiveTvEpgSource(
+                        id = obj.optString("id").takeIf { it.isNotBlank() } ?: "epg-$i",
+                        name = obj.optString("name").takeIf { it.isNotBlank() } ?: obj.optString("url"),
+                        url = obj.optString("url"),
+                        isEnabled = obj.optBoolean("isEnabled", true),
+                    )
+                }.filter { it.url.isNotBlank() }
+            }.getOrDefault(emptyList())
+        }
+        set(value) {
+            val array = org.json.JSONArray()
+            value.forEach { source ->
+                array.put(org.json.JSONObject().apply {
+                    put("id", source.id)
+                    put("name", source.name)
+                    put("url", source.url)
+                    put("isEnabled", source.isEnabled)
+                })
+            }
+            prefs.edit().putString(KEY_LIVE_TV_EPG_SOURCES, array.toString()).apply()
+        }
+
+    /** Auto-detect EPG feeds from M3U playlist headers + the Xtream xmltv.php feed (default true). */
+    var liveTvEpgAutoDetect: Boolean
+        get() = prefs.getBoolean(KEY_LIVE_TV_EPG_AUTO_DETECT, true)
+        set(value) = prefs.edit().putBoolean(KEY_LIVE_TV_EPG_AUTO_DETECT, value).apply()
+
+    /** Xtream settings assembled from the prefs above. */
+    fun liveTvXtreamSettings(): LiveTvXtreamSettings = LiveTvXtreamSettings(
+        serverUrl = liveTvXtreamServerUrl,
+        username = liveTvXtreamUsername,
+        password = liveTvXtreamPassword ?: "",
+        isEnabled = liveTvXtreamEnabled,
+    )
+
+    /** Stalker settings assembled from the prefs above. */
+    fun liveTvStalkerSettings(): LiveTvStalkerSettings = LiveTvStalkerSettings(
+        portalUrl = liveTvStalkerPortalUrl,
+        macAddress = liveTvStalkerMac,
+        username = liveTvStalkerUsername,
+        password = liveTvStalkerPassword ?: "",
+        isEnabled = liveTvStalkerEnabled,
+    )
+
     /**
      * Epoch millis of the last successful Home catalog refresh.
      * Per-section freshness: the Live tab writes its own rows into the same
@@ -1148,7 +1251,8 @@ class SettingsStore(context: Context) {
         private val SECRET_KEYS = setOf(
             "simkl_token", "torbox_api_key", "realdebrid_api_key",
             "trakt_access_token", "trakt_refresh_token",
-            "tmdb_api_key", "omdb_api_key"
+            "tmdb_api_key", "omdb_api_key",
+            "xtream_password", "stalker_password"
         )
         private const val KEY_AUTOPLAY = "autoplay"
         private const val KEY_SENTRY_ENABLED = "sentry_enabled"
@@ -1207,6 +1311,17 @@ class SettingsStore(context: Context) {
         private const val KEY_LIVE_FAVS = "live_favorites"
         private const val KEY_LIVE_RECENT = "live_recent"
         private const val KEY_M3U_LISTS = "m3u_playlists"
+        private const val KEY_LIVE_TV_XTREAM_SERVER = "live_tv_xtream_server"
+        private const val KEY_LIVE_TV_XTREAM_USERNAME = "live_tv_xtream_username"
+        private const val KEY_LIVE_TV_XTREAM_PASSWORD = "xtream_password"
+        private const val KEY_LIVE_TV_XTREAM_ENABLED = "live_tv_xtream_enabled"
+        private const val KEY_LIVE_TV_STALKER_PORTAL = "live_tv_stalker_portal"
+        private const val KEY_LIVE_TV_STALKER_MAC = "live_tv_stalker_mac"
+        private const val KEY_LIVE_TV_STALKER_USERNAME = "live_tv_stalker_username"
+        private const val KEY_LIVE_TV_STALKER_PASSWORD = "stalker_password"
+        private const val KEY_LIVE_TV_STALKER_ENABLED = "live_tv_stalker_enabled"
+        private const val KEY_LIVE_TV_EPG_SOURCES = "live_tv_epg_sources"
+        private const val KEY_LIVE_TV_EPG_AUTO_DETECT = "live_tv_epg_auto_detect"
         private const val KEY_HOME_REFRESHED_AT = "home_catalogs_refreshed_at"
         private const val KEY_HOME_ROW_PREFS = "home_catalog_row_prefs"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"

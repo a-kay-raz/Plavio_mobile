@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -134,6 +135,7 @@ fun SettingsScreen(
     onGoToAddons: () -> Unit = {},
     onGoToHomeCatalogs: () -> Unit = {},
     onGoToContinueWatching: () -> Unit = {},
+    onGoToLiveTv: () -> Unit = {},
     onGoToPlayback: () -> Unit = {},
     onGoToSubtitles: () -> Unit = {},
     onGoToAppearance: () -> Unit = {},
@@ -227,6 +229,16 @@ fun SettingsScreen(
                 title = "Continue Watching",
                 subtitle = "Sort, card style, tap action and resume prompt",
                 onClick = onGoToContinueWatching,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Live TV",
+            "live tv xtream stalker iptv providers epg guide") {
+            SettingsNavRow(
+                icon = Icons.Filled.Tv,
+                title = "Live TV",
+                subtitle = "Xtream / Stalker providers and programme guides",
+                onClick = onGoToLiveTv,
                 compact = true
             )
         },

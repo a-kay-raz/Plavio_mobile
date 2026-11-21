@@ -141,6 +141,7 @@ import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.components.UpdatePrompt
 import com.pulsestream.app.ui.nav.Routes
 import com.pulsestream.app.ui.screens.LiveScreen
+import com.pulsestream.app.ui.screens.LiveTvSettingsScreen
 import com.pulsestream.app.ui.screens.OnboardingScreen
 import com.pulsestream.app.ui.screens.SplashScreen
 import com.pulsestream.app.ui.screens.SettingsScreen
@@ -1297,7 +1298,8 @@ private fun PulseNavGraph(
                     // handed to the player, not dropped.
                     playRequest(req)
                 },
-                onGoToAddons = { navController.navigate(Routes.ADDONS) }
+                onGoToAddons = { navController.navigate(Routes.ADDONS) },
+                onGoToLiveTvSettings = { navController.navigate(Routes.LIVE_TV_SETTINGS) }
             )
         }
         composable(Routes.TRAILER_PLAYER) {
@@ -1397,6 +1399,12 @@ private fun PulseNavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
+        composable(Routes.LIVE_TV_SETTINGS) {
+            LiveTvSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 repository = repository,
@@ -1404,6 +1412,7 @@ private fun PulseNavGraph(
                 onGoToAddons = { navController.navigate(Routes.ADDONS) },
                 onGoToHomeCatalogs = { navController.navigate(Routes.HOME_CATALOGS) },
                 onGoToContinueWatching = { navController.navigate(Routes.CONTINUE_WATCHING_SETTINGS) },
+                onGoToLiveTv = { navController.navigate(Routes.LIVE_TV_SETTINGS) },
                 onGoToPlayback = { navController.navigate(Routes.PLAYBACK_SETTINGS) },
                 onGoToSubtitles = { navController.navigate(Routes.SUBTITLE_SETTINGS) },
                 onGoToAppearance = { navController.navigate(Routes.APPEARANCE_SETTINGS) },
