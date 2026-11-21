@@ -1205,6 +1205,11 @@ class SettingsStore(
         get() = prefs.getString(KEY_DETAIL_SECTIONS, "") ?: ""
         set(value) = prefs.edit().putString(KEY_DETAIL_SECTIONS, value).apply()
 
+    /** Step 58: favorite people blob (JSON, see FavoritePeopleRepository). */
+    var favoritePeopleJson: String
+        get() = prefs.getString(KEY_FAVORITE_PEOPLE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_FAVORITE_PEOPLE, value).apply()
+
     /** Stable per-install device id for server auth headers. */
     var mediaServerDeviceId: String
         get() = prefs.getString(KEY_MEDIA_SERVER_DEVICE_ID, null)
@@ -2011,6 +2016,7 @@ class SettingsStore(
         private const val KEY_MDBLIST_TOKEN_EXPIRES_AT = "mdblist_token_expires_at"
         private const val KEY_MEDIA_SERVERS = "media_servers"
         private const val KEY_DETAIL_SECTIONS = "detail_sections"
+        private const val KEY_FAVORITE_PEOPLE = "favorite_people"
         private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"

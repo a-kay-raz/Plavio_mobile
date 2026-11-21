@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pulsestream.app.data.CustomListsRepository
+import com.pulsestream.app.data.FavoritePeopleRepository
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.db.DownloadItem
@@ -106,6 +107,9 @@ fun LibraryScreen(
     onGoToLists: () -> Unit,
     onGoToDownloads: () -> Unit = {},
     onPlayDownload: (filePath: String, title: String) -> Unit = { _, _ -> },
+    // Step 58: favorite people rail on the Saved tab.
+    favoritePeopleRepository: FavoritePeopleRepository,
+    onOpenPerson: (personId: Int, name: String) -> Unit = { _, _ -> },
     onConnect: () -> Unit
 ) {
     val settings = repository.settings
@@ -157,6 +161,8 @@ fun LibraryScreen(
 
     val myWatchlist by repository.watchlist.collectAsState(initial = emptyList())
     val myLists by listsRepository.lists.collectAsState(initial = emptyList())
+    // Step 58: favorite people (pinned first) for the Saved tab rail.
+    val favoritePeopleState by favoritePeopleRepository.uiState.collectAsState()
     // Step 47: all custom-list items + watched marks feed the Saved tab.
     val allListItems by listsRepository.allItems.collectAsState(initial = emptyList())
     val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
@@ -581,7 +587,9 @@ fun LibraryScreen(
                     mdblistWatchlist = mdblistWatchlist,
                     watchedKeys = watchedKeys,
                     settings = settings,
-                    onOpenDetail = onOpenDetail
+                    onOpenDetail = onOpenDetail,
+                    favoritePeople = favoritePeopleState.displayPeople,
+                    onOpenPerson = onOpenPerson
                 )
             }
             return@Column

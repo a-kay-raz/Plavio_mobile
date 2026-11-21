@@ -1523,7 +1523,9 @@ class StreamRepository(
                     if (person != null &&
                         (person.movies.isNotEmpty() || person.series.isNotEmpty())
                     ) {
-                        return@withContext person
+                        // Step 58: fill the Nuvio person fields the
+                        // addon didn't serve from TMDB (key-gated).
+                        return@withContext enrichPersonFromTmdb(person)
                     }
                 }
             }
@@ -1543,6 +1545,30 @@ class StreamRepository(
                 series = series
             )
         }
+
+    /**
+     * Step 58: fill the Nuvio person fields the addon didn't serve
+     * (biography, birthday, deathday, place of birth, known for) from
+     * TMDB when a key is set; credits only when the addon sent none.
+     * A no-op when the addon already served everything or no key.
+     */
+    private suspend fun enrichPersonFromTmdb(person: PersonDetail): PersonDetail {
+        if (person.id <= 0) return person
+        if (person.biography != null && person.birthday != null &&
+            (person.movies.isNotEmpty() || person.series.isNotEmpty())
+        ) return person
+        val tmdb = runCatching { TmdbClient.getPerson(settings, person.id) }.getOrNull()
+            ?: return person
+        return person.copy(
+            biography = person.biography ?: tmdb.biography,
+            birthday = person.birthday ?: tmdb.birthday,
+            deathday = person.deathday ?: tmdb.deathday,
+            placeOfBirth = person.placeOfBirth ?: tmdb.placeOfBirth,
+            knownFor = person.knownFor ?: tmdb.knownFor,
+            movies = person.movies.ifEmpty { tmdb.movies },
+            series = person.series.ifEmpty { tmdb.series }
+        )
+    }
 
     /**
      * People matching a search query (owner's order 2026-10-26 — search

@@ -1,5 +1,6 @@
 package com.pulsestream.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +10,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.GridView
@@ -34,10 +38,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.CustomList
 import com.pulsestream.app.data.CustomListItem
+import com.pulsestream.app.data.FavoritePerson
 import com.pulsestream.app.data.LibraryLayoutMode
 import com.pulsestream.app.data.LibrarySortOption
 import com.pulsestream.app.data.LibraryWatchedFilter
@@ -50,6 +58,7 @@ import com.pulsestream.app.data.filterSavedItems
 import com.pulsestream.app.data.parseReleaseYear
 import com.pulsestream.app.data.sortSavedItems
 import com.pulsestream.app.ui.components.PosterCard
+import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
@@ -76,7 +85,10 @@ fun LibrarySavedScreen(
     mdblistWatchlist: List<MetaPreview> = emptyList(),
     watchedKeys: Set<String>,
     settings: SettingsStore,
-    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
+    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
+    // Step 58: starred people (pinned first) + tap opens the actor page.
+    favoritePeople: List<FavoritePerson> = emptyList(),
+    onOpenPerson: (personId: Int, name: String) -> Unit = { _, _ -> }
 ) {
     val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist, mdblistWatchlist) {
         buildList {
@@ -183,6 +195,47 @@ fun LibrarySavedScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // Step 58: favorite people rail (pinned first) above the
+        // controls — tap opens the actor page.
+        if (favoritePeople.isNotEmpty()) {
+            Text(
+                text = "Favorite people",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+            )
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(favoritePeople, key = { it.tmdbId }) { person ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(72.dp)
+                            .clickable { onOpenPerson(person.tmdbId, person.name) }
+                    ) {
+                        SafePosterImage(
+                            model = person.photo,
+                            contentDescription = person.name,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = person.name,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextPrimary,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
         // Controls: sort menu + layout toggle, watched chips, section chips.
         Row(
             modifier = Modifier
