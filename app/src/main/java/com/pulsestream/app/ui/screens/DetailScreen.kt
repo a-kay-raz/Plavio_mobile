@@ -175,6 +175,7 @@ import com.pulsestream.app.data.SUBTITLE_LANGUAGE_OPTIONS
 import com.pulsestream.app.ui.components.availableStreamQualities
 import com.pulsestream.app.ui.components.parseStreamInfo
 import com.pulsestream.app.ui.components.ErrorState
+import com.pulsestream.app.ui.components.ExpandableDescription
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.liquidGlass
 import androidx.compose.ui.draw.alpha
@@ -3396,48 +3397,6 @@ internal fun FullPageSourcePicker(
 }
 
 /** TMDB recommendation item. */
-/**
- * Nuvio ExpandableDescription: collapses to [collapsedMaxLines] and expands
- * in place when the text actually overflows; the "Show more"/"Show less"
- * hint appears only when there is overflow to show.
- */
-@Composable
-private fun ExpandableDescription(
-    text: String,
-    collapsedMaxLines: Int,
-    modifier: Modifier = Modifier,
-    style: TextStyle = MaterialTheme.typography.bodyMedium,
-    color: Color = TextSecondary,
-) {
-    var expanded by remember(text) { mutableStateOf(false) }
-    var canExpand by remember(text) { mutableStateOf(false) }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize()
-            .clickable(enabled = canExpand) { expanded = !expanded },
-    ) {
-        Text(
-            text = text,
-            style = style,
-            color = color,
-            maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { result ->
-                if (!expanded) canExpand = result.hasVisualOverflow
-            },
-        )
-        if (canExpand) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (expanded) "Show less" else "Show more",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LocalPalette.current.accent,
-            )
-        }
-    }
-}
-
 /** Nuvio formatRuntimeForDisplay: "136 min" / "136" / "2:16" -> "2h 16m"; unparseable passes through. */
 private fun formatRuntimeForDisplay(rawRuntime: String?): String? {
     val normalized = rawRuntime?.trim()?.takeIf { it.isNotBlank() } ?: return null

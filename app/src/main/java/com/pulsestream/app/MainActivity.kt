@@ -132,6 +132,7 @@ import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.PlayerChoice
 import com.pulsestream.app.data.CollectionRepository
 import com.pulsestream.app.data.CustomListsRepository
+import com.pulsestream.app.data.FavoritePeopleRepository
 import com.pulsestream.app.data.ProfileStore
 import com.pulsestream.app.data.ProfilesRepository
 import com.pulsestream.app.data.StreamRepository
@@ -710,6 +711,8 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
     val repository = remember { app.repository }
     val listsRepository = remember { CustomListsRepository(app.profileDatabase) }
     val collectionRepository = remember { CollectionRepository(app.profileDatabase) }
+    // Step 58: favorite people (per-profile via SettingsStore).
+    val favoritePeopleRepository = remember { FavoritePeopleRepository(repository.settings) }
     // Step 56: profiles live in the global database.
     val profilesRepository = remember { ProfilesRepository(app.database) }
 
@@ -1427,6 +1430,10 @@ private fun PulseNavGraph(
                 onGoToLists = { navController.navigate(Routes.LISTS) },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onPlayDownload = playDownloadedFile,
+                favoritePeopleRepository = favoritePeopleRepository,
+                onOpenPerson = { personId, personName ->
+                    navController.navigate(Routes.actor(personId, personName))
+                },
                 onConnect = { navController.navigate(Routes.INTEGRATIONS) }
             )
         }
@@ -1725,6 +1732,7 @@ private fun PulseNavGraph(
                 personId = entry.arguments!!.getInt("personId"),
                 personName = entry.arguments!!.getString("name")
                     ?.let { runCatching { Routes.dec(it) }.getOrNull() },
+                favoritePeopleRepository = favoritePeopleRepository,
                 onBack = { navController.popBackStack() },
                 onOpenDetail = { type, metaId ->
                     // PlavioMeta addon id — detail resolves meta/streams from

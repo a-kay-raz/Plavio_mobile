@@ -149,7 +149,12 @@ object StremioParser {
             releaseInfo = obj.str("releaseInfo"),
             imdbRating = obj.str("imdbRating"),
             genres = obj.strList("genres"),
-            language = obj.str("originalLanguage") ?: obj.str("language")
+            language = obj.str("originalLanguage") ?: obj.str("language"),
+            // Step 58: ISO date / popularity when the source sends
+            // them (TMDB credits do; catalog rows usually don't).
+            releaseDate = obj.str("releaseDate") ?: obj.str("released")
+                ?: obj.str("release_date") ?: obj.str("first_air_date"),
+            popularity = (obj["popularity"] as? JsonPrimitive)?.doubleOrNull
         )
     }
 
@@ -323,7 +328,16 @@ object StremioParser {
             name = name,
             photo = p.str("photo"),
             movies = metas("movies", "movie"),
-            series = metas("series", "series")
+            series = metas("series", "series"),
+            // Step 58: PlavioMeta may serve the Nuvio person fields
+            // (snake_case or camelCase); absent stays null and the
+            // repository merges them from TMDB when a key is set.
+            biography = p.str("biography"),
+            birthday = p.str("birthday"),
+            deathday = p.str("deathday"),
+            placeOfBirth = p.str("placeOfBirth") ?: p.str("place_of_birth"),
+            knownFor = p.str("knownFor") ?: p.str("known_for")
+                ?: p.str("known_for_department")
         )
     }
 

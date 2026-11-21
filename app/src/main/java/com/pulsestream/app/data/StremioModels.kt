@@ -79,7 +79,13 @@ data class MetaPreview(
     val imdbRating: String? = null,
     val genres: List<String> = emptyList(),
     /** Original language code (catalog `originalLanguage`, e.g. "en") — shown on the hero meta line. */
-    val language: String? = null
+    val language: String? = null,
+    /** ISO release/first-air date (yyyy-MM-dd) when the source sends
+     * one — drives the person page's Latest/Upcoming rails (Step 58). */
+    val releaseDate: String? = null,
+    /** TMDB-style popularity when the source sends it — drives the
+     * person page's Popular rail (Step 58). */
+    val popularity: Double? = null
 )
 
 data class Video(
@@ -102,13 +108,21 @@ data class CastMember(
     val knownFor: String? = null
 )
 
-/** Actor filmography from PlavioMeta /person. */
+/** Actor filmography from PlavioMeta /person (Step 58: Nuvio
+ * PersonDetail fields — biography/birthday/deathday/placeOfBirth/
+ * knownFor arrive from PlavioMeta when it serves them, otherwise
+ * StreamRepository merges them from TMDB when a key is set). */
 data class PersonDetail(
     val id: Int,
     val name: String,
     val photo: String?,
     val movies: List<MetaPreview>,
-    val series: List<MetaPreview>
+    val series: List<MetaPreview>,
+    val biography: String? = null,
+    val birthday: String? = null,
+    val deathday: String? = null,
+    val placeOfBirth: String? = null,
+    val knownFor: String? = null
 )
 
 /** A YouTube trailer reference from an addon's meta (PlavioMeta `trailerStreams`). */

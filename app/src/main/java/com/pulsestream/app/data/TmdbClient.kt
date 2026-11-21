@@ -127,6 +127,18 @@ object TmdbClient {
             val name = personJson["name"]?.jsonPrimitive?.content ?: return@withContext null
             val profile = personJson["profile_path"]?.jsonPrimitive?.content
             val photo = if (profile != null) "https://image.tmdb.org/t/p/w185$profile" else null
+            // Step 58: the Nuvio person fields — biography, birthday,
+            // deathday, place of birth, known-for department.
+            val biography = personJson["biography"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+            val birthday = personJson["birthday"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+            val deathday = personJson["deathday"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+            val placeOfBirth = personJson["place_of_birth"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+            val knownFor = personJson["known_for_department"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
 
             // Combined credits (movies + TV)
             val creditsUrl = "$BASE/person/$personId/combined_credits?api_key=$apiKey"
@@ -134,7 +146,9 @@ object TmdbClient {
             val creditsJson = json.parseToJsonElement(creditsResponse).jsonObject
             val castArray = creditsJson["cast"]?.jsonArray ?: return@withContext PersonDetail(
                 id = personId, name = name, photo = photo,
-                movies = emptyList(), series = emptyList()
+                movies = emptyList(), series = emptyList(),
+                biography = biography, birthday = birthday, deathday = deathday,
+                placeOfBirth = placeOfBirth, knownFor = knownFor
             )
 
             val movies = mutableListOf<MetaPreview>()
@@ -149,7 +163,17 @@ object TmdbClient {
                 val posterUrl = if (poster != null) "https://image.tmdb.org/t/p/w342$poster" else null
                 // TMDB IDs need to be mapped back; use a tmdb: prefix so the app can resolve
                 val metaId = "tmdb:$mediaType:$id"
-                val item = MetaPreview(id = metaId, type = mediaType, name = title, poster = posterUrl)
+                // Step 58: release date + popularity feed the person
+                // page's Popular/Latest/Upcoming rails.
+                val releaseDate = (obj["release_date"]?.jsonPrimitive?.contentOrNull
+                    ?: obj["first_air_date"]?.jsonPrimitive?.contentOrNull)
+                    ?.takeIf { it.isNotBlank() }
+                val item = MetaPreview(
+                    id = metaId, type = mediaType, name = title, poster = posterUrl,
+                    releaseInfo = releaseDate?.take(4),
+                    releaseDate = releaseDate,
+                    popularity = obj["popularity"]?.jsonPrimitive?.doubleOrNull
+                )
                 if (mediaType == "movie") movies.add(item) else series.add(item)
             }
 
@@ -158,7 +182,12 @@ object TmdbClient {
                 name = name,
                 photo = photo,
                 movies = movies.take(20),
-                series = series.take(20)
+                series = series.take(20),
+                biography = biography,
+                birthday = birthday,
+                deathday = deathday,
+                placeOfBirth = placeOfBirth,
+                knownFor = knownFor
             )
         } catch (e: CancellationException) {
             throw e
