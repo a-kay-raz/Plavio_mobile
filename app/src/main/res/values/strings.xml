@@ -32,6 +32,8 @@
     <string name="notif_channel_episodes_desc">Alerts when followed shows release new episodes</string>
     <string name="notif_new_episode_text">New episode available: %1$s</string>
     <string name="notif_new_episode_text_titled">New episode: %1$s — %2$s</string>
+    <string name="notif_test_title">Test notification</string>
+    <string name="notif_test_text">Episode alerts are working — this is only a test.</string>
 
     <string name="settings_appearance_title">Appearance</string>
     <string name="settings_appearance_sub">Accent color and AMOLED black</string>

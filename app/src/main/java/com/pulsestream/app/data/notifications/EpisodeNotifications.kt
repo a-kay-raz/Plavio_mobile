@@ -42,6 +42,9 @@ object EpisodeNotifications {
     const val WORK_NAME = "episode_check"
     const val CHECK_INTERVAL_HOURS = 12L
 
+    /** Fixed id for the test notification (replaces itself on re-send). */
+    private const val TEST_NOTIFICATION_ID = 0x7E57
+
     /** Create the notification channel (no-op on pre-Oreo, safe to call often). */
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -143,6 +146,49 @@ object EpisodeNotifications {
 
         try {
             NotificationManagerCompat.from(appContext).notify(route.hashCode(), notification)
+        } catch (_: SecurityException) {
+            // Permission can be revoked between the check and notify().
+        }
+    }
+
+    /**
+     * Post a test notification on the episode channel (Nuvio
+     * NotificationTestCard): proves the channel + permission path works
+     * without faking a new episode. Tap opens the app. Silently skipped
+     * when notifications are disabled at OS level. Deliberately ignores
+     * the episode-alerts toggle — the test answers "can notifications
+     * reach you?", not "is the daily check on?".
+     */
+    fun postTest(context: Context) {
+        val appContext = context.applicationContext
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                appContext, Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED) return
+        ensureChannel(appContext)
+
+        val intent = Intent(appContext, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            appContext,
+            TEST_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_pulse_logo)
+            .setContentTitle(appContext.getString(R.string.notif_test_title))
+            .setContentText(appContext.getString(R.string.notif_test_text))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(appContext).notify(TEST_NOTIFICATION_ID, notification)
         } catch (_: SecurityException) {
             // Permission can be revoked between the check and notify().
         }
