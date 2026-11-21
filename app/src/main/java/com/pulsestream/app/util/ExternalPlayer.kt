@@ -8,12 +8,16 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.media3.common.MimeTypes
+import com.pulsestream.app.data.IntroDbApi
 import com.pulsestream.app.data.PlaybackHeaders
 import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.ResolvedSubtitle
 import com.pulsestream.app.data.SegmentType
+import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.SkipSegment
 import com.pulsestream.app.data.autoSkipStoredValue
+import com.pulsestream.app.data.resolveSubtitleFiles
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -173,6 +177,73 @@ object ExternalPlayer {
             ).show()
             false
         }
+    }
+
+    /** What [prepareLaunch] resolved for the handoff. */
+    data class ExternalLaunchExtras(
+        val subtitles: List<ResolvedSubtitle>,
+        val skipSegmentsJson: String?,
+    )
+
+    /**
+     * Step 67: prepares the handoff extras — subtitles + skip segments —
+     * for an external-player launch. Subtitles come from [alreadyResolved]
+     * (the player's downloaded files, selected first) when available;
+     * otherwise the request's own subtitle list is resolved (downloaded)
+     * for the preferred languages, bounded so a slow download never
+     * stalls the launch. Skip segments come from IntroDB, bounded at 4s.
+     * Either side degrades to "nothing to forward" on failure/timeout.
+     */
+    suspend fun prepareLaunch(
+        context: Context,
+        request: PlaybackRequest,
+        settings: SettingsStore,
+        alreadyResolved: List<ResolvedSubtitle> = emptyList(),
+        selectedSubtitleUrl: String? = null,
+        isTv: Boolean = false,
+    ): ExternalLaunchExtras {
+        val subtitles = if (!settings.forwardSubtitlesToExternalPlayer) {
+            emptyList()
+        } else if (alreadyResolved.isNotEmpty()) {
+            val selected = alreadyResolved.firstOrNull { it.sub.url == selectedSubtitleUrl }
+            buildList {
+                selected?.let { add(it) }
+                for (lang in settings.subtitleLanguages) {
+                    alreadyResolved.filter { it.sub.lang.equals(lang, ignoreCase = true) }
+                        .forEach { if (!contains(it)) add(it) }
+                }
+                if (isEmpty()) alreadyResolved.firstOrNull()?.let { add(it) }
+            }.take(5)
+        } else {
+            val preferred = settings.subtitleLanguages
+            val wanted = request.subtitles
+                .filter { sub -> preferred.any { it.equals(sub.lang, ignoreCase = true) } }
+                .ifEmpty { request.subtitles.take(1) }
+                .take(5)
+            if (wanted.isEmpty()) {
+                emptyList()
+            } else {
+                withTimeoutOrNull(10_000L) {
+                    runCatching {
+                        resolveSubtitleFiles(
+                            wanted, context.cacheDir,
+                            requestHeaders = request.headers,
+                            streamOriginUrl = request.streamUrl,
+                            isTv = isTv
+                        )
+                    }.getOrDefault(emptyList())
+                } ?: emptyList()
+            }
+        }
+        val imdb = request.imdbId
+        val skipSegmentsJson = if (settings.sendSkipSegmentsToExternalPlayer && !imdb.isNullOrBlank()) {
+            withTimeoutOrNull(4_000L) {
+                runCatching {
+                    IntroDbApi().fetchSegments(imdb, request.season, request.episode, request.isMovie)
+                }.getOrNull()?.let { buildSkipSegmentsJson(it) }
+            }
+        } else null
+        return ExternalLaunchExtras(subtitles, skipSegmentsJson)
     }
 
     /**

@@ -1206,9 +1206,30 @@ private fun PulseNavGraph(
         if (ExternalPlayer.needsWarning(ctx, req)) {
             externalWarnHide = false
             externalWarnReq = req
-        } else if (!ExternalPlayer.play(ctx, req)) {
-            repository.pendingPlayback = req
-            navController.navigate(Routes.PLAYER)
+        } else {
+            launchExternalPrepared(ctx, req)
+        }
+    }
+
+    /**
+     * Step 67: external handoff with subtitles + skip segments prepared
+     * first (ExternalPlayer.prepareLaunch); a failed launch falls back
+     * to the built-in player.
+     */
+    fun launchExternalPrepared(ctx: android.content.Context, req: PlaybackRequest) {
+        navScope.launch {
+            val extras = ExternalPlayer.prepareLaunch(
+                ctx, req, repository.settings, isTv = isTv
+            )
+            if (!ExternalPlayer.play(
+                    ctx, req,
+                    subtitles = extras.subtitles,
+                    skipSegmentsJson = extras.skipSegmentsJson
+                )
+            ) {
+                repository.pendingPlayback = req
+                navController.navigate(Routes.PLAYER)
+            }
         }
     }
 
@@ -1825,10 +1846,7 @@ private fun PulseNavGraph(
                         ExternalPlayer.setWarningSuppressed(warnCtx, true)
                     }
                     externalWarnReq = null
-                    if (!ExternalPlayer.play(warnCtx, warnReq)) {
-                        repository.pendingPlayback = warnReq
-                        navController.navigate(Routes.PLAYER)
-                    }
+                    launchExternalPrepared(warnCtx, warnReq)
                 }) {
                     androidx.compose.material3.Text("Open anyway")
                 }
