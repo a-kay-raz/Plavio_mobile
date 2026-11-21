@@ -359,7 +359,22 @@ fun PlayerScreen(
     }
     DisposableEffect(Unit) {
         MainActivity.isPlayerActive = true
-        onDispose { MainActivity.isPlayerActive = false }
+        // Resume prompt (Nuvio ResumePromptRepository): entering the player
+        // arms the prompt with this title; leaving normally (back / PiP
+        // dismiss) clears it. A set flag at launch therefore means the
+        // last session ended inside the player — the only case that
+        // prompts. A killed process runs no dispose, so the flag survives
+        // exactly that case. Only armed when there is a real request.
+        val promptVideoId = initialRequest?.videoId
+        if (promptVideoId != null) {
+            settings.resumePromptWasInPlayer = true
+            settings.resumePromptLastVideoId = promptVideoId
+        }
+        onDispose {
+            MainActivity.isPlayerActive = false
+            settings.resumePromptWasInPlayer = false
+            settings.resumePromptLastVideoId = ""
+        }
     }
 
     // (Back handling is registered below, after the UI state it depends on.)

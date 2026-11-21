@@ -305,16 +305,30 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         mediaServers = withContext(Dispatchers.IO) { settings.getMediaServers() }
     }
-    // Resume prompt on launch (Nuvio showResumePromptOnLaunch): once per
-    // app launch, offer the latest title. `remember` (not saveable) keeps
-    // it to one show per process — coming back from the player doesn't
-    // re-prompt.
-    var resumePromptShown by remember { mutableStateOf(false) }
+    // Resume prompt on launch (Nuvio ResumePromptRepository, scoped
+    // port): prompt ONLY when the last session ended inside the player.
+    // The flag is armed when the player opens and cleared when it is
+    // left normally, so a set flag at launch means the app was killed
+    // or swiped away mid-playback. Consumed once here — the flag is
+    // cleared before the dialog shows, so Dismiss / Resume never
+    // re-prompts. The old `remember` guard died every time Home left
+    // the composition (Detail / player), which is why the dialog kept
+    // coming back on every return to Home.
     var resumePromptOpen by remember { mutableStateOf(false) }
-    val promptItem = sortedWatching.firstOrNull()
-    LaunchedEffect(promptItem) {
-        if (promptItem != null && settings.continueWatchingResumePrompt && !resumePromptShown) {
-            resumePromptShown = true
+    var resumePromptItem by remember { mutableStateOf<PlaybackState?>(null) }
+    LaunchedEffect(sortedWatching) {
+        if (resumePromptItem != null) return@LaunchedEffect
+        if (!settings.continueWatchingResumePrompt) return@LaunchedEffect
+        if (!settings.resumePromptWasInPlayer) return@LaunchedEffect
+        if (sortedWatching.isEmpty()) return@LaunchedEffect
+        val videoId = settings.resumePromptLastVideoId
+        // Consume first: whatever happens next, this launch never prompts again.
+        settings.resumePromptWasInPlayer = false
+        settings.resumePromptLastVideoId = ""
+        val item = if (videoId.isBlank()) sortedWatching.firstOrNull()
+            else sortedWatching.firstOrNull { it.videoId == videoId }
+        if (item != null) {
+            resumePromptItem = item
             resumePromptOpen = true
         }
     }
@@ -874,16 +888,15 @@ fun HomeScreen(
         )
     }
 
-    // Resume prompt on launch (Nuvio showResumePromptOnLaunch): the latest
-    // title, offered once when the app opens.
-    if (resumePromptOpen && promptItem != null) {
-        val remainingMs = promptItem.durationMs - promptItem.positionMs
+    // Resume prompt on launch: the interrupted title, offered once.
+    if (resumePromptOpen && resumePromptItem != null) {
+        val remainingMs = resumePromptItem.durationMs - resumePromptItem.positionMs
         AlertDialog(
             onDismissRequest = { resumePromptOpen = false },
             title = { Text("Continue watching?", color = TextPrimary) },
             text = {
                 Column {
-                    Text(promptItem.title, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(resumePromptItem.title, color = TextPrimary, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (remainingMs > 60_000) "${formatRemaining(remainingMs)} left"
@@ -894,7 +907,7 @@ fun HomeScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { resumePromptOpen = false; resumeItem(promptItem) }) {
+                TextButton(onClick = { resumePromptOpen = false; resumeItem(resumePromptItem) }) {
                     Text("Resume", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
                 }
             },
