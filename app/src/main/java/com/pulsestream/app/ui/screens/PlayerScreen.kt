@@ -198,6 +198,9 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import com.pulsestream.app.data.CachedStreamLink
+import com.pulsestream.app.data.HlsQualityResolver
+import com.pulsestream.app.data.HlsQualityState
+import com.pulsestream.app.data.HlsQualityVariant
 import com.pulsestream.app.data.StreamLinkCache
 import com.pulsestream.app.data.streamLinkContentKey
 import com.pulsestream.app.data.IntroDbApi
@@ -508,7 +511,9 @@ fun PlayerScreen(
      */
     fun playbackMediaSourceFactory(req: PlaybackRequest): MediaSource.Factory {
         val playbackHeaders = PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv)
-        val dataSourceFactory = buildPlaybackDataSourceFactory(playbackHeaders, req.streamUrl)
+        // HLS variant temp playlists are file:// URLs — the HTTP origin is
+        // the master playlist, so segment requests keep the stream's headers.
+        val dataSourceFactory = buildPlaybackDataSourceFactory(playbackHeaders, req.hlsMasterUrl ?: req.streamUrl)
         val cacheMb = settings.diskCacheMb
         return if (cacheMb > 0) {
             val cacheDataSourceFactory = CacheDataSource.Factory()
@@ -972,6 +977,27 @@ fun PlayerScreen(
     var qualityOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
     var qualitySelection by remember(currentRequest.videoId) { mutableStateOf<String?>(null) }
+    // HLS variant rows (Nuvio PlayerQualitySelector): the master playlist's
+    // actual variants for the playing stream, resolved lazily when the
+    // Quality picker opens. Resets per video.
+    var hlsQualityState by remember(currentRequest.videoId) { mutableStateOf<HlsQualityState?>(null) }
+    var hlsVariantSelection by remember(currentRequest.videoId) { mutableStateOf<String?>(null) }
+    var hlsVariantsLoading by remember(currentRequest.videoId) { mutableStateOf(false) }
+    // Resolve HLS variants lazily when the Quality picker opens (one extra
+    // master-playlist GET per HLS title, only for users who open the picker).
+    // Temp-playlist URLs are skipped: they ARE a variant already.
+    LaunchedEffect(qualityOpen) {
+        if (!qualityOpen) return@LaunchedEffect
+        val url = currentRequest.streamUrl
+        if (currentRequest.hlsMasterUrl != null) return@LaunchedEffect
+        if (hlsQualityState?.sourceUrl == url) return@LaunchedEffect
+        if (!HlsQualityResolver.looksLikeHlsPlaylist(url)) return@LaunchedEffect
+        hlsVariantsLoading = true
+        hlsQualityState = HlsQualityResolver.resolve(
+            context.applicationContext, url, currentRequest.headers
+        )
+        hlsVariantsLoading = false
+    }
     var downloadStream by remember { mutableStateOf<com.pulsestream.app.data.StreamItem?>(null) }
     var zapping by remember { mutableStateOf(false) }
     var availableStreams by remember {
@@ -1658,6 +1684,10 @@ fun PlayerScreen(
         sourcesOpen = false
         // Picking a stream directly is an explicit quality choice.
         qualitySelection = streamQualityLabel(stream)
+        // A new stream is not a variant of the old master: clear the HLS
+        // variant state so the picker re-resolves for this stream.
+        hlsVariantSelection = null
+        hlsQualityState = null
         pokeIndicator(
             PlayerIndicator.Message("Source: ${streamQualityLabel(stream) ?: stream.sourceName ?: "switched"}")
         )
@@ -1667,7 +1697,8 @@ fun PlayerScreen(
                 headers = stream.headers,
                 mimeType = stream.mimeType,
                 streamLabel = streamQualityLabel(stream),
-                sourceName = stream.sourceName
+                sourceName = stream.sourceName,
+                hlsMasterUrl = null
             ),
             startAtMs = player.currentPosition,
             autoplay = true
@@ -1685,6 +1716,50 @@ fun PlayerScreen(
         qualityOpen = false
         if (target != null) switchSource(target)
         qualitySelection = label
+    }
+
+    /**
+     * HLS variant selection (Nuvio PlayerQualitySelector): null = Auto
+     * (the original master playlist), otherwise the chosen variant's
+     * sanitized temp playlist. Reuses [replaceStream] directly — the temp
+     * file:// URL is not a playable URL for [switchSource]'s guard.
+     * Position carries over; the master URL is kept on the request so
+     * segment requests keep the stream's headers.
+     */
+    fun switchHlsVariant(variant: HlsQualityVariant?) {
+        qualityOpen = false
+        if (variant == null) {
+            val master = hlsQualityState?.sourceUrl ?: return
+            hlsVariantSelection = null
+            qualitySelection = null
+            replaceStream(
+                currentRequest.copy(
+                    streamUrl = master,
+                    hlsMasterUrl = null,
+                    streamLabel = qualityOptions.firstOrNull()?.first
+                ),
+                startAtMs = player.currentPosition,
+                autoplay = true
+            )
+        } else {
+            hlsVariantSelection = variant.id
+            qualitySelection = variant.qualityName
+            pokeIndicator(
+                PlayerIndicator.Message("Quality: ${variant.displayLabel}")
+            )
+            replaceStream(
+                currentRequest.copy(
+                    streamUrl = variant.playbackUrl,
+                    hlsMasterUrl = hlsQualityState?.sourceUrl,
+                    streamLabel = variant.qualityName,
+                    // Let the .m3u8 URL infer HLS instead of keeping the
+                    // master stream's MIME hint.
+                    mimeType = null
+                ),
+                startAtMs = player.currentPosition,
+                autoplay = true
+            )
+        }
     }
 
     /**
@@ -4920,7 +4995,36 @@ fun PlayerScreen(
                             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                         )
                     }
-                    if (streamsLoading && qualityOptions.isEmpty()) {
+                    val hlsState = hlsQualityState
+                    if (hlsVariantsLoading) {
+                        item {
+                            Box(
+                                Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = LocalPalette.current.accent)
+                            }
+                        }
+                    } else if (hlsState != null && hlsState.hasSelectableQualities) {
+                        // HLS variants of the playing stream replace the
+                        // whole-stream buckets: Quality is the quality of
+                        // this stream; switching streams stays in Sources.
+                        val recommended = hlsState.selectedVariantFor(null)
+                        item {
+                            TrackRow(
+                                label = "Auto (${recommended?.qualityName ?: hlsState.variants.first().qualityName})",
+                                selected = hlsVariantSelection == null,
+                                onClick = { switchHlsVariant(null) }
+                            )
+                        }
+                        items(hlsState.variants, key = { it.id }) { variant ->
+                            TrackRow(
+                                label = variant.displayLabel,
+                                selected = hlsVariantSelection == variant.id,
+                                onClick = { switchHlsVariant(variant) }
+                            )
+                        }
+                    } else if (streamsLoading && qualityOptions.isEmpty()) {
                         item {
                             Box(
                                 Modifier.fillMaxWidth().padding(vertical = 32.dp),
