@@ -197,18 +197,21 @@ fun PosterCard(
     } else {
         Modifier.clickable(onClick = onClick)
     }
+    // Step 70: poster size / corner radius / labels come from the user's
+    // Appearance settings (provided at the app root).
+    val posterStyle = LocalPosterStyle.current
     Column(
         modifier = modifier
-            .width(128.dp)
+            .width(posterStyle.cardWidth)
             .then(gestureModifier)
             .focusable()
-            .tvFocusRing(RoundedCornerShape(12.dp))
+            .tvFocusRing(RoundedCornerShape(posterStyle.cornerRadius))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
-                .liquidGlass(RoundedCornerShape(12.dp))
+                .height(posterStyle.cardHeight)
+                .liquidGlass(RoundedCornerShape(posterStyle.cornerRadius))
         ) {
             SafePosterImage(
                 model = tmdbSizedImage(meta.poster, "w342"),
@@ -259,23 +262,25 @@ fun PosterCard(
             }
             // Poster only — no corner tag on channel cards.
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = meta.name,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            color = TextPrimary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = MaterialTheme.typography.bodySmall.lineHeight
-        )
-        val sub = meta.releaseInfo?.take(4)
-        if (sub != null) {
+        if (!posterStyle.hideLabels) {
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = sub,
-                style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary
+                text = meta.name,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = MaterialTheme.typography.bodySmall.lineHeight
             )
+            val sub = meta.releaseInfo?.take(4)
+            if (sub != null) {
+                Text(
+                    text = sub,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
         }
     }
 }

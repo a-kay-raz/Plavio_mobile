@@ -43,6 +43,23 @@ fun liquidGlassBottomSurface(background: Color): Color = lerp(background, Color.
  * re-skin every accent in the app (buttons, toggles, progress,
  * glows, selected states) through [LocalPalette].
  */
+/**
+ * Step 70: parse a user-typed accent hex ("#RRGGBB" or "#AARRGGBB", "#" optional).
+ * Returns null for anything that is not a valid 6- or 8-digit hex colour.
+ */
+fun parseHexColor(hex: String): Color? {
+    val clean = hex.trim().removePrefix("#")
+    if (clean.length != 6 && clean.length != 8) return null
+    val value = clean.toLongOrNull(16) ?: return null
+    return if (clean.length == 6) Color(0xFF000000L or value) else Color(value)
+}
+
+/** Step 70: true when a colour is light enough that dark text reads on it. */
+fun isLightColor(color: Color): Boolean {
+    val luminance = 0.299f * color.red + 0.587f * color.green + 0.114f * color.blue
+    return luminance > 0.6f
+}
+
 enum class AccentTheme(val label: String, val primary: Color, val secondary: Color) {
     WHITE("White", Color.White, Color(0xFFD9D9DE)),
     WEAVE("Weave", Color(0xFF7C3AED), Color(0xFFDB2777)),

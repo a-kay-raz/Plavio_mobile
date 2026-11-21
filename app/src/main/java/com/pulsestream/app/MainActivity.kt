@@ -79,6 +79,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -142,7 +143,9 @@ import com.pulsestream.app.data.notifications.NotificationNav
 import com.pulsestream.app.util.ExternalPlayer
 import com.pulsestream.app.data.update.UpdateInfo
 import com.pulsestream.app.ui.components.CrashReportDialog
+import com.pulsestream.app.ui.components.LocalPosterStyle
 import com.pulsestream.app.ui.components.liquidGlass
+import com.pulsestream.app.ui.components.posterStyleFrom
 import com.pulsestream.app.ui.components.UpdatePrompt
 import com.pulsestream.app.ui.nav.Routes
 import com.pulsestream.app.ui.screens.LiveScreen
@@ -191,7 +194,9 @@ import com.pulsestream.app.ui.screens.BackupScreen
 import com.pulsestream.app.ui.screens.IntegrationsScreen
 import com.pulsestream.app.ui.theme.AccentTheme
 import com.pulsestream.app.ui.theme.AppTheme
+import com.pulsestream.app.ui.theme.isLightColor
 import com.pulsestream.app.ui.theme.paletteForTheme
+import com.pulsestream.app.ui.theme.parseHexColor
 import com.pulsestream.app.ui.theme.asDark
 import com.pulsestream.app.ui.theme.GlassBorder
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -410,15 +415,29 @@ class MainActivity : ComponentActivity() {
                 // solid version of the chosen theme automatically.
                 val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                 val lowEnd = am.isLowRamDevice || am.memoryClass <= 64
-                paletteForTheme(
+                val base = paletteForTheme(
                     AppTheme.byName(app.settings.appTheme),
                     AccentTheme.byName(app.settings.accentName),
                     frosted = !lowEnd
                 )
+                // Step 70: a custom hex accent overrides the preset's
+                // colours (accentText re-derived from luminance, so a
+                // light custom accent still gets dark text on it).
+                parseHexColor(app.settings.customAccentHex)?.let { custom ->
+                    base.copy(
+                        accent = custom,
+                        accent2 = custom,
+                        accentText = if (isLightColor(custom)) Color.Black else Color.White
+                    )
+                } ?: base
             }
             val isLight = palette.light
             PulseStreamTheme(palette = palette, isLight = isLight) {
-                PulseNav(onThemeChanged = { themeTick++ })
+                CompositionLocalProvider(
+                    LocalPosterStyle provides posterStyleFrom(app.settings)
+                ) {
+                    PulseNav(onThemeChanged = { themeTick++ })
+                }
             }
         }
     }
@@ -966,10 +985,13 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                 // scrolling up grows it back with the names. Softly
                 // damped spring: gentle settle, no bounce jitter. The
                 // hysteresis latch above (compactNav) owns the trigger.
+                // Step 70: the "compact" dock style pins the tray in
+                // the shrunk (icons-only) state regardless of scroll.
+                val dockCompact = app.settings.dockStyle == "compact"
                 val foldAnim = remember { Animatable(0f) }
-                LaunchedEffect(compactNav) {
+                LaunchedEffect(compactNav, dockCompact) {
                     foldAnim.animateTo(
-                        targetValue = if (compactNav) 1f else 0f,
+                        targetValue = if (compactNav || dockCompact) 1f else 0f,
                         animationSpec = spring(dampingRatio = 0.92f, stiffness = 205f)
                     )
                 }
