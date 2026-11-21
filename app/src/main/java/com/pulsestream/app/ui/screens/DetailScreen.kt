@@ -282,19 +282,20 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         if (pick != null) selectEpisode(pick)
     }
 
-    /** Toggle shuffle mode; enabling it immediately jumps to a random episode. */
+    /** Toggle shuffle mode for the following episodes (random next at end). The jump to a random episode lives in the shuffle sheet now. */
     fun updateShuffle(enabled: Boolean) {
         shuffleEpisodes = enabled
         repo.settings.shuffleEpisodes = enabled
-        if (enabled) selectRandomEpisode()
     }
 
-    /** Picks a random episode from the current season and selects it. */
-    fun selectRandomEpisode() {
-        val meta = (metaState as? MetaUiState.Content)?.meta ?: return
-        val episodes = meta.videos.filter { it.season == selectedSeason }
-        val pick = episodes.randomOrNull() ?: return
-        selectEpisode(pick)
+    /**
+     * Shuffle sheet Play: select the episode and auto-play its best stream
+     * once loaded (the pending-play path fires when the new streams arrive).
+     */
+    fun playEpisode(video: Video) {
+        pendingAutoPlay = true
+        playFromStartRequest = false
+        selectEpisode(video)
     }
 
     fun selectEpisode(video: Video) {
@@ -645,6 +646,17 @@ private fun DetailContent(
     var sortOpen by remember { mutableStateOf(false) }
     val episodesRailState = rememberLazyListState()
     val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
+    // Step 41: shuffle sheet — one no-repeat picker per Detail visit.
+    var shuffleSheetOpen by remember { mutableStateOf(false) }
+    val shufflePicker = remember(meta.id) {
+        com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
+    }
+    LaunchedEffect(meta.videos, watchedKeys) {
+        shufflePicker.update(
+            meta.videos,
+            com.pulsestream.app.data.watchedEpisodeKeys(meta.id, watchedKeys),
+        )
+    }
     // Hoisted out of the LazyColumn DSL: the filter+sort used to re-run
     // on every recomposition of the (stream-driven) content lambda.
     val episodes = remember(meta.videos, vm.selectedSeason, episodeQuery, episodeSort, watchedKeys) {
@@ -1582,10 +1594,10 @@ private fun DetailContent(
                         color = TextPrimary,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = { vm.updateShuffle(!vm.shuffleEpisodes) }) {
+                    IconButton(onClick = { shuffleSheetOpen = true }) {
                         Icon(
                             Icons.Filled.Shuffle,
-                            contentDescription = if (vm.shuffleEpisodes) "Shuffle on" else "Shuffle off",
+                            contentDescription = "Shuffle episodes",
                             tint = if (vm.shuffleEpisodes) LocalPalette.current.accent else TextSecondary
                         )
                     }
@@ -1774,6 +1786,24 @@ private fun DetailContent(
     // The popup gets the full stream list and runs its own per-addon tabs
     // (the inline section below keeps the shared "All" browser state).
     val streamsContent = vm.streamsState as? StreamsUiState.Content
+    // Shuffle sheet (Step 41): random episode with include-watched toggle,
+    // no-repeat session and Play.
+    if (shuffleSheetOpen && isSeries) {
+        EpisodeShuffleSheet(
+            showName = meta.name ?: "Series",
+            picker = shufflePicker,
+            includeWatched = settings.shuffleIncludeWatched,
+            onIncludeWatchedChange = { settings.shuffleIncludeWatched = it },
+            shuffleFollowing = vm.shuffleEpisodes,
+            onShuffleFollowingChange = { vm.updateShuffle(it) },
+            onPlay = { video ->
+                shuffleSheetOpen = false
+                vm.playEpisode(video)
+            },
+            onDismiss = { shuffleSheetOpen = false },
+        )
+    }
+
     // Download confirmation dialog state
     var downloadStream by remember { mutableStateOf<StreamItem?>(null) }
     SourcePickerPopup(
