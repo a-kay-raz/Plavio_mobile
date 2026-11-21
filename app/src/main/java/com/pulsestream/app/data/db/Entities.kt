@@ -24,6 +24,8 @@ data class InstalledAddon(
     val enabled: Boolean = true,
     /** Manifest behaviorHints.configurable — the addon has a web configure page. Added in DB v4. */
     val configurable: Boolean = false,
+    /** Manifest behaviorHints.configurationRequired — must be configured before use. Added in DB v13. */
+    val configurationRequired: Boolean = false,
     /** Whether this addon's catalogs appear on the Home screen. Added in DB v5. */
     val showOnHome: Boolean = true,
     /** Manifest logo URL for the addon icon. Added in DB v6. */

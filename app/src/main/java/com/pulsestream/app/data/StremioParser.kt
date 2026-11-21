@@ -122,7 +122,9 @@ object StremioParser {
             catalogs = catalogs,
             resources = resources,
             configurable = ((obj["behaviorHints"] as? JsonObject)
-                ?.get("configurable") as? JsonPrimitive)?.booleanOrNull ?: false
+                ?.get("configurable") as? JsonPrimitive)?.booleanOrNull ?: false,
+            configurationRequired = ((obj["behaviorHints"] as? JsonObject)
+                ?.get("configurationRequired") as? JsonPrimitive)?.booleanOrNull ?: false
         )
     }
 

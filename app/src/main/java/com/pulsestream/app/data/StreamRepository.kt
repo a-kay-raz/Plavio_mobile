@@ -117,10 +117,22 @@ class StreamRepository(
     @Volatile
     var pendingCatalog: CatalogRow? = null
 
-    suspend fun addAddonFromUrl(input: String): Result<InstalledAddon> = withContext(Dispatchers.IO) {
+    /**
+     * Fetch + parse an addon's manifest without installing it, so the UI
+     * can gate tracking addons on consent first (Nuvio
+     * TrackingConsentRequired).
+     */
+    suspend fun fetchAddonManifest(input: String): Result<AddonManifest> = withContext(Dispatchers.IO) {
         runCatching {
             val baseUrl = StremioApi.normalizeBaseUrl(input)
-            val manifest = addonRequest { api.fetchManifest(baseUrl) }
+            addonRequest { api.fetchManifest(baseUrl) }
+        }
+    }
+
+    /** Install an already-fetched manifest: the hasAny check, record upsert and cache invalidation. */
+    suspend fun installAddonManifest(input: String, manifest: AddonManifest): Result<InstalledAddon> = withContext(Dispatchers.IO) {
+        runCatching {
+            val baseUrl = StremioApi.normalizeBaseUrl(input)
             // Real Stremio behavior: an addon is useful if it provides ANY of
             // catalog / meta / stream / subtitles — they no longer have to come bundled together.
             val hasAny = manifest.hasCatalog || manifest.hasMeta || manifest.hasStream || manifest.hasSubtitles
@@ -141,6 +153,7 @@ class StreamRepository(
                 types = manifest.types.joinToString(","),
                 resources = manifest.resources.joinToString(","),
                 configurable = manifest.configurable,
+                configurationRequired = manifest.configurationRequired,
                 logoUrl = manifest.logo ?: "",
                 sortOrder = sortOrder,
                 addedAt = System.currentTimeMillis()
@@ -152,6 +165,11 @@ class StreamRepository(
             invalidateAddonCaches(addon.id)
             addon
         }
+    }
+
+    suspend fun addAddonFromUrl(input: String): Result<InstalledAddon> {
+        val manifest = fetchAddonManifest(input).getOrElse { return Result.failure(it) }
+        return installAddonManifest(input, manifest)
     }
 
     /**
@@ -194,6 +212,7 @@ class StreamRepository(
                 types = manifest.types.joinToString(","),
                 resources = manifest.resources.joinToString(","),
                 configurable = manifest.configurable,
+                configurationRequired = manifest.configurationRequired,
                 logoUrl = manifest.logo ?: current.logoUrl
             )
             dao.upsert(updated)
@@ -686,7 +705,8 @@ class StreamRepository(
                         db.addonDao().upsert(addon.copy(
                             resources = manifest.resources.joinToString(","),
                             types = manifest.types.joinToString(","),
-                            configurable = manifest.configurable
+                            configurable = manifest.configurable,
+                            configurationRequired = manifest.configurationRequired
                         ))
                     } catch (cancel: CancellationException) { throw cancel }
                     catch (_: Exception) { /* metadata refresh must not lose existing rows */ }
