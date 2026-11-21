@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -139,6 +140,8 @@ fun HomeCatalogsScreen(
     val heroAtCap = heroSelected >= HOME_HERO_SOURCE_LIMIT
     var expandedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var showHidden by rememberSaveable { mutableStateOf(false) }
+    // Nuvio: the hero-source list is a collapsible dropdown, closed by default.
+    var showHeroSources by rememberSaveable { mutableStateOf(false) }
 
     GlowBackground {
         if (vm.loading) {
@@ -220,19 +223,64 @@ fun HomeCatalogsScreen(
 
             if (prefs.heroEnabled) {
                 item(key = "hero_header") { HomeSectionHeader("HERO SOURCES") }
-                // Keys are prefixed per section: the hero list and the
-                // catalog list render the SAME prefs, and LazyColumn keys
-                // must be unique across the whole list — unprefixed keys
-                // crashed on scroll (duplicate key, dev-7).
-                items(visiblePrefs, key = { "hero:${it.key}" }) { pref ->
-                    val row = rowByKey[pref.key] ?: return@items
-                    HeroSourceRow(
-                        title = prefs.displayTitle(row),
-                        subtitle = row.addonName,
-                        checked = pref.heroSourceEnabled,
-                        switchEnabled = pref.heroSourceEnabled || !heroAtCap,
-                        onToggle = { vm.setHeroSource(pref.key, it) }
-                    )
+                // Nuvio HeroSourcesDropdown: the list lives in a collapsible
+                // dropdown, closed by default — the header shows the pick
+                // (count + names), rows only when opened. Keys stay prefixed
+                // per section: LazyColumn keys must be unique across the
+                // whole list (unprefixed keys crashed on scroll, dev-7).
+                item(key = "hero_sources") {
+                    val selectedNames = visiblePrefs
+                        .filter { it.heroSourceEnabled }
+                        .mapNotNull { pref -> rowByKey[pref.key] }
+                        .joinToString(", ") { prefs.displayTitle(it) }
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                        onClick = { showHeroSources = !showHeroSources }
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Hero sources",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    "$heroSelected of $HOME_HERO_SOURCE_LIMIT selected",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                                Text(
+                                    selectedNames.ifBlank { "No sources selected" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(
+                                if (showHeroSources) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (showHeroSources) "Collapse" else "Expand",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+                if (showHeroSources) {
+                    items(visiblePrefs, key = { "hero:${it.key}" }) { pref ->
+                        val row = rowByKey[pref.key] ?: return@items
+                        HeroSourceRow(
+                            title = prefs.displayTitle(row),
+                            subtitle = row.addonName,
+                            checked = pref.heroSourceEnabled,
+                            switchEnabled = pref.heroSourceEnabled || !heroAtCap,
+                            onToggle = { vm.setHeroSource(pref.key, it) }
+                        )
+                    }
                 }
                 if (heroAtCap) {
                     item(key = "hero_cap") {
