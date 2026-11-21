@@ -846,6 +846,11 @@ class SettingsStore(
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
 
+    /** Step 68: show the parental-guide overlay when playback starts. */
+    var showParentalGuide: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_PARENTAL_GUIDE, true)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_PARENTAL_GUIDE, value).apply()
+
     /** Step 67: forward the title's subtitles to the external player. */
     var forwardSubtitlesToExternalPlayer: Boolean
         get() = prefs.getBoolean(KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER, true)
@@ -2014,6 +2019,7 @@ class SettingsStore(
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_AUDIO_DELAY_MS = "audio_delay_ms"
         private const val KEY_DOWNMIX_ENABLED = "downmix_enabled"
+        private const val KEY_SHOW_PARENTAL_GUIDE = "show_parental_guide"
         private const val KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER = "forward_subtitles_to_external_player"
         private const val KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER = "send_skip_segments_to_external_player"
         private const val KEY_DOWNMIX_TARGET_CHANNELS = "downmix_target_channels"
