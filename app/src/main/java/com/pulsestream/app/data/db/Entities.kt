@@ -360,6 +360,12 @@ interface WatchedDao {
     @Query("SELECT * FROM watched ORDER BY watchedAt DESC")
     suspend fun getAll(): List<WatchedRecord>
 
+    @Query("DELETE FROM watched WHERE `key` = :key")
+    suspend fun deleteByKey(key: String)
+
+    @Query("DELETE FROM watched WHERE `key` LIKE :prefix || '%'")
+    suspend fun deleteByPrefix(prefix: String)
+
     @Query("DELETE FROM watched")
     suspend fun clearAll()
 }

@@ -16,6 +16,13 @@ class BrowsingPrivacy(context: Context) {
         prefs.edit().putBoolean(KEY_HIDE_UNREVEALED, enabled).apply()
     }
 
+    /** Blur unwatched episode thumbnails (spoiler-safe browsing). */
+    fun blurUnwatchedEpisodes(): Boolean = prefs.getBoolean(KEY_BLUR_UNWATCHED, false)
+
+    fun setBlurUnwatchedEpisodes(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_BLUR_UNWATCHED, enabled).apply()
+    }
+
     fun revealedEpisodes(showKey: String): Set<String> =
         prefs.getStringSet(showPreferenceKey(showKey), emptySet()).orEmpty().toSet()
 
@@ -34,6 +41,7 @@ class BrowsingPrivacy(context: Context) {
     companion object {
         private const val PREFS_NAME = "pulse_browsing_privacy"
         private const val KEY_HIDE_UNREVEALED = "hide_unrevealed_episode_details"
+        private const val KEY_BLUR_UNWATCHED = "blur_unwatched_episodes"
         private const val SHOW_PREFIX = "revealed_episodes_"
 
         /** A deterministic encoded key that cannot collide on delimiter-containing IDs. */
