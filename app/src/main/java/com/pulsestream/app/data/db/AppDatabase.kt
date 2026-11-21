@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CustomListItem::class,
         WatchedRecord::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -214,5 +214,15 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
         db.execSQL(
             "ALTER TABLE addons ADD COLUMN configurationRequired INTEGER NOT NULL DEFAULT 0"
         )
+    }
+}
+
+/** v13 → v14 (Step 36): per-show download grouping — parent meta id, series name, season/episode on downloads. Existing rows stay ungrouped (empty showKey). */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE downloads ADD COLUMN showKey TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE downloads ADD COLUMN seriesName TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE downloads ADD COLUMN season INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE downloads ADD COLUMN episode INTEGER NOT NULL DEFAULT 0")
     }
 }

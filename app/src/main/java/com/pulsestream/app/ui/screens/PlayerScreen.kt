@@ -5088,7 +5088,12 @@ fun PlayerScreen(
             com.pulsestream.app.ui.components.DownloadConfirmDialog(
                 stream = stream,
                 title = currentRequest.title,
-                onDismiss = { downloadStream = null }
+                onDismiss = { downloadStream = null },
+                // Step 36: series episodes group under the show; movies stay flat.
+                metaId = if (!currentRequest.isMovie) currentRequest.metaId else "",
+                seriesName = currentRequest.seriesName,
+                season = currentRequest.season,
+                episode = currentRequest.episode
             )
         }
 

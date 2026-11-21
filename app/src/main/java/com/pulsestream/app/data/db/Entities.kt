@@ -306,7 +306,14 @@ data class DownloadItem(
     val error: String? = null,
     val headersJson: String = "{}",
     val createdAt: Long,
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    // Step 36: per-show grouping — parent meta id for series episodes
+    // ("" = movie / ungrouped single), display name for the group header,
+    // and the episode position inside the show.
+    val showKey: String = "",
+    val seriesName: String = "",
+    val season: Int = 0,
+    val episode: Int = 0
 )
 
 @Dao

@@ -26,7 +26,13 @@ fun DownloadConfirmDialog(
     stream: StreamItem,
     title: String,
     onDismiss: () -> Unit,
-    onStarted: () -> Unit = {}
+    onStarted: () -> Unit = {},
+    // Step 36: per-show grouping — parent meta id ("" = movie/ungrouped),
+    // series display name, and the episode position.
+    metaId: String = "",
+    seriesName: String? = null,
+    season: Int = 0,
+    episode: Int = 0
 ) {
     val context = LocalContext.current
     val manager = remember { DownloadManager.get(context) }
@@ -197,8 +203,17 @@ fun DownloadConfirmDialog(
                             try {
                                 // Step 35: persist the chosen resolution and
                                 // download the chosen variant's playlist.
+                                // Step 36: show-key plumbing for grouping.
                                 manager.setDownloadPreferredResolution(resolution)
-                                manager.startDownload(url = downloadUrl, title = displayTitle, headers = stream.headers)
+                                manager.startDownload(
+                                    url = downloadUrl,
+                                    title = displayTitle,
+                                    headers = stream.headers,
+                                    showKey = metaId,
+                                    seriesName = seriesName ?: title,
+                                    season = season,
+                                    episode = episode
+                                )
                                 DownloadService.start(context)
                                 onStarted()
                                 onDismiss()
