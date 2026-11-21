@@ -811,7 +811,7 @@ fun PlayerScreen(
     // everything else opens landscape as before.
     var isPortrait by remember { mutableStateOf(initialRequest.sourceName == "YouTube") }
     // Aspect ratio (in-player only — cycles Fit → Fill → Zoom)
-    var aspectMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var aspectMode by remember { mutableIntStateOf(settings.resizeMode) }
     val aspectLabel = ASPECT_MODES.firstOrNull { it.first == aspectMode }?.second ?: "Fit"
 
     var isBuffering by remember { mutableStateOf(true) }
@@ -1049,6 +1049,7 @@ fun PlayerScreen(
             AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
+        settings.resizeMode = aspectMode
         playerView?.resizeMode = aspectMode
         pokeIndicator(PlayerIndicator.Message("Aspect: $aspectLabel"))
     }
