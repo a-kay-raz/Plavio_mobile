@@ -1,7 +1,7 @@
 package com.pulsestream.app.data
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Home catalog row preferences — Nuvio's model, ported in shape.
@@ -19,7 +19,6 @@ import kotlinx.serialization.json.Json
  * trailer), Concierge / Smart Shelves (Enhanced-only derived sections).
  * Pin does not sync anywhere — there is nothing to sync to.
  */
-@Serializable
 data class StoredHomeRowPref(
     val key: String,
     val customTitle: String = "",
@@ -29,7 +28,6 @@ data class StoredHomeRowPref(
     val rowPlacement: String = HomeRowPlacement.NORMAL.storage
 )
 
-@Serializable
 data class StoredHomeRowPrefs(
     val heroEnabled: Boolean = true,
     val showCatalogType: Boolean = true,
@@ -57,14 +55,59 @@ fun homeRowKey(addonId: String, type: String, catalogId: String) = "$addonId|$ty
 
 fun CatalogRow.rowKey() = homeRowKey(addonId, type, catalogId)
 
-private val homeRowPrefsJson = Json { ignoreUnknownKeys = true }
-
-fun StoredHomeRowPrefs.encode(): String =
-    homeRowPrefsJson.encodeToString(StoredHomeRowPrefs.serializer(), this)
+/**
+ * Plain org.json codec. kotlinx-serialization-json is a dependency but its
+ * compiler plugin is NOT applied to this module, so a generated
+ * `.serializer()` does not exist (that was the dev-6 build failure) — and
+ * this file follows the repo's existing pattern (AddonShare.kt) of explicit
+ * codecs instead of adding a new plugin to the build. Unknown keys are
+ * ignored, so an older blob still decodes.
+ */
+fun StoredHomeRowPrefs.encode(): String {
+    val root = JSONObject()
+    root.put("heroEnabled", heroEnabled)
+    root.put("showCatalogType", showCatalogType)
+    root.put("hideUnreleasedContent", hideUnreleasedContent)
+    val arr = JSONArray()
+    for (item in items) {
+        val o = JSONObject()
+        o.put("key", item.key)
+        o.put("customTitle", item.customTitle)
+        o.put("enabled", item.enabled)
+        o.put("heroSourceEnabled", item.heroSourceEnabled)
+        o.put("order", item.order)
+        o.put("rowPlacement", item.rowPlacement)
+        arr.put(o)
+    }
+    root.put("items", arr)
+    return root.toString()
+}
 
 fun decodeHomeRowPrefs(raw: String?): StoredHomeRowPrefs = try {
-    raw?.let { homeRowPrefsJson.decodeFromString(StoredHomeRowPrefs.serializer(), it) }
-        ?: StoredHomeRowPrefs()
+    val root = raw?.let { JSONObject(it) } ?: return StoredHomeRowPrefs()
+    val items = mutableListOf<StoredHomeRowPref>()
+    val arr = root.optJSONArray("items")
+    if (arr != null) {
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val key = o.optString("key")
+            if (key.isEmpty()) continue
+            items += StoredHomeRowPref(
+                key = key,
+                customTitle = o.optString("customTitle", ""),
+                enabled = o.optBoolean("enabled", true),
+                heroSourceEnabled = o.optBoolean("heroSourceEnabled", true),
+                order = o.optInt("order", 0),
+                rowPlacement = o.optString("rowPlacement", HomeRowPlacement.NORMAL.storage)
+            )
+        }
+    }
+    StoredHomeRowPrefs(
+        heroEnabled = root.optBoolean("heroEnabled", true),
+        showCatalogType = root.optBoolean("showCatalogType", true),
+        hideUnreleasedContent = root.optBoolean("hideUnreleasedContent", false),
+        items = items
+    )
 } catch (_: Exception) {
     StoredHomeRowPrefs()
 }
