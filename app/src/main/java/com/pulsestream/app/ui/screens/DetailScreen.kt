@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -652,6 +653,8 @@ private fun DetailContent(
     val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
     // Step 41: shuffle sheet — one no-repeat picker per Detail visit.
     var shuffleSheetOpen by remember { mutableStateOf(false) }
+    // Step 45: batch season download plan sheet.
+    var batchSheetOpen by remember { mutableStateOf(false) }
     val shufflePicker = remember(meta.id) {
         com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
     }
@@ -1607,6 +1610,16 @@ private fun DetailContent(
                             tint = if (vm.shuffleEpisodes) LocalPalette.current.accent else TextSecondary
                         )
                     }
+                    // Step 45: batch season download (same header as Shuffle).
+                    if (settings.showDownloadButton) {
+                        IconButton(onClick = { batchSheetOpen = true }) {
+                            Icon(
+                                Icons.Filled.Download,
+                                contentDescription = "Download season",
+                                tint = TextSecondary
+                            )
+                        }
+                    }
                     IconButton(onClick = { sortOpen = true }) {
                         Icon(
                             Icons.Filled.Sort,
@@ -1792,6 +1805,29 @@ private fun DetailContent(
     // The popup gets the full stream list and runs its own per-addon tabs
     // (the inline section below keeps the shared "All" browser state).
     val streamsContent = vm.streamsState as? StreamsUiState.Content
+    // Batch season download sheet (Step 45): pick episodes of the current
+    // season; each downloads its best stream in the background.
+    if (batchSheetOpen && isSeries) {
+        BatchDownloadSheet(
+            showName = meta.name ?: "Series",
+            showId = meta.id,
+            season = vm.selectedSeason ?: 1,
+            episodes = meta.videos.filter { it.season == vm.selectedSeason }.sortedBy { it.episode },
+            watched = com.pulsestream.app.data.watchedEpisodeKeys(meta.id, watchedKeys),
+            onDownload = { chosen ->
+                batchSheetOpen = false
+                com.pulsestream.app.data.download.BatchDownloadQueuer.queue(
+                    context = context,
+                    repository = repository,
+                    meta = meta,
+                    season = vm.selectedSeason ?: 1,
+                    episodes = chosen,
+                )
+            },
+            onDismiss = { batchSheetOpen = false },
+        )
+    }
+
     // Shuffle sheet (Step 41): random episode with include-watched toggle,
     // no-repeat session and Play.
     if (shuffleSheetOpen && isSeries) {
