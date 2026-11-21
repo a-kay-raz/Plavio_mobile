@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
@@ -70,6 +71,7 @@ import com.pulsestream.app.data.subtitleColorName
 import com.pulsestream.app.data.subtitleEdgeName
 import com.pulsestream.app.data.subtitleSizeName
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.WATCHED_THRESHOLD_OPTIONS
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.tv.tvFocusRing
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -91,11 +93,14 @@ fun PlaybackSettingsScreen(
     var audioLangPickerOpen by remember { mutableStateOf(false) }
     var bufferPresetOpen by remember { mutableStateOf(false) }
     var diskCacheOpen by remember { mutableStateOf(false) }
+    var watchedThresholdOpen by remember { mutableStateOf(false) }
     var playerPickerOpen by remember { mutableStateOf(false) }
     // Refresh key so the preferred-player subtitle updates after the dialog closes.
     var playerUiTick by remember { mutableStateOf(0) }
     // Refresh key so the buffer/disk-cache subtitles update after the dialogs close.
     var bufferUiTick by remember { mutableStateOf(0) }
+    // Refresh key so the watched-threshold subtitle updates after the dialog closes.
+    var watchedUiTick by remember { mutableStateOf(0) }
 
     GlowBackground {
         LazyColumn(
@@ -133,6 +138,7 @@ fun PlaybackSettingsScreen(
                 // Read inside the item so recomposition picks up dialog changes.
                 playerUiTick
                 bufferUiTick
+                watchedUiTick
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -229,6 +235,14 @@ fun PlaybackSettingsScreen(
                             subtitle = "Cache played media on device: ${diskCacheName(settings.diskCacheMb)}",
                             onClick = { diskCacheOpen = true }
                         )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.CheckCircle,
+                            title = "Watched threshold",
+                            subtitle = "A title counts as watched at ${settings.watchedThresholdPercent}% played",
+                            onClick = { watchedThresholdOpen = true }
+                        )
                     }
                 )
             }
@@ -270,6 +284,77 @@ fun PlaybackSettingsScreen(
             onDone = { playerPickerOpen = false; playerUiTick++ }
         )
     }
+
+    if (watchedThresholdOpen) {
+        WatchedThresholdDialog(
+            settings = settings,
+            onDismiss = { watchedThresholdOpen = false },
+            onDone = { watchedThresholdOpen = false; watchedUiTick++ }
+        )
+    }
+}
+
+/**
+ * Watched threshold picker (Settings > Playback, Nuvio
+ * WatchedThresholdSection): how much of a title must be played before it
+ * counts as watched. Options 80/85/90/95/99, default 90.
+ */
+@Composable
+fun WatchedThresholdDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember { mutableStateOf(settings.watchedThresholdPercent) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Watched threshold", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "How much of a title you must play before it counts as watched — in Library, Continue Watching and episode lists.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(WATCHED_THRESHOLD_OPTIONS, key = { it }) { percent ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = percent }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == percent,
+                                onClick = { selected = percent },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text("$percent%", color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.watchedThresholdPercent = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
 }
 
 /**

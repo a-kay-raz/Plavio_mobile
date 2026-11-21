@@ -251,6 +251,9 @@ val DISK_CACHE_OPTIONS: List<Pair<Int, String>> = listOf(
     1024 to "1 GB"
 )
 
+/** Watched-threshold options in % (Nuvio WatchedThresholdSettings.options). */
+val WATCHED_THRESHOLD_OPTIONS: List<Int> = listOf(80, 85, 90, 95, 99)
+
 fun diskCacheName(mb: Int): String =
     DISK_CACHE_OPTIONS.find { it.first == mb }?.second
         ?: if (mb <= 0) "Off" else "$mb MB"
@@ -418,6 +421,15 @@ class SettingsStore(context: Context) {
     var diskCacheMb: Int
         get() = prefInt(KEY_DISK_CACHE_MB, 0).coerceAtLeast(0)
         set(value) = prefs.edit().putInt(KEY_DISK_CACHE_MB, value.coerceAtLeast(0)).apply()
+
+    /**
+     * Watched threshold (Nuvio WatchedThresholdSettings): % of a title that
+     * must be played before it counts as watched. Default 90; options
+     * 80/85/90/95/99. Used by savePlayback's watched mark.
+     */
+    var watchedThresholdPercent: Int
+        get() = prefInt(KEY_WATCHED_THRESHOLD_PERCENT, 90).coerceIn(80, 99)
+        set(value) = prefs.edit().putInt(KEY_WATCHED_THRESHOLD_PERCENT, value.coerceIn(80, 99)).apply()
 
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
@@ -975,6 +987,7 @@ class SettingsStore(context: Context) {
         private const val KEY_BUFFER_MAX_MS = "buffer_max_ms"
         private const val KEY_BUFFER_FOR_PLAYBACK_MS = "buffer_for_playback_ms"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
+        private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"
