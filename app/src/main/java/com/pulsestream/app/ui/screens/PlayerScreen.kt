@@ -2362,7 +2362,11 @@ fun PlayerScreen(
                 startupPlayer.prepare()
             },
             loadSavedPosition = {
-                if (initialRequest.isLive && !isTv) 0L
+                // Play from start: ignore the saved position entirely —
+                // saved = 0 means no resume offer and seekToPlaybackStart
+                // starts at 0:00. The saved position is kept, not erased.
+                if (initialRequest.playFromStart) 0L
+                else if (initialRequest.isLive && !isTv) 0L
                 else repository.getSavedPosition(initialRequest.streamUrl)
             },
             prepareEarly = prepareEarly

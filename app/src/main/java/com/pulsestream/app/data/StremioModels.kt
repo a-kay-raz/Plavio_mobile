@@ -227,6 +227,10 @@ data class PlaybackRequest(
     val isTrailer: Boolean = false,
     /** Optional separate audio track for video-only sources; normal playback is unchanged. */
     val mergeAudioUrl: String? = null,
+    /** Play from start (Nuvio detailActionSet): ignore the saved resume
+     *  position and suppress the resume prompt — always start at 0:00.
+     *  One-shot: the saved position is kept, not erased. */
+    val playFromStart: Boolean = false,
     /** Optional addon-provided MIME hint; playback may still probe/self-heal it. */
     val mimeType: String? = null,
     /** Originating Live channel, retained for player zap/source re-resolution. */
