@@ -46,6 +46,7 @@ import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.ui.components.AddonTabs
 import com.pulsestream.app.ui.components.QualityPills
+import com.pulsestream.app.ui.components.SmartStreamSheet
 import com.pulsestream.app.ui.components.pinnedStreamSourceKey
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
@@ -71,18 +72,24 @@ internal fun PlayerSourcesContent(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     settings: SettingsStore? = null,
-    poster: String? = null
+    poster: String? = null,
+    isEpisode: Boolean = false
 ) {
-    val browser = rememberStreamBrowserState(streams, settings, limitPerSource = false)
+    val browser = rememberStreamBrowserState(streams, settings, limitPerSource = false, isEpisode = isEpisode)
     // Pinned sources (Nuvio StreamSourcePinSheet): one row per distinct
     // source in this list; pin toggles persist in SettingsStore and the
     // pinned-first sort in applyStreamPreferences re-applies everywhere
     // (player Sources, per-episode streams, Detail browser, autoplay).
     var pinSheetOpen by remember { mutableStateOf(false) }
     var pinsVersion by remember { mutableStateOf(0) }
+    // Step 42 — Smart Streams sheet: same tick pattern as pins; every
+    // filter/sort change bumps smartVersion so the list re-sorts live.
+    var smartSheetOpen by remember { mutableStateOf(false) }
+    var smartVersion by remember { mutableStateOf(0) }
     val pinSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val store = settings
     val pinnedKeys = store?.pinnedStreamSources ?: emptySet()
+    val smartActiveCount = if (smartVersion >= 0) store?.smartStreamSettings()?.filters?.activeCount ?: 0 else 0
     val pinSources = remember(streams, pinsVersion) {
         streams.groupBy { pinnedStreamSourceKey(it) }
             .map { (key, list) ->
@@ -167,6 +174,11 @@ internal fun PlayerSourcesContent(
                     Text("${browser.filtered.size} sources", style = MaterialTheme.typography.labelSmall,
                         color = TextSecondary)
                     Spacer(Modifier.weight(1f))
+                    if (store != null) {
+                        TextButton(onClick = { smartSheetOpen = true }) {
+                            Text(if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart")
+                        }
+                    }
                     TextButton(onClick = { pinSheetOpen = true }) {
                         Icon(Icons.Filled.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -193,6 +205,15 @@ internal fun PlayerSourcesContent(
             }
             if (!loading) item { TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Load sources") } }
         }
+    }
+    if (smartSheetOpen && store != null) {
+        SmartStreamSheet(
+            streams = streams,
+            settings = store,
+            isEpisode = isEpisode,
+            onChanged = { smartVersion++ },
+            onDismiss = { smartSheetOpen = false },
+        )
     }
     if (pinSheetOpen && store != null) {
         ModalBottomSheet(

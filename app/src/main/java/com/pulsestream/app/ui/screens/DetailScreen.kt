@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Card
+import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.ui.components.OrbitDots
 import androidx.compose.material3.CardDefaults
 import androidx.compose.foundation.layout.Row
@@ -173,6 +174,7 @@ import com.pulsestream.app.ui.components.StreamCard
 import com.pulsestream.app.ui.components.StreamList
 import com.pulsestream.app.ui.components.streamListItems
 import com.pulsestream.app.ui.components.DownloadConfirmDialog
+import com.pulsestream.app.ui.components.SmartStreamSheet
 import com.pulsestream.app.ui.components.StreamTab
 import com.pulsestream.app.ui.components.addonKey
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -440,9 +442,11 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         val playableStreams = s.streams.filter { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
         if (playableStreams.isEmpty()) { pendingAutoPlay = true; return }
         // Settings > Streams autoplay: pick by the user's quality/size rule
-        // instead of the probed fastest stream.
+        // instead of the probed fastest stream. Step 42: "Auto" picks the
+        // Smart Streams scored best (episode runtime for series).
         if (repo.settings.streamAutoplay) {
-            val ruled = pickAutoplayStream(playableStreams, repo.settings)
+            val isEpisode = (metaState as? MetaUiState.Content)?.meta?.type == "series"
+            val ruled = pickAutoplayStream(playableStreams, repo.settings, isEpisode)
             if (ruled != null) {
                 autoPlayEvent = AutoPlay(ruled, s.subtitles, playFromStartRequest)
                 return
@@ -700,7 +704,9 @@ private fun DetailContent(
     val heroPillRows = remember(allStreams, allSubtitles) {
         heroPills(allStreams, allSubtitles)
     }
-    val browserState = rememberStreamBrowserState(allStreams, repository.settings)
+    val browserState = rememberStreamBrowserState(
+        allStreams, repository.settings, isEpisode = meta.type == "series"
+    )
     // Mini floating source-picker card (the button next to Play opens this
     // instead of scrolling to the sources section).
     var sourcePickerOpen by remember { mutableStateOf(false) }
@@ -1846,7 +1852,8 @@ private fun DetailContent(
                     startPlayback(vm, repository, stream, streamsContent.subtitles, streamsContent.streams, onPlay)
                 }
             },
-            onDownload = if (settings.showDownloadButton) { stream -> downloadStream = stream } else null
+            onDownload = if (settings.showDownloadButton) { stream -> downloadStream = stream } else null,
+            settings = settings
         )
       }
     }
@@ -2967,10 +2974,18 @@ internal fun FullPageSourcePicker(
     onRetry: () -> Unit,
     onPick: (StreamItem) -> Unit,
     onDownload: ((StreamItem) -> Unit)? = null,
+    settings: SettingsStore? = null,
     inSheet: Boolean = false
 ) {
     val palette = LocalPalette.current
-    val browserState = rememberStreamBrowserState(streams)
+    // Step 42: the Detail picker now applies the same Smart filter/sort as
+    // the player (no per-source cap here — the full list stays visible).
+    val browserState = rememberStreamBrowserState(
+        streams, settings, limitPerSource = false, isEpisode = meta.type == "series"
+    )
+    var smartSheetOpen by remember { mutableStateOf(false) }
+    var smartVersion by remember { mutableStateOf(0) }
+    val smartActiveCount = if (smartVersion >= 0) settings?.smartStreamSettings()?.filters?.activeCount ?: 0 else 0
     androidx.activity.compose.BackHandler(onBack = onBack)
     val pickerBody: @Composable () -> Unit = {
         Column(
@@ -3101,6 +3116,11 @@ internal fun FullPageSourcePicker(
                             style = MaterialTheme.typography.labelMedium,
                             color = TextSecondary
                         )
+                        if (settings != null) {
+                            TextButton(onClick = { smartSheetOpen = true }) {
+                                Text(if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart")
+                            }
+                        }
                     }
                     if (loading && streams.isNotEmpty()) {
                         androidx.compose.material3.LinearProgressIndicator(
@@ -3154,6 +3174,15 @@ internal fun FullPageSourcePicker(
                 }
             }
         }
+    }
+    if (smartSheetOpen && settings != null) {
+        SmartStreamSheet(
+            streams = streams,
+            settings = settings,
+            isEpisode = meta.type == "series",
+            onChanged = { smartVersion++ },
+            onDismiss = { smartSheetOpen = false },
+        )
     }
     if (inSheet) pickerBody() else GlowBackground { pickerBody() }
 }

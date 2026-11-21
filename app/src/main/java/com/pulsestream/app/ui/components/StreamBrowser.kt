@@ -62,7 +62,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
+import com.pulsestream.app.data.SettingsStore
+import com.pulsestream.app.data.SmartSortMode
+import com.pulsestream.app.data.SmartStreamQuality
+import com.pulsestream.app.data.SmartStreamRanking
 import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.ui.theme.AppPalette
 import com.pulsestream.app.ui.theme.GlassBorder
@@ -291,82 +301,99 @@ fun streamSizeGb(stream: StreamItem): Double? {
  * Applies the user's stream preferences to a raw stream list:
  *  1. per-source cap — at most [SettingsStore.streamsPerSource] streams per
  *     addon, so one source can't flood the picker;
- *  2. quality priority — sorted by [SettingsStore.qualityOrder], top first.
- * The sort is stable: within the same quality bucket the original
- * (star-priority) order is preserved. Unknown-quality streams sink last.
+ *  2. Smart Streams (Step 42) — the Smart filters narrow the list, then the
+ *     chosen sort mode orders it (Best match = scored ranking; Addon order =
+ *     the legacy qualityOrder sort);
+ *  3. pinned sources first — a pinned source's streams list first
+ *     everywhere, including autoplay picks.
+ * The old explicit TorBox-instant-first tier is gone: the score's instant
+ * +40 covers cached streams of any source (a cached 720p ≈ 77 beats an
+ * uncached 4K ≈ 52). The sort is stable: within the same quality bucket the
+ * original (star-priority) order is preserved. Unknown-quality streams sink
+ * last.
  */
 fun applyStreamPreferences(
     streams: List<StreamItem>,
     settings: com.pulsestream.app.data.SettingsStore,
-    limitPerSource: Boolean = true
+    limitPerSource: Boolean = true,
+    isEpisode: Boolean = false
 ): List<StreamItem> {
     val perSource = settings.streamsPerSource
-    val order = settings.qualityOrder
     val capped = if (limitPerSource) streams.groupBy { it.addonKey() }
         .flatMap { (_, list) -> list.take(perSource) } else streams
-    // Pinned sources first (Nuvio splitPinnedSources): a pinned source's
-    // streams list first everywhere, including autoplay picks.
     val pinned = settings.pinnedStreamSources
-    // TorBox priority (user's order): when TorBox is linked, its instant ⚡ streams
-    // sort first so they play first.
-    val torboxLinked = !settings.torboxApiKey.isNullOrBlank()
-    return capped.sortedWith(compareByDescending<StreamItem> { s ->
-        if (pinnedStreamSourceKey(s) in pinned) 1 else 0
-    }.thenByDescending { s ->
-        // TorBox cached streams first (identified by ⚡ in title/name or TorBox in source name)
-        if (torboxLinked && ((s.title?.contains("⚡") == true) || (s.name?.contains("⚡") == true) || (s.sourceName?.contains("TorBox", ignoreCase = true) == true))) 1 else 0
-    }.thenBy { s ->
-        val idx = order.indexOf(canonicalStreamQuality(s))
-        if (idx >= 0) idx else Int.MAX_VALUE
-    })
+    val smart = settings.smartStreamSettings()
+    val filtered = capped.filter {
+        com.pulsestream.app.data.SmartStreamRanking.matches(
+            com.pulsestream.app.data.SmartStreamQuality.cached(it), smart.filters
+        )
+    }
+    val sorted = if (smart.sortMode == com.pulsestream.app.data.SmartSortMode.ADDON_ORDER) {
+        val order = settings.qualityOrder
+        filtered.sortedWith(compareByDescending<StreamItem> { s ->
+            if (pinnedStreamSourceKey(s) in pinned) 1 else 0
+        }.thenBy { s ->
+            val idx = order.indexOf(canonicalStreamQuality(s))
+            if (idx >= 0) idx else Int.MAX_VALUE
+        })
+    } else {
+        val smartSorted = com.pulsestream.app.data.SmartStreamRanking.sortStreams(
+            filtered, smart, settings.smartDeviceProfile, isEpisode,
+            settings.smartPreferredLanguages()
+        )
+        val smartIndex = smartSorted.withIndex().associate { it.value to it.index }
+        filtered.sortedWith(compareByDescending<StreamItem> { s ->
+            if (pinnedStreamSourceKey(s) in pinned) 1 else 0
+        }.thenBy { s -> smartIndex[s] ?: Int.MAX_VALUE })
+    }
+    return sorted
 }
 
 /**
- * Picks the autoplay stream under the Settings > Streams rule:
- * quality priority (preferred quality jumps first when set to a specific
- * bucket), then the size limit. Falls back to the first stream when nothing
- * matches, so autoplay never dead-ends on an empty pick.
+ * Picks the autoplay stream under the Settings > Streams rule.
+ * Step 42 — when quality is "Auto", the Smart Streams scored ranking
+ * decides (instant + resolution vs screen + bitrate sweet spot + codec/HDR
+ * + language) instead of the old adaptive cap; an explicit quality still
+ * wins over the score. The size limit applies in both paths. Falls back to
+ * the first stream when nothing matches, so autoplay never dead-ends on an
+ * empty pick.
  */
 fun pickAutoplayStream(
     streams: List<StreamItem>,
-    settings: com.pulsestream.app.data.SettingsStore
+    settings: com.pulsestream.app.data.SettingsStore,
+    isEpisode: Boolean = false
 ): StreamItem? {
     // Filter out unresolved infohash: placeholders - only pick playable URLs.
     // Debrid resolution replaces these with real HTTP links asynchronously.
     val playable = streams.filter { !it.url.startsWith("infohash:") }
     if (playable.isEmpty()) return null
-    val order = settings.qualityOrder
     val prefQ = settings.autoplayQuality
     val maxGb = settings.autoplayMaxSizeGb
 
-    // Adaptive mode (user's order 2026-10-20): when quality is "Auto", cap the
-    // pick at what the device screen + network can handle (Netflix/YouTube style)
-    // instead of always grabbing the highest quality. Prefer the highest quality
-    // AT or BELOW the cap; if everything is above the cap, take the lowest above.
-    val adaptiveCap = if (prefQ == "Auto") settings.adaptiveQualityCap() else null
-    val sorted = if (adaptiveCap != null) {
-        fun rank(q: String): Int = when (q) {
-            "2160p" -> 4; "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0
-        }
-        val capRank = rank(adaptiveCap)
-        playable.sortedWith(
-            compareBy<StreamItem> { s ->
-                val r = rank(canonicalStreamQuality(s))
-                if (r <= capRank) 0 else 1 // under cap first
-            }.thenByDescending { s ->
-                val r = rank(canonicalStreamQuality(s))
-                if (r <= capRank) r else -r // highest under cap / lowest over cap
-            }
+    if (prefQ == "Auto") {
+        val ranking = com.pulsestream.app.data.SmartStreamRanking.rankForAutoPlay(
+            streams = playable,
+            settings = settings.smartStreamSettings(),
+            device = settings.smartDeviceProfile,
+            isEpisode = isEpisode,
+            preferredLanguages = settings.smartPreferredLanguages(),
         )
-    } else {
-        playable.sortedWith(compareBy { s ->
-            val q = canonicalStreamQuality(s)
-            when {
-                prefQ != "Auto" && q == prefQ -> -1
-                else -> order.indexOf(q).takeIf { it >= 0 } ?: Int.MAX_VALUE
-            }
-        })
+        val ranked = ranking.ranked.map { it.stream }
+        if (ranked.isNotEmpty()) {
+            return ranked.firstOrNull { s ->
+                maxGb <= 0 || (streamSizeGb(s)?.let { it <= maxGb } ?: true)
+            } ?: ranked.firstOrNull()
+        }
+        // Ranking empty (everything filtered out): fall through to the legacy sort.
     }
+    val order = settings.qualityOrder
+    val sorted = playable.sortedWith(compareBy { s ->
+        val q = canonicalStreamQuality(s)
+        when {
+            prefQ != "Auto" && q == prefQ -> -1
+            else -> order.indexOf(q).takeIf { it >= 0 } ?: Int.MAX_VALUE
+        }
+    })
     return sorted.firstOrNull { s ->
         maxGb <= 0 || (streamSizeGb(s)?.let { it <= maxGb } ?: true)
     } ?: sorted.firstOrNull()
@@ -396,11 +423,21 @@ class StreamBrowserState(
 fun rememberStreamBrowserState(
     streams: List<StreamItem>,
     settings: com.pulsestream.app.data.SettingsStore? = null,
-    limitPerSource: Boolean = true
+    limitPerSource: Boolean = true,
+    isEpisode: Boolean = false
 ): StreamBrowserState {
     // The player shows the complete loaded set; other pickers retain the user's cap.
-    val ordered = remember(streams, settings?.streamsPerSource, settings?.qualityOrder, settings?.pinnedStreamSources, limitPerSource) {
-        if (settings != null) applyStreamPreferences(streams, settings, limitPerSource) else streams
+    // Step 42: the Smart prefs are remember keys, so changing a filter/sort in
+    // the Smart sheet re-orders the list immediately.
+    val ordered = remember(
+        streams, settings?.streamsPerSource, settings?.qualityOrder, settings?.pinnedStreamSources,
+        settings?.smartSortMode, settings?.smartResolutionLimit, settings?.smartSaveDataOnMobile,
+        settings?.smartFilterResolutions, settings?.smartFilterHdr, settings?.smartFilterCodecs,
+        settings?.smartFilterAudio, settings?.smartFilterSources, settings?.smartFilterMaxSizeGb,
+        settings?.smartFilterInstantOnly, settings?.smartFilterHideLowQuality,
+        limitPerSource, isEpisode
+    ) {
+        if (settings != null) applyStreamPreferences(streams, settings, limitPerSource, isEpisode) else streams
     }
     // Saveable: the addon tab the user picked survives rotation. A stale
     // key (tab gone after the stream list changed) falls back to "All".
@@ -780,5 +817,336 @@ fun LazyListScope.streamListItems(
             onDownload = onDownload,
             compact = compact
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 42 — Smart Streams sheet
+// ---------------------------------------------------------------------------
+
+/** One selectable pill, same style as [QualityPills]. */
+@Composable
+private fun SmartChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val palette = LocalPalette.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) palette.accent.copy(alpha = 0.22f)
+                else Color.White.copy(alpha = 0.06f)
+            )
+            .border(
+                1.dp,
+                if (selected) palette.accent else GlassBorder,
+                RoundedCornerShape(50)
+            )
+            .clickable(role = Role.RadioButton) { onClick() }
+            .semantics { this.selected = selected }
+            .tvFocusRing(RoundedCornerShape(50))
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) TextPrimary else TextSecondary,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun SmartFilterGroup(
+    title: String,
+    options: List<String>,
+    selected: Set<String>,
+    onToggle: (String) -> Unit,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = TextPrimary,
+        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+    )
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { option ->
+            SmartChip(
+                label = option,
+                selected = option in selected,
+                onClick = { onToggle(option) }
+            )
+        }
+    }
+}
+
+/**
+ * Step 42a — Smart Streams sheet (Nuvio SmartStreamControls): sort mode,
+ * resolution limit, filter chips (resolution / HDR / codec / audio / source /
+ * max size), instant-only + hide-low-quality toggles, and the scored best
+ * pick with its reasons. Writes straight into [SettingsStore]; every change
+ * calls [onChanged] so the parent list re-sorts immediately.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SmartStreamSheet(
+    streams: List<StreamItem>,
+    settings: SettingsStore,
+    isEpisode: Boolean,
+    onChanged: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var tick by remember { mutableStateOf(0) }
+    val smart = remember(tick) { settings.smartStreamSettings() }
+    val device = settings.smartDeviceProfile
+    val langs = remember(tick) { settings.smartPreferredLanguages() }
+    val best = remember(streams, tick) {
+        SmartStreamRanking.bestPick(streams, smart, device, isEpisode, langs)
+    }
+    val shownCount = remember(streams, tick) {
+        streams.count { SmartStreamRanking.matches(SmartStreamQuality.cached(it), smart.filters) }
+    }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun bump() {
+        tick++
+        onChanged()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = null,
+        containerColor = Color(0xFF14141F)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Smart Streams",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                if (smart.filters.activeCount > 0 || smart.sortMode != SmartSortMode.BEST_MATCH) {
+                    TextButton(onClick = {
+                        settings.resetSmartFilters()
+                        settings.smartSortMode = "best"
+                        settings.smartResolutionLimit = "auto"
+                        bump()
+                    }) { Text("Reset") }
+                }
+            }
+            Text(
+                text = "Scored by instant-ness, resolution vs your screen, bitrate, codec and language — not quality order alone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            if (best != null) {
+                Text(
+                    text = "Best match: ${best.info.summary("Instant")}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+                val topReasons = best.reasons.take(2)
+                if (topReasons.isNotEmpty()) {
+                    Text(
+                        text = topReasons.joinToString(" · ") { SmartStreamRanking.reasonText(it) },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            Text(
+                text = "Showing $shownCount of ${streams.size} streams",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+
+            Text(
+                text = "Sort",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    "best" to SmartSortMode.BEST_MATCH.label,
+                    "quality" to SmartSortMode.HIGHEST_QUALITY.label,
+                    "smallest" to SmartSortMode.SMALLEST_FILE.label,
+                    "largest" to SmartSortMode.LARGEST_FILE.label,
+                    "addon" to SmartSortMode.ADDON_ORDER.label,
+                ).forEach { (value, label) ->
+                    SmartChip(
+                        label = label,
+                        selected = settings.smartSortMode == value,
+                        onClick = { settings.smartSortMode = value; bump() }
+                    )
+                }
+            }
+
+            Text(
+                text = "Resolution limit",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf("auto" to "Auto", "1080" to "1080p", "4k" to "4K").forEach { (value, label) ->
+                    SmartChip(
+                        label = label,
+                        selected = settings.smartResolutionLimit == value,
+                        onClick = { settings.smartResolutionLimit = value; bump() }
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Save data on mobile (cap at 1080p)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = settings.smartSaveDataOnMobile,
+                    onCheckedChange = { settings.smartSaveDataOnMobile = it; bump() }
+                )
+            }
+
+            SmartFilterGroup(
+                title = "Resolution",
+                options = listOf("4K", "1080p", "720p", "SD"),
+                selected = settings.smartFilterResolutions,
+                onToggle = { label ->
+                    val cur = settings.smartFilterResolutions
+                    settings.smartFilterResolutions = if (label in cur) cur - label else cur + label
+                    bump()
+                }
+            )
+            SmartFilterGroup(
+                title = "HDR",
+                options = listOf("DV", "HDR10", "SDR"),
+                selected = settings.smartFilterHdr,
+                onToggle = { label ->
+                    val cur = settings.smartFilterHdr
+                    settings.smartFilterHdr = if (label in cur) cur - label else cur + label
+                    bump()
+                }
+            )
+            SmartFilterGroup(
+                title = "Codec",
+                options = listOf("HEVC", "H264", "AV1", "OTHER"),
+                selected = settings.smartFilterCodecs,
+                onToggle = { label ->
+                    val cur = settings.smartFilterCodecs
+                    settings.smartFilterCodecs = if (label in cur) cur - label else cur + label
+                    bump()
+                }
+            )
+            SmartFilterGroup(
+                title = "Audio",
+                options = listOf("ATMOS", "DD", "DTS", "STEREO"),
+                selected = settings.smartFilterAudio,
+                onToggle = { label ->
+                    val cur = settings.smartFilterAudio
+                    settings.smartFilterAudio = if (label in cur) cur - label else cur + label
+                    bump()
+                }
+            )
+            SmartFilterGroup(
+                title = "Source",
+                options = listOf("REMUX", "BLURAY", "WEBDL", "WEBRIP", "HDTV"),
+                selected = settings.smartFilterSources,
+                onToggle = { label ->
+                    val cur = settings.smartFilterSources
+                    settings.smartFilterSources = if (label in cur) cur - label else cur + label
+                    bump()
+                }
+            )
+
+            Text(
+                text = "Max file size",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0 to "No limit", 2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB")
+                    .forEach { (value, label) ->
+                        SmartChip(
+                            label = label,
+                            selected = settings.smartFilterMaxSizeGb == value,
+                            onClick = { settings.smartFilterMaxSizeGb = value; bump() }
+                        )
+                    }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Instant only",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = settings.smartFilterInstantOnly,
+                    onCheckedChange = { settings.smartFilterInstantOnly = it; bump() }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Hide low quality (CAM / screener)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = settings.smartFilterHideLowQuality,
+                    onCheckedChange = { settings.smartFilterHideLowQuality = it; bump() }
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+        }
     }
 }
