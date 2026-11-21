@@ -5,6 +5,7 @@ package com.pulsestream.app.ui.screens
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.view.LayoutInflater
 import android.view.TextureView
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
+import com.pulsestream.app.R
 import com.pulsestream.app.ui.components.OrbitDots
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -360,15 +362,15 @@ private fun TrailerVideoView(player: ExoPlayer, modifier: Modifier = Modifier) {
     var zoom by remember { mutableFloatStateOf(1f) }
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).also { pv ->
+            // TextureView surface: PlayerView in Media3 1.4.1 has no
+            // setVideoSurfaceType / setVideoTextureView — the surface type
+            // comes from the layout's app:surface_type="texture_view", so
+            // frames can be sampled from it for letterbox detection.
+            (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null, false) as PlayerView).also { pv ->
                 pv.player = player
                 pv.useController = false
                 pv.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                // TextureView surface (Media3 1.4.1 has no setVideoSurfaceType):
-                // frames are sampled from it for letterbox detection.
-                val tv = TextureView(ctx)
-                pv.setVideoTextureView(tv)
-                textureView = tv
+                textureView = pv.videoSurfaceView as? TextureView
                 pv.layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT

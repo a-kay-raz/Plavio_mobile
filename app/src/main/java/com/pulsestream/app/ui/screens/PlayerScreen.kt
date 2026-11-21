@@ -709,10 +709,10 @@ fun PlayerScreen(
                 /* bufferForPlaybackMs = */ forPlaybackMs,
                 /* bufferForPlaybackAfterRebufferMs = */ rebufferMs
             )
+            .setBackBuffer(backBufferMs, false)
             .build()
         val mediaSourceFactory = playbackMediaSourceFactory(req)
         return ExoPlayer.Builder(context)
-            .setBackBufferDurationMs(backBufferMs)
             .setLoadControl(loadControl)
             .setRenderersFactory(PlavioAudioRenderersFactory(context, downmixConfig))
             .setMediaSourceFactory(mediaSourceFactory)
