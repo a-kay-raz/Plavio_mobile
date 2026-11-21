@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,6 +86,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pulsestream.app.data.CatalogRow
+import com.pulsestream.app.data.CollectionRepository
+import com.pulsestream.app.data.CollectionSourceResolver
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.NextUpEpisode
 import com.pulsestream.app.data.PlaybackRequest
@@ -92,6 +95,8 @@ import com.pulsestream.app.data.StoredHomeRowPrefs
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.heroSourceKeys
 import com.pulsestream.app.data.rowKey
+import com.pulsestream.app.data.db.Collection
+import com.pulsestream.app.data.db.CollectionFolder
 import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
@@ -207,12 +212,14 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
 fun HomeScreen(
     repository: StreamRepository,
     listsRepository: CustomListsRepository,
+    collectionRepository: CollectionRepository,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
     onResumePlayback: () -> Unit,
     onGoToAddons: () -> Unit,
     onGoToWatchlist: () -> Unit,
     onGoToLists: () -> Unit,
     onOpenCatalog: (row: CatalogRow) -> Unit,
+    onOpenCollectionFolder: (folderId: String) -> Unit = {},
     onGoToDownloads: () -> Unit = {},
     onGoToLive: () -> Unit = {},
 ) {
@@ -258,6 +265,28 @@ fun HomeScreen(
     var nextUp by remember { mutableStateOf<List<com.pulsestream.app.data.NextUpEpisode>>(emptyList()) }
     LaunchedEffect(watchedKeys) {
         nextUp = com.pulsestream.app.data.NextUpResolver.resolveNextUp(repository, watchedKeys)
+    }
+    // Step 51: collections as Home rows + hero sources (Nuvio
+    // HomeCollectionRowSection + collectionHeroSources). Pinned
+    // collections feed the hero: their folders' first titles resolve
+    // once per collection set and merge ahead of the row hero titles.
+    val collections by collectionRepository.collections.collectAsState(initial = emptyList())
+    val pinnedCollections = remember(collections) { collections.filter { it.pinToTop } }
+    var collectionHeroTitles by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
+    LaunchedEffect(pinnedCollections) {
+        if (pinnedCollections.isEmpty()) {
+            collectionHeroTitles = emptyList()
+            return@LaunchedEffect
+        }
+        val titles = mutableListOf<MetaPreview>()
+        for (collection in pinnedCollections) {
+            for (folder in collectionRepository.getFolders(collection.id)) {
+                val sources = collectionRepository.getSources(folder.id)
+                if (sources.isEmpty()) continue
+                titles += CollectionSourceResolver.resolveFolder(repository, sources, limit = 20).take(4)
+            }
+        }
+        collectionHeroTitles = titles.distinctBy { "${it.type}|${it.id}" }
     }
     // Resume prompt on launch (Nuvio showResumePromptOnLaunch): once per
     // app launch, offer the latest title. `remember` (not saveable) keeps
@@ -358,7 +387,20 @@ fun HomeScreen(
                         val heroKeys = prefs.heroSourceKeys()
                         state.rows.filter { row -> row.rowKey() in heroKeys }
                     }
-                    val featured = remember(heroRows) { featuredTitles(heroRows, max = 8) }
+                    // Step 51: pinned collections feed the hero ahead of
+                    // the row-based titles (Nuvio collectionHeroSources).
+                    val featured = remember(heroRows, collectionHeroTitles) {
+                        val fromCollections = collectionHeroTitles.map { FeaturedTitle("", it) }
+                        (fromCollections + featuredTitles(heroRows, max = 8))
+                            .distinctBy { it.meta.id }.take(8)
+                    }
+                    // Step 51: collection sections, pinned first.
+                    val orderedCollections = remember(collections) {
+                        collections.sortedWith(
+                            compareByDescending<Collection> { it.pinToTop }
+                                .thenBy { it.sortOrder }
+                        )
+                    }
                     // Dock Home-tap → scroll to the very top (v0.12.4).
                     // handledScrollRequest is saveable so a request fired
                     // while Home sat in the back stack is honoured once,
@@ -611,6 +653,20 @@ fun HomeScreen(
                                 }
                                 Spacer(Modifier.height(4.dp))
                               }
+                            }
+                        }
+                        // Step 51: collection sections (Nuvio
+                        // HomeCollectionRowSection) — each collection
+                        // renders its folders as cards; pinned first.
+                        // Tap a folder to open its titles as a full grid.
+                        orderedCollections.forEach { collection ->
+                            item(key = "collection_${collection.id}") {
+                                CollectionHomeSection(
+                                    collection = collection,
+                                    collectionRepository = collectionRepository,
+                                    repository = repository,
+                                    onOpenFolder = onOpenCollectionFolder
+                                )
                             }
                         }
                     }
@@ -1412,5 +1468,107 @@ private fun HomeSkeleton() {
                 }
             }
         }
+    }
+}
+
+/**
+ * Step 51: one collection as a Home section (Nuvio
+ * HomeCollectionRowSection) — the collection title + a row of folder
+ * cards. Tap a folder to open its titles as a full grid.
+ */
+@Composable
+private fun CollectionHomeSection(
+    collection: Collection,
+    collectionRepository: CollectionRepository,
+    repository: StreamRepository,
+    onOpenFolder: (String) -> Unit,
+) {
+    val folders by collectionRepository.observeFolders(collection.id)
+        .collectAsState(initial = emptyList())
+    if (folders.isEmpty()) return
+    Column(Modifier.background(LocalPalette.current.background)) {
+        SectionTitle(collection.title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(folders, key = { it.id }) { folder ->
+                CollectionFolderCard(folder, collectionRepository, repository) {
+                    onOpenFolder(folder.id)
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+/**
+ * Step 51: a folder card (Nuvio CollectionFolderCard, scoped). Shape
+ * follows the folder's tileShape; the image is the editor's cover URL
+ * when set, else the first resolved title's poster, else the cover
+ * emoji, else a folder glyph. Titles resolve once per folder visit.
+ */
+@Composable
+private fun CollectionFolderCard(
+    folder: CollectionFolder,
+    collectionRepository: CollectionRepository,
+    repository: StreamRepository,
+    onClick: () -> Unit,
+) {
+    var firstPoster by remember(folder.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(folder.id) {
+        val sources = collectionRepository.getSources(folder.id)
+        val titles = if (sources.isEmpty()) emptyList()
+        else CollectionSourceResolver.resolveFolder(repository, sources, limit = 6)
+        firstPoster = titles.firstOrNull()?.poster
+    }
+    val width = if (folder.tileShape == "landscape") 200.dp else 128.dp
+    val ratio = when (folder.tileShape) {
+        "landscape" -> 16f / 9f
+        "square" -> 1f
+        else -> 2f / 3f
+    }
+    Column(
+        modifier = Modifier.width(width).clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(ratio)
+                .clip(RoundedCornerShape(12.dp))
+                .background(com.pulsestream.app.ui.theme.BgPanel),
+            contentAlignment = Alignment.Center
+        ) {
+            val image = folder.coverImageUrl?.takeIf { it.isNotBlank() } ?: firstPoster
+            if (image != null) {
+                SafePosterImage(
+                    model = image,
+                    contentDescription = folder.title,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (!folder.coverEmoji.isNullOrBlank()) {
+                Text(
+                    folder.coverEmoji,
+                    style = MaterialTheme.typography.displayMedium,
+                    color = TextPrimary
+                )
+            } else {
+                Icon(
+                    androidx.compose.material.icons.Icons.Filled.Folder,
+                    contentDescription = folder.title,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            folder.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
