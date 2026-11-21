@@ -13,6 +13,7 @@ import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.data.db.SubtitleCache
 import com.pulsestream.app.data.db.WatchlistItem
 import com.pulsestream.app.data.simkl.SimklSyncEngine
+import com.pulsestream.app.data.servers.MediaServerOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -1951,6 +1952,13 @@ class StreamRepository(
             }
             runCatching {
                 db.watchedDao().upsert(WatchedRecord(watchedKey, System.currentTimeMillis()))
+            }
+            // Step 55: server titles play back their watched state to the
+            // server (videoId "server:{serverId}:{itemId}"). Best-effort.
+            if (videoId.startsWith("server:")) {
+                MediaServerOps.markPlayedByVideoId(
+                    settings.getMediaServers(), videoId, season, episode, played = true
+                )
             }
             // Step 34: finishing a title is a watch-state change — queue it
             // for Simkl (only when we have a real IMDb id to send).
