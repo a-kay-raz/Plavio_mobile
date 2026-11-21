@@ -38,7 +38,8 @@ import java.io.File
 @Composable
 fun DownloadsScreen(
     onBack: () -> Unit = {},
-    onPlayFile: (filePath: String, title: String) -> Unit = { _, _ -> }
+    onPlayFile: (filePath: String, title: String) -> Unit = { _, _ -> },
+    onGoToDownloadSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val manager = remember { DownloadManager.get(context) }
@@ -46,13 +47,22 @@ fun DownloadsScreen(
 
     val downloads by manager.observeAll().collectAsState(initial = emptyList())
     val activeProgress by manager.activeDownloads.collectAsState()
-    var storageUsed by remember { mutableStateOf(0L) }
     var confirmDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var wifiOnly by remember { mutableStateOf(manager.isWifiOnlyDownloads()) }
 
     LaunchedEffect(Unit) { manager.recoverInterruptedDownloads() }
-    LaunchedEffect(downloads) {
-        storageUsed = manager.storageUsedBytes()
+    // Step 35: segmented storage bar (Nuvio DeviceStorageBar) — total / free
+    // from the device, downloads-used from the manager; refreshed every 10s
+    // and whenever the download list changes.
+    val storageStats by produceState(Triple(0L, 0L, 0L), downloads) {
+        while (true) {
+            value = Triple(
+                manager.storageTotalBytes(),
+                manager.storageUsedBytes(),
+                manager.storageFreeBytes()
+            )
+            kotlinx.coroutines.delay(10_000)
+        }
     }
 
     val active = downloads.filter { it.status in listOf("QUEUED", "DOWNLOADING", "PAUSED", "FAILED") }
@@ -104,6 +114,15 @@ fun DownloadsScreen(
                         image = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         onClick = onBack,
+                        tint = TextPrimary
+                    )
+                },
+                actions = {
+                    // Step 35: Downloads settings (resolution, concurrency, toggles).
+                    GlassIconButton(
+                        image = Icons.Filled.Settings,
+                        contentDescription = "Download settings",
+                        onClick = onGoToDownloadSettings,
                         tint = TextPrimary
                     )
                 }
@@ -158,26 +177,68 @@ fun DownloadsScreen(
                 ) {
                     item {
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Filled.Storage, contentDescription = null, tint = TextSecondary)
-                                Spacer(Modifier.width(8.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                            // Step 35: segmented storage bar (Nuvio
+                            // DeviceStorageBar) — downloads / other used / free.
+                            val total = storageStats.first
+                            val downloadsUsed = storageStats.second
+                            val free = storageStats.third
+                            val otherUsed = (total - free - downloadsUsed).coerceAtLeast(0L)
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.Storage, contentDescription = null, tint = TextSecondary)
+                                    Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Storage used: ${manager.formatBytes(storageUsed)}",
+                                        "Storage",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        if (total > 0) "${manager.formatBytes(free)} free of ${manager.formatBytes(total)}"
+                                        else "Storage info unavailable",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
-                                    if (active.isNotEmpty()) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            TextButton(onClick = { manager.pauseAll() }) { Text("Pause queue") }
-                                            TextButton(onClick = {
-                                                manager.resumeQueuedDownloads()
-                                                DownloadServiceStarter.start(context)
-                                            }) { Text("Resume queue") }
-                                        }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(10.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(Color(0xFF2A2A35))
+                                ) {
+                                    if (total > 0) {
+                                        val dlFrac = (downloadsUsed.toFloat() / total).coerceIn(0f, 1f)
+                                        val otherFrac = (otherUsed.toFloat() / total).coerceIn(0f, 1f - dlFrac)
+                                        val freeFrac = (1f - dlFrac - otherFrac).coerceAtLeast(0f)
+                                        if (dlFrac > 0f) Box(
+                                            Modifier.fillMaxHeight().weight(dlFrac)
+                                                .background(LocalPalette.current.accent)
+                                        )
+                                        if (otherFrac > 0f) Box(
+                                            Modifier.fillMaxHeight().weight(otherFrac)
+                                                .background(Color(0xFF5A5A68))
+                                        )
+                                        if (freeFrac > 0f) Box(Modifier.fillMaxHeight().weight(freeFrac))
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Downloads ${manager.formatBytes(downloadsUsed)} · " +
+                                        "Other ${manager.formatBytes(otherUsed)} · " +
+                                        "Free ${manager.formatBytes(free)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                                if (active.isNotEmpty()) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick = { manager.pauseAll() }) { Text("Pause queue") }
+                                        TextButton(onClick = {
+                                            manager.resumeQueuedDownloads()
+                                            DownloadServiceStarter.start(context)
+                                        }) { Text("Resume queue") }
                                     }
                                 }
                             }

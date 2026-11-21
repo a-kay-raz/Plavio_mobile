@@ -1789,7 +1789,7 @@ private fun DetailContent(
                 startPlayback(vm, repository, stream, streamsContent.subtitles, streamsContent.streams, onPlay)
             }
         },
-        onDownload = { stream -> downloadStream = stream }
+        onDownload = if (settings.showDownloadButton) { stream -> downloadStream = stream } else null
     )
 
     // Source picker (long-press Play): Bottom Sheet (Sample M;
@@ -1816,7 +1816,7 @@ private fun DetailContent(
                     startPlayback(vm, repository, stream, streamsContent.subtitles, streamsContent.streams, onPlay)
                 }
             },
-            onDownload = { stream -> downloadStream = stream }
+            onDownload = if (settings.showDownloadButton) { stream -> downloadStream = stream } else null
         )
       }
     }

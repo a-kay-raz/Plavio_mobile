@@ -178,7 +178,8 @@ internal fun PlayerSourcesContent(
                 Text("No sources match these filters.", color = TextSecondary, modifier = Modifier.padding(16.dp))
             }
             streamListItems(streams = browser.filtered, onPick = onPick, selectedUrl = selectedUrl,
-                onDownload = onDownload, compact = true)
+                // Step 35: hide the download button when the setting is off.
+                onDownload = if (settings?.showDownloadButton != false) onDownload else null, compact = true)
         } else {
             item {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,

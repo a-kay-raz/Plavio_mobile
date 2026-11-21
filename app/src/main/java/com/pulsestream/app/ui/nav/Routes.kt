@@ -29,6 +29,7 @@ object Routes {
     const val WHATS_NEW = "whats_new"
     const val FEEDBACK = "feedback"
     const val DOWNLOADS = "downloads"
+    const val DOWNLOADS_SETTINGS = "downloads_settings"
     const val LICENSES = "licenses"
     const val SETTINGS = "settings"
     const val PLAYER = "player"
