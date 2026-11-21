@@ -70,11 +70,12 @@ fun LibrarySavedScreen(
     allListItems: List<CustomListItem>,
     traktWatchlist: List<MetaPreview>,
     simklWatchlist: List<MetaPreview>,
+    anilistWatchlist: List<MetaPreview> = emptyList(),
     watchedKeys: Set<String>,
     settings: SettingsStore,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
 ) {
-    val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist) {
+    val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist) {
         buildList {
             myWatchlist.forEach { item ->
                 add(
@@ -115,6 +116,16 @@ fun LibrarySavedScreen(
                         poster = preview.poster, addonId = "",
                         sectionKey = "simkl", sectionName = "Simkl",
                         addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 101
+                    )
+                )
+            }
+            anilistWatchlist.forEach { preview ->
+                add(
+                    SavedLibraryItem(
+                        metaId = preview.id, type = preview.type, name = preview.name,
+                        poster = preview.poster, addonId = "",
+                        sectionKey = "anilist", sectionName = "AniList",
+                        addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 102
                     )
                 )
             }

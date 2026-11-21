@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -146,7 +147,8 @@ fun SettingsScreen(
     onGoToAccount: () -> Unit = {},
     onGoToIntegrations: () -> Unit = {},
     onGoToDownloads: () -> Unit = {},
-    onGoToCollections: () -> Unit = {}
+    onGoToCollections: () -> Unit = {},
+    onGoToTracking: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -312,6 +314,16 @@ fun SettingsScreen(
                 title = "Collections",
                 subtitle = "Folders of catalogs, TMDB lists and Trakt lists",
                 onClick = onGoToCollections,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Tracking",
+            "tracking trakt simkl anilist library progress ratings source") {
+            SettingsNavRow(
+                icon = Icons.Filled.Sync,
+                title = "Tracking",
+                subtitle = "Library, Up Next and ratings sources",
+                onClick = onGoToTracking,
                 compact = true
             )
         },

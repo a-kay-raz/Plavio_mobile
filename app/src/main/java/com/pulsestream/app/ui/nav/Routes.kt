@@ -27,6 +27,7 @@ object Routes {
     const val SUBTITLE_SETTINGS = "subtitle_settings"
     const val APPEARANCE_SETTINGS = "appearance_settings"
     const val STREAMS_SETTINGS = "streams_settings"
+    const val TRACKING_SETTINGS = "tracking_settings"
     const val INTEGRATIONS = "integrations"
     const val ABOUT = "about"
     const val WHATS_NEW = "whats_new"
