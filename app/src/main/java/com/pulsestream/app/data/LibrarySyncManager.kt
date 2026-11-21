@@ -2,6 +2,7 @@ package com.pulsestream.app.data
 
 import com.pulsestream.app.data.db.AppDatabase
 import com.pulsestream.app.data.db.WatchlistItem
+import com.pulsestream.app.data.db.WatchedRecord
 import com.pulsestream.app.data.simkl.SimklApi
 import com.pulsestream.app.data.trakt.TraktApi
 import com.pulsestream.app.data.trakt.TraktManager
@@ -141,6 +142,41 @@ class LibrarySyncManager(
             return@withContext finish("Synced here — a service update failed, will retry.")
         }
 
+        // ---- Trakt watched pull (Step 33) ----
+        // One-way: Trakt's watched movies/episodes are marked watched here.
+        // Local-only marks are never removed — a pull can only add. The
+        // watched flow (StreamRepository init) picks the upserts up, so
+        // poster/episode pills update without any manual refresh. A pull
+        // failure must not fail the watchlist merge above.
+        var watchedPulled = 0
+        if (traktToken != null) {
+            runCatching {
+                var count = 0
+                val now = System.currentTimeMillis()
+                for (movie in traktApi.getWatchedMovies(traktToken)) {
+                    db.watchedDao().upsert(
+                        WatchedRecord(
+                            WatchedMarks.movieKey(movie.imdbId),
+                            movie.lastWatchedAtMs.takeIf { it > 0 } ?: now
+                        )
+                    )
+                    count++
+                }
+                for (show in traktApi.getWatchedShows(traktToken)) {
+                    for ((season, episode) in show.episodes) {
+                        db.watchedDao().upsert(
+                            WatchedRecord(
+                                WatchedMarks.episodeKey(show.imdbId, season, episode),
+                                show.lastWatchedAtMs.takeIf { it > 0 } ?: now
+                            )
+                        )
+                        count++
+                    }
+                }
+                watchedPulled = count
+            }
+        }
+
         settings.librarySyncedKeys = desired
         val services = listOfNotNull(
             if (traktRemote != null) "Trakt" else null,
@@ -148,7 +184,8 @@ class LibrarySyncManager(
         ).joinToString(" + ")
         finish(
             "Synced with $services · ${desired.size} titles" +
-                if (addedLocal > 0) " · $addedLocal added here" else ""
+                if (addedLocal > 0) " · $addedLocal added here" else "" +
+                if (watchedPulled > 0) " · $watchedPulled watched from Trakt" else ""
         )
     }
 }

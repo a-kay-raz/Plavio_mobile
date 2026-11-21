@@ -44,10 +44,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FormatListBulleted
@@ -143,6 +145,8 @@ import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.BrowsingPrivacy
 import com.pulsestream.app.data.OmdbClient
 import com.pulsestream.app.data.OmdbRating
+import com.pulsestream.app.data.trakt.TraktApi
+import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.data.UserRatings
 import com.pulsestream.app.data.TrailerResolver
 import com.pulsestream.app.data.RelatedSection
@@ -748,19 +752,66 @@ private fun DetailContent(
         if (vm.autoPlayEvent != null) heroTrailerFinished = true
     }
     var omdbRatings by remember { mutableStateOf<List<OmdbRating>?>(null) }
+    // Trakt community rating (Step 33): public endpoint, no login needed.
+    var traktTitleRatings by remember { mutableStateOf<TraktApi.TraktTitleRatings?>(null) }
     LaunchedEffect(meta.id) {
         omdbRatings = null
+        traktTitleRatings = null
         val key = settings.omdbApiKey
         val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
         if (!key.isNullOrBlank() && imdbId != null) {
             omdbRatings = OmdbClient.fetchRatings(key, imdbId)
         }
+        if (imdbId != null) {
+            traktTitleRatings = runCatching {
+                TraktApi().getTitleRatings(imdbId, meta.type)
+            }.getOrNull()
+        }
     }
-    // Provider scores: OMDb's matrix when loaded, else the meta's IMDb value.
-    val providerRatings = remember(meta.imdbRating, omdbRatings) {
-        if (!omdbRatings.isNullOrEmpty()) omdbRatings!!
-        else meta.imdbRating?.takeIf { it.isNotBlank() }
-            ?.let { listOf(OmdbRating("Internet Movie Database", it)) } ?: emptyList()
+    // Provider scores: OMDb's matrix when loaded, else the meta's IMDb value,
+    // plus Trakt's community average when it has one.
+    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings) {
+        val base = if (!omdbRatings.isNullOrEmpty()) omdbRatings!!
+            else meta.imdbRating?.takeIf { it.isNotBlank() }
+                ?.let { listOf(OmdbRating("Internet Movie Database", it)) } ?: emptyList()
+        val trakt = traktTitleRatings?.let {
+            OmdbRating("Trakt", "%.1f/10".format(it.rating))
+        }
+        if (trakt != null) base + trakt else base
+    }
+    // The user's own Trakt rating (1–10, Step 33): fetched lazily when the
+    // ratings sheet opens, so Detail never pays for a full ratings pull.
+    var traktUserRating by remember(meta.id) { mutableStateOf<Int?>(null) }
+    var traktRatingLoaded by remember(meta.id) { mutableStateOf(false) }
+    val traktLinked = !settings.traktAccessToken.isNullOrBlank()
+    LaunchedEffect(ratingsSheetOpen) {
+        if (!ratingsSheetOpen || traktRatingLoaded) return@LaunchedEffect
+        traktRatingLoaded = true
+        val token = runCatching { TraktManager(settings).validAccessToken() }.getOrNull()
+        val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
+        if (token != null && imdbId != null) {
+            traktUserRating = runCatching {
+                TraktApi().getMyRatings(token, meta.type)[imdbId]
+            }.getOrNull()
+        }
+    }
+    // Trakt comments (Step 33): most-liked first, API key only — no login
+    // needed. A failed fetch hides the section entirely.
+    var traktComments by remember(meta.id) { mutableStateOf<TraktApi.TraktCommentsPage?>(null) }
+    var traktCommentsPage by remember(meta.id) { mutableStateOf(1) }
+    var traktCommentsLoadingMore by remember { mutableStateOf(false) }
+    var commentsExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(meta.id) {
+        traktComments = null
+        traktCommentsPage = 1
+        traktCommentsLoadingMore = false
+        commentsExpanded = false
+        val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
+        if (imdbId != null) {
+            traktComments = runCatching {
+                TraktApi().getComments(meta.type, imdbId, 1)
+            }.getOrNull()
+        }
     }
     var hideEpisodeDetails by remember { mutableStateOf(browsingPrivacy.hideUnrevealedEpisodes()) }
     var blurUnwatched by remember { mutableStateOf(browsingPrivacy.blurUnwatchedEpisodes()) }
@@ -1299,6 +1350,68 @@ private fun DetailContent(
                 Spacer(Modifier.height(8.dp))
             }
         }
+        // Trakt comments (Step 33, Nuvio TraktCommentsRepository): most-liked
+        // first, spoiler-safe. Shows 3, expands to 20, then loads more pages.
+        val commentsPage = traktComments
+        if (commentsPage != null && commentsPage.items.isNotEmpty()) {
+            item(key = "trakt_comments") {
+                Text(
+                    "Trakt comments (${commentsPage.itemCount})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                val shown = if (commentsExpanded) commentsPage.items.take(20)
+                    else commentsPage.items.take(3)
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    shown.forEach { comment -> TraktCommentCard(comment) }
+                    val canExpand = !commentsExpanded && commentsPage.items.size > 3
+                    val canLoadMore = commentsExpanded &&
+                        traktCommentsPage < commentsPage.pageCount
+                    if (canExpand || canLoadMore) {
+                        TextButton(
+                            onClick = {
+                                if (canExpand) {
+                                    commentsExpanded = true
+                                    return@TextButton
+                                }
+                                if (traktCommentsLoadingMore) return@TextButton
+                                val imdbId = meta.id.substringBefore(":")
+                                    .takeIf { it.startsWith("tt") } ?: return@TextButton
+                                traktCommentsLoadingMore = true
+                                scope.launch {
+                                    val next = runCatching {
+                                        TraktApi().getComments(meta.type, imdbId, traktCommentsPage + 1)
+                                    }.getOrNull()
+                                    if (next != null) {
+                                        traktComments = commentsPage.copy(
+                                            items = commentsPage.items + next.items,
+                                            page = next.page,
+                                            pageCount = next.pageCount,
+                                            itemCount = next.itemCount
+                                        )
+                                        traktCommentsPage = next.page
+                                    }
+                                    traktCommentsLoadingMore = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                if (canExpand) "Show all ${commentsPage.itemCount} comments"
+                                else "Load more comments",
+                                color = LocalPalette.current.accent
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
         // ("You May Like" rail removed, owner's pick 2026-10-24:
         // PlavioMeta's "More like this" rows below replace it —
         // they work for every user, not only TMDB-key holders.)
@@ -1729,6 +1842,23 @@ private fun DetailContent(
                 if (stars == null) userRatings.clearRating(meta.id)
                 else userRatings.setRating(meta.id, stars)
                 userStars = stars
+            },
+            traktUserRating = traktUserRating,
+            traktLinked = traktLinked,
+            onTraktRate = { rating ->
+                val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
+                    ?: return@RatingsSheet
+                scope.launch {
+                    val token = runCatching {
+                        TraktManager(settings).validAccessToken()
+                    }.getOrNull() ?: return@launch
+                    val ok = if (rating == null) {
+                        TraktApi().removeRating(token, meta.type, imdbId, meta.name ?: "")
+                    } else {
+                        TraktApi().setRating(token, meta.type, imdbId, meta.name ?: "", rating)
+                    }
+                    if (ok) traktUserRating = rating
+                }
             },
             onDismiss = { ratingsSheetOpen = false }
         )
@@ -2243,7 +2373,8 @@ private fun DetailRatingsRow(
     val shortLabel = mapOf(
         "Internet Movie Database" to "IMDb",
         "Rotten Tomatoes" to "RT",
-        "Metacritic" to "Metacritic"
+        "Metacritic" to "Metacritic",
+        "Trakt" to "Trakt"
     )
     val parts = ratings.mapNotNull { rating ->
         shortLabel[rating.source]?.let { label -> "$label ${rating.value}" }
@@ -2263,6 +2394,62 @@ private fun DetailRatingsRow(
 }
 
 /**
+ * One Trakt comment (Step 33, Nuvio TraktCommentsRepository): author,
+ * likes, the commenter's own rating when present. Spoilers stay hidden
+ * behind a tap — the [spoiler] markup is already stripped from the text.
+ */
+@Composable
+private fun TraktCommentCard(comment: TraktApi.TraktComment) {
+    var revealed by remember(comment.id) { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1A1A28))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                comment.author,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (comment.rating != null) {
+                Text(
+                    "★ ${comment.rating}/10",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFFFFC107),
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+            Text(
+                "${comment.likes} likes",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary
+            )
+        }
+        if (comment.spoiler && !revealed) {
+            TextButton(onClick = { revealed = true }) {
+                Text("Spoiler — tap to reveal", color = TextSecondary)
+            }
+        } else {
+            Text(
+                comment.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFC7D2DE),
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
  * Ratings bottom sheet (Nuvio `DetailRatingsSheet` + `UserRatingSheet`):
  * per-source scores, then your local 1–5 star rating — tap a star to
  * set it, tap the same star again (or Clear) to remove it. The rating
@@ -2276,6 +2463,9 @@ private fun RatingsSheet(
     userStars: Int?,
     omdbLoaded: Boolean,
     onRate: (Int?) -> Unit,
+    traktUserRating: Int? = null,
+    traktLinked: Boolean = false,
+    onTraktRate: ((Int?) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -2366,6 +2556,62 @@ private fun RatingsSheet(
                 TextButton(onClick = { onRate(null) }) {
                     Text("Clear rating", color = TextSecondary)
                 }
+            }
+            // Trakt rating (Step 33, Nuvio TraktRatingsProvider): the user's
+            // own 1–10 rating on Trakt, set/removed from here when linked.
+            if (traktLinked && onTraktRate != null) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Trakt rating",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    IconButton(
+                        onClick = { onTraktRate(((traktUserRating ?: 1) - 1).coerceAtLeast(1)) },
+                        enabled = (traktUserRating ?: 0) > 1,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Remove,
+                            contentDescription = "Lower Trakt rating",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Text(
+                        "${traktUserRating ?: "—"}/10",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    IconButton(
+                        onClick = { onTraktRate(((traktUserRating ?: 0) + 1).coerceAtMost(10)) },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = "Raise Trakt rating",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    if (traktUserRating != null) {
+                        TextButton(onClick = { onTraktRate(null) }) {
+                            Text("Remove", color = TextSecondary)
+                        }
+                    }
+                }
+                Text(
+                    "1–10 on Trakt, synced to your account.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
             }
         }
     }
