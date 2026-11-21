@@ -35,7 +35,9 @@ import com.pulsestream.app.data.tracking.TrackingProgressSource
 import com.pulsestream.app.data.tracking.TrackingRatingsSource
 import com.pulsestream.app.data.tracking.effectiveRatingsSource
 import com.pulsestream.app.data.tracking.isAnilistLinked
+import com.pulsestream.app.data.tracking.isPublicMetaDbLinked
 import com.pulsestream.app.data.tracking.isSimklLinked
+import com.pulsestream.app.data.tracking.isWetrakrLinked
 import com.pulsestream.app.data.tracking.isTraktLinked
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
@@ -64,6 +66,8 @@ fun TrackingSettingsScreen(
     val traktLinked = remember(tick) { settings.isTraktLinked() }
     val simklLinked = remember(tick) { settings.isSimklLinked() }
     val anilistLinked = remember(tick) { settings.isAnilistLinked() }
+    val wetrakrLinked = remember(tick) { settings.isWetrakrLinked() }
+    val publicMetaDbLinked = remember(tick) { settings.isPublicMetaDbLinked() }
     val librarySource = remember(tick) {
         TrackingLibrarySource.fromStored(settings.trackingLibrarySource)
     }
@@ -108,7 +112,9 @@ fun TrackingSettingsScreen(
                     Text(
                         text = "Trakt — ${if (traktLinked) "linked" else "not linked"}\n" +
                             "Simkl — ${if (simklLinked) "linked" else "not linked"}\n" +
-                            "AniList — ${if (anilistLinked) "linked" else "not linked"}",
+                            "AniList — ${if (anilistLinked) "linked" else "not linked"}\n" +
+                            "WeTrakr — ${if (wetrakrLinked) "linked" else "not linked"}\n" +
+                            "PublicMetaDB — ${if (publicMetaDbLinked) "linked" else "not linked"}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
@@ -128,6 +134,8 @@ fun TrackingSettingsScreen(
                             TrackingLibrarySource.TRAKT -> linkedNote("trakt", traktLinked, "all linked services")
                             TrackingLibrarySource.SIMKL -> linkedNote("simkl", simklLinked, "all linked services")
                             TrackingLibrarySource.ANILIST -> linkedNote("anilist", anilistLinked, "all linked services")
+                            TrackingLibrarySource.WETRAKR -> linkedNote("wetrakr", wetrakrLinked, "all linked services")
+                            TrackingLibrarySource.PUBLICMETADB -> linkedNote("publicmetadb", publicMetaDbLinked, "all linked services")
                             else -> null
                         },
                         onClick = { libraryPickerOpen = true }
@@ -142,6 +150,8 @@ fun TrackingSettingsScreen(
                             TrackingProgressSource.TRAKT -> linkedNote("trakt", traktLinked, "all linked services")
                             TrackingProgressSource.SIMKL -> linkedNote("simkl", simklLinked, "all linked services")
                             TrackingProgressSource.ANILIST -> linkedNote("anilist", anilistLinked, "all linked services")
+                            TrackingProgressSource.WETRAKR -> linkedNote("wetrakr", wetrakrLinked, "all linked services")
+                            TrackingProgressSource.PUBLICMETADB -> linkedNote("publicmetadb", publicMetaDbLinked, "all linked services")
                             else -> null
                         },
                         onClick = { progressPickerOpen = true }
@@ -152,9 +162,13 @@ fun TrackingSettingsScreen(
                         title = "Ratings source",
                         subtitle = "Which service's community score shows in the ratings sheet",
                         valueLabel = ratingsSource.label,
-                        note = if (ratingsSource == TrackingRatingsSource.ANILIST && !anilistLinked) {
-                            "AniList isn't linked — showing Trakt ratings instead."
-                        } else null,
+                        note = when (ratingsSource) {
+                            TrackingRatingsSource.ANILIST ->
+                                if (!anilistLinked) "AniList isn't linked — showing Trakt ratings instead." else null
+                            TrackingRatingsSource.WETRAKR ->
+                                if (!wetrakrLinked) "WeTrakr isn't linked — showing Trakt ratings instead." else null
+                            else -> null
+                        },
                         onClick = { ratingsPickerOpen = true }
                     )
                     Spacer(Modifier.height(8.dp))

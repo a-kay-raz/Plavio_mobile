@@ -71,11 +71,13 @@ fun LibrarySavedScreen(
     traktWatchlist: List<MetaPreview>,
     simklWatchlist: List<MetaPreview>,
     anilistWatchlist: List<MetaPreview> = emptyList(),
+    wetrakrWatchlist: List<MetaPreview> = emptyList(),
+    pmdbWatchlist: List<MetaPreview> = emptyList(),
     watchedKeys: Set<String>,
     settings: SettingsStore,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
 ) {
-    val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist) {
+    val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist) {
         buildList {
             myWatchlist.forEach { item ->
                 add(
@@ -126,6 +128,26 @@ fun LibrarySavedScreen(
                         poster = preview.poster, addonId = "",
                         sectionKey = "anilist", sectionName = "AniList",
                         addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 102
+                    )
+                )
+            }
+            wetrakrWatchlist.forEach { preview ->
+                add(
+                    SavedLibraryItem(
+                        metaId = preview.id, type = preview.type, name = preview.name,
+                        poster = preview.poster, addonId = "",
+                        sectionKey = "wetrakr", sectionName = "WeTrakr",
+                        addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 103
+                    )
+                )
+            }
+            pmdbWatchlist.forEach { preview ->
+                add(
+                    SavedLibraryItem(
+                        metaId = preview.id, type = preview.type, name = preview.name,
+                        poster = preview.poster, addonId = "",
+                        sectionKey = "publicmetadb", sectionName = "PublicMetaDB",
+                        addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 104
                     )
                 )
             }

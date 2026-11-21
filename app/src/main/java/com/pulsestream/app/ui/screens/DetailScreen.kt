@@ -790,42 +790,63 @@ private fun DetailContent(
     var traktTitleRatings by remember { mutableStateOf<TraktApi.TraktTitleRatings?>(null) }
     // Step 52: AniList mean score (0–100) when it is the ratings source.
     var anilistAverage by remember { mutableStateOf<Int?>(null) }
+    // Step 53: WeTrakr rating (1–10) when it is the ratings source.
+    var wetrakrRating by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(meta.id, settings.trackingRatingsSource) {
         omdbRatings = null
         traktTitleRatings = null
         anilistAverage = null
+        wetrakrRating = null
         val key = settings.omdbApiKey
         val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
         if (!key.isNullOrBlank() && imdbId != null) {
             omdbRatings = OmdbClient.fetchRatings(key, imdbId)
         }
-        if (imdbId != null) {
-            if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.ANILIST) {
-                val anilistId = runCatching {
-                    com.pulsestream.app.data.anilist.AniListApi.anilistForImdb(imdbId)
-                }.getOrNull()
-                if (anilistId != null) {
-                    anilistAverage = runCatching {
-                        com.pulsestream.app.data.anilist.AniListApi.getMediaAverageScore(
-                            settings.anilistAccessToken, anilistId
-                        )
+        when (settings.effectiveRatingsSource()) {
+            com.pulsestream.app.data.tracking.TrackingRatingsSource.ANILIST -> {
+                if (imdbId != null) {
+                    val anilistId = runCatching {
+                        com.pulsestream.app.data.anilist.AniListApi.anilistForImdb(imdbId)
+                    }.getOrNull()
+                    if (anilistId != null) {
+                        anilistAverage = runCatching {
+                            com.pulsestream.app.data.anilist.AniListApi.getMediaAverageScore(
+                                settings.anilistAccessToken, anilistId
+                            )
+                        }.getOrNull()
+                    }
+                }
+            }
+            com.pulsestream.app.data.tracking.TrackingRatingsSource.WETRAKR -> {
+                // WeTrakr keys are IMDb ids, or "tmdb:<id>" when a title
+                // has no IMDb id; fall back to the meta id itself.
+                val lookupId = imdbId ?: meta.id.takeIf { it.startsWith("tmdb:") }
+                if (lookupId != null) {
+                    val ratings = runCatching {
+                        com.pulsestream.app.data.wetrakr.WeTrakrApi.getRatings(settings)
+                    }.getOrNull().orEmpty()
+                    wetrakrRating = ratings[lookupId]
+                }
+            }
+            else -> {
+                if (imdbId != null) {
+                    traktTitleRatings = runCatching {
+                        TraktApi().getTitleRatings(imdbId, meta.type)
                     }.getOrNull()
                 }
-            } else {
-                traktTitleRatings = runCatching {
-                    TraktApi().getTitleRatings(imdbId, meta.type)
-                }.getOrNull()
             }
         }
     }
     // Provider scores: OMDb's matrix when loaded, else the meta's IMDb value,
     // plus the picked service's community average when it has one.
-    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings, anilistAverage) {
+    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings, anilistAverage, wetrakrRating) {
         val base = if (!omdbRatings.isNullOrEmpty()) omdbRatings!!
             else meta.imdbRating?.takeIf { it.isNotBlank() }
                 ?.let { listOf(OmdbRating("Internet Movie Database", it)) } ?: emptyList()
         val community = if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.ANILIST) {
             anilistAverage?.let { OmdbRating("AniList", "%.1f/10".format(it / 10.0)) }
+        } else if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.WETRAKR) {
+            wetrakrRating?.let { OmdbRating("WeTrakr", "%.1f/10".format(it.toDouble())) }
         } else {
             traktTitleRatings?.let { OmdbRating("Trakt", "%.1f/10".format(it.rating)) }
         }
