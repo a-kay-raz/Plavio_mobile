@@ -408,3 +408,111 @@ interface WatchedDao {
     @Query("DELETE FROM watched")
     suspend fun clearAll()
 }
+
+/**
+ * Step 50: collections (Nuvio collection/CollectionModels.kt, scoped port).
+ * A Collection holds folders; each folder holds sources that resolve to
+ * titles — an addon catalog, a TMDB collection/list/discover, or a Trakt
+ * list. Unlike custom lists (manual title buckets), a collection folder
+ * is dynamic: its titles come from its sources.
+ */
+@Entity(tableName = "collections")
+data class Collection(
+    @PrimaryKey val id: String,
+    val title: String,
+    val backdropUrl: String? = null,
+    val pinToTop: Boolean = false,
+    /** TABBED_GRID | ROWS — how the folder renders (Step 51). */
+    val viewMode: String = "TABBED_GRID",
+    val showAllTab: Boolean = true,
+    val sortOrder: Long = 0,
+    val createdAt: Long = 0
+)
+
+@Entity(tableName = "collection_folders")
+data class CollectionFolder(
+    @PrimaryKey val id: String,
+    val collectionId: String,
+    val title: String,
+    val coverImageUrl: String? = null,
+    val coverEmoji: String? = null,
+    /** poster | landscape | square. */
+    val tileShape: String = "poster",
+    val sortOrder: Long = 0
+)
+
+/** One source inside a folder. provider: "addon" | "tmdb" | "trakt". */
+@Entity(tableName = "collection_sources")
+data class CollectionSourceRow(
+    @PrimaryKey val id: String,
+    val folderId: String,
+    val provider: String,
+    val addonId: String? = null,
+    val type: String? = null,
+    val catalogId: String? = null,
+    val genre: String? = null,
+    /** TMDB: COLLECTION | LIST | DISCOVER. */
+    val tmdbSourceType: String? = null,
+    val tmdbId: Int? = null,
+    /** movie | series (TMDB + Trakt). */
+    val mediaType: String? = null,
+    /** TMDB discover sort (popularity.desc …) or Trakt list sort (rank …). */
+    val sortBy: String? = null,
+    /** Trakt: asc | desc. */
+    val sortHow: String? = null,
+    val sortOrder: Long = 0
+)
+
+@Dao
+interface CollectionDao {
+    @Query("SELECT * FROM collections ORDER BY sortOrder ASC")
+    fun observeCollections(): Flow<List<Collection>>
+
+    @Query("SELECT * FROM collections ORDER BY sortOrder ASC")
+    suspend fun getCollections(): List<Collection>
+
+    @Query("SELECT * FROM collections WHERE id = :id LIMIT 1")
+    suspend fun getCollection(id: String): Collection?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCollection(collection: Collection)
+
+    @Query("DELETE FROM collections WHERE id = :id")
+    suspend fun deleteCollection(id: String)
+
+    @Query("SELECT * FROM collection_folders WHERE collectionId = :collectionId ORDER BY sortOrder ASC")
+    fun observeFolders(collectionId: String): Flow<List<CollectionFolder>>
+
+    @Query("SELECT * FROM collection_folders WHERE collectionId = :collectionId ORDER BY sortOrder ASC")
+    suspend fun getFolders(collectionId: String): List<CollectionFolder>
+
+    @Query("SELECT * FROM collection_folders WHERE id = :id LIMIT 1")
+    suspend fun getFolder(id: String): CollectionFolder?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFolder(folder: CollectionFolder)
+
+    @Query("DELETE FROM collection_folders WHERE id = :id")
+    suspend fun deleteFolder(id: String)
+
+    @Query("DELETE FROM collection_folders WHERE collectionId = :collectionId")
+    suspend fun deleteFoldersByCollection(collectionId: String)
+
+    @Query("SELECT * FROM collection_sources WHERE folderId = :folderId ORDER BY sortOrder ASC")
+    fun observeSources(folderId: String): Flow<List<CollectionSourceRow>>
+
+    @Query("SELECT * FROM collection_sources WHERE folderId = :folderId ORDER BY sortOrder ASC")
+    suspend fun getSources(folderId: String): List<CollectionSourceRow>
+
+    @Query("SELECT * FROM collection_sources WHERE id = :id LIMIT 1")
+    suspend fun getSource(id: String): CollectionSourceRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSource(source: CollectionSourceRow)
+
+    @Query("DELETE FROM collection_sources WHERE id = :id")
+    suspend fun deleteSource(id: String)
+
+    @Query("DELETE FROM collection_sources WHERE folderId = :folderId")
+    suspend fun deleteSourcesByFolder(folderId: String)
+}
