@@ -558,6 +558,162 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_SHUFFLE_INCLUDE_WATCHED, false)
         set(value) = prefs.edit().putBoolean(KEY_SHUFFLE_INCLUDE_WATCHED, value).apply()
 
+    // Smart Streams (Step 42): scored ranking + per-title filter/sort.
+    // ------------------------------------------------------------------
+
+    /** Device profile for Smart Streams scoring, cached per process. */
+    val smartDeviceProfile: SmartDeviceProfile by lazy { buildSmartDeviceProfile(appContext) }
+
+    /** Sort mode for the stream list: best | quality | smallest | largest | addon. */
+    var smartSortMode: String
+        get() = prefs.getString(KEY_SMART_SORT_MODE, "best") ?: "best"
+        set(value) = prefs.edit().putString(KEY_SMART_SORT_MODE, value).apply()
+
+    /** Resolution limit for the auto-pick target: auto | 1080 | 4k. */
+    var smartResolutionLimit: String
+        get() = prefs.getString(KEY_SMART_RESOLUTION_LIMIT, "auto") ?: "auto"
+        set(value) = prefs.edit().putString(KEY_SMART_RESOLUTION_LIMIT, value).apply()
+
+    /** Cap the auto-pick target at 1080p on mobile data (Nuvio SAVE_DATA). */
+    var smartSaveDataOnMobile: Boolean
+        get() = prefs.getBoolean(KEY_SMART_SAVE_DATA_MOBILE, true)
+        set(value) = prefs.edit().putBoolean(KEY_SMART_SAVE_DATA_MOBILE, value).apply()
+
+    private fun smartFilterSet(key: String): Set<String> =
+        prefs.getString(key, "")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet()
+            ?: emptySet()
+
+    private fun setSmartFilterSet(key: String, value: Set<String>) =
+        prefs.edit().putString(key, value.joinToString(",")).apply()
+
+    /** Filter: resolutions ("4K" | "1080p" | "720p" | "SD"); empty = all. */
+    var smartFilterResolutions: Set<String>
+        get() = smartFilterSet(KEY_SMART_FILTER_RESOLUTIONS)
+        set(value) = setSmartFilterSet(KEY_SMART_FILTER_RESOLUTIONS, value)
+
+    /** Filter: HDR ("DV" | "HDR10" | "SDR"); empty = all. */
+    var smartFilterHdr: Set<String>
+        get() = smartFilterSet(KEY_SMART_FILTER_HDR)
+        set(value) = setSmartFilterSet(KEY_SMART_FILTER_HDR, value)
+
+    /** Filter: codecs ("HEVC" | "H264" | "AV1" | "OTHER"); empty = all. */
+    var smartFilterCodecs: Set<String>
+        get() = smartFilterSet(KEY_SMART_FILTER_CODECS)
+        set(value) = setSmartFilterSet(KEY_SMART_FILTER_CODECS, value)
+
+    /** Filter: audio ("ATMOS" | "DD" | "DTS" | "STEREO"); empty = all. */
+    var smartFilterAudio: Set<String>
+        get() = smartFilterSet(KEY_SMART_FILTER_AUDIO)
+        set(value) = setSmartFilterSet(KEY_SMART_FILTER_AUDIO, value)
+
+    /** Filter: sources ("REMUX" | "BLURAY" | "WEBDL" | "WEBRIP" | "HDTV"); empty = all. */
+    var smartFilterSources: Set<String>
+        get() = smartFilterSet(KEY_SMART_FILTER_SOURCES)
+        set(value) = setSmartFilterSet(KEY_SMART_FILTER_SOURCES, value)
+
+    /** Filter: max file size in GB (0 = no limit). */
+    var smartFilterMaxSizeGb: Int
+        get() = prefInt(KEY_SMART_FILTER_MAX_SIZE_GB, 0).coerceAtLeast(0)
+        set(value) = prefs.edit().putInt(KEY_SMART_FILTER_MAX_SIZE_GB, value.coerceAtLeast(0)).apply()
+
+    /** Filter: instant (cached) streams only. */
+    var smartFilterInstantOnly: Boolean
+        get() = prefs.getBoolean(KEY_SMART_FILTER_INSTANT_ONLY, false)
+        set(value) = prefs.edit().putBoolean(KEY_SMART_FILTER_INSTANT_ONLY, value).apply()
+
+    /** Filter: hide CAM / screener / low-quality streams (default on). */
+    var smartFilterHideLowQuality: Boolean
+        get() = prefs.getBoolean(KEY_SMART_FILTER_HIDE_LOW_QUALITY, true)
+        set(value) = prefs.edit().putBoolean(KEY_SMART_FILTER_HIDE_LOW_QUALITY, value).apply()
+
+    /** The Smart Streams settings object the ranking reads. */
+    fun smartStreamSettings(): SmartStreamSettings = SmartStreamSettings(
+        sortMode = when (smartSortMode) {
+            "quality" -> SmartSortMode.HIGHEST_QUALITY
+            "smallest" -> SmartSortMode.SMALLEST_FILE
+            "largest" -> SmartSortMode.LARGEST_FILE
+            "addon" -> SmartSortMode.ADDON_ORDER
+            else -> SmartSortMode.BEST_MATCH
+        },
+        filters = SmartStreamFilters(
+            resolutions = smartFilterResolutions.mapNotNull { label ->
+                when (label) {
+                    "4K" -> SmartResolution.UHD4K
+                    "1080p" -> SmartResolution.FHD1080
+                    "720p" -> SmartResolution.HD720
+                    "SD" -> SmartResolution.SD
+                    else -> null
+                }
+            }.toSet(),
+            hdr = smartFilterHdr.mapNotNull { label ->
+                when (label) {
+                    "DV" -> SmartHdrFilter.DOLBY_VISION
+                    "HDR10" -> SmartHdrFilter.HDR10
+                    "SDR" -> SmartHdrFilter.SDR
+                    else -> null
+                }
+            }.toSet(),
+            codecs = smartFilterCodecs.mapNotNull { label ->
+                when (label) {
+                    "HEVC" -> SmartCodec.HEVC
+                    "H264" -> SmartCodec.H264
+                    "AV1" -> SmartCodec.AV1
+                    "OTHER" -> SmartCodec.OTHER
+                    else -> null
+                }
+            }.toSet(),
+            audio = smartFilterAudio.mapNotNull { label ->
+                when (label) {
+                    "ATMOS" -> SmartAudio.ATMOS
+                    "DD" -> SmartAudio.DOLBY_DIGITAL
+                    "DTS" -> SmartAudio.DTS_TRUEHD
+                    "STEREO" -> SmartAudio.STEREO
+                    else -> null
+                }
+            }.toSet(),
+            sources = smartFilterSources.mapNotNull { label ->
+                when (label) {
+                    "REMUX" -> SmartSource.REMUX
+                    "BLURAY" -> SmartSource.BLURAY
+                    "WEBDL" -> SmartSource.WEBDL
+                    "WEBRIP" -> SmartSource.WEBRIP
+                    "HDTV" -> SmartSource.HDTV
+                    else -> null
+                }
+            }.toSet(),
+            maxSizeGb = smartFilterMaxSizeGb.takeIf { it > 0 },
+            instantOnly = smartFilterInstantOnly,
+            hideLowQuality = smartFilterHideLowQuality,
+        ),
+        resolutionLimit = when (smartResolutionLimit) {
+            "1080" -> SmartResolutionLimit.P1080
+            "4k" -> SmartResolutionLimit.P4K
+            else -> SmartResolutionLimit.AUTO
+        },
+        saveDataOnMobile = smartSaveDataOnMobile,
+    )
+
+    /** Preferred languages for Smart Streams scoring: audio first, then subtitle languages (639-1, distinct). */
+    fun smartPreferredLanguages(): List<String> {
+        val langs = listOfNotNull(preferredAudioLanguage) + subtitleLanguages
+        return langs.map { normalizeSubtitleLanguageCode(it) }
+            .map { it.substringBefore('-') }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    /** Reset all Smart Streams filters (keeps sort mode + resolution limit). */
+    fun resetSmartFilters() {
+        smartFilterResolutions = emptySet()
+        smartFilterHdr = emptySet()
+        smartFilterCodecs = emptySet()
+        smartFilterAudio = emptySet()
+        smartFilterSources = emptySet()
+        smartFilterMaxSizeGb = 0
+        smartFilterInstantOnly = false
+        smartFilterHideLowQuality = true
+    }
+
     /**
      * On-disk playback cache size in MB (0 = off). Caches progressive
      * media so re-watches don't re-download. HLS/DASH segments are cached
@@ -1444,6 +1600,17 @@ class SettingsStore(context: Context) {
         private const val KEY_FALLBACK_MAX_SOURCES = "fallback_max_sources"
         private const val KEY_FALLBACK_STARTUP_TIMEOUT_S = "fallback_startup_timeout_seconds"
         private const val KEY_SHUFFLE_INCLUDE_WATCHED = "shuffle_include_watched"
+        private const val KEY_SMART_SORT_MODE = "smart_sort_mode"
+        private const val KEY_SMART_RESOLUTION_LIMIT = "smart_resolution_limit"
+        private const val KEY_SMART_SAVE_DATA_MOBILE = "smart_save_data_on_mobile"
+        private const val KEY_SMART_FILTER_RESOLUTIONS = "smart_filter_resolutions"
+        private const val KEY_SMART_FILTER_HDR = "smart_filter_hdr"
+        private const val KEY_SMART_FILTER_CODECS = "smart_filter_codecs"
+        private const val KEY_SMART_FILTER_AUDIO = "smart_filter_audio"
+        private const val KEY_SMART_FILTER_SOURCES = "smart_filter_sources"
+        private const val KEY_SMART_FILTER_MAX_SIZE_GB = "smart_filter_max_size_gb"
+        private const val KEY_SMART_FILTER_INSTANT_ONLY = "smart_filter_instant_only"
+        private const val KEY_SMART_FILTER_HIDE_LOW_QUALITY = "smart_filter_hide_low_quality"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"

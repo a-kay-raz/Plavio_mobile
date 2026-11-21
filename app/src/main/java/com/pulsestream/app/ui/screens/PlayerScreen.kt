@@ -5061,7 +5061,8 @@ fun PlayerScreen(
                     onClose = { sourcesOpen = false },
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
                     settings = repository.settings,
-                    poster = currentRequest.poster
+                    poster = currentRequest.poster,
+                    isEpisode = currentRequest.type != "movie"
                 )
             }
         }
@@ -5380,7 +5381,8 @@ fun PlayerScreen(
                     onClose = { episodeStreamsVideo = null },
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
                     settings = repository.settings,
-                    poster = video.thumbnail ?: currentRequest.poster
+                    poster = video.thumbnail ?: currentRequest.poster,
+                    isEpisode = true
                 )
             }
         }
