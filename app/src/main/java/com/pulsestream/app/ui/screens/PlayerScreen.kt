@@ -877,12 +877,26 @@ fun PlayerScreen(
     // Sources + episodes sheets
     var sourcesOpen by remember { mutableStateOf(false) }
     var episodesOpen by remember { mutableStateOf(false) }
+    // Quality picker: null = Auto (best available quality), otherwise
+    // the picked quality label. Resets per video.
+    var qualityOpen by remember { mutableStateOf(false) }
+    var qualitySelection by remember(currentRequest.videoId) { mutableStateOf<String?>(null) }
     var downloadStream by remember { mutableStateOf<com.pulsestream.app.data.StreamItem?>(null) }
     var zapping by remember { mutableStateOf(false) }
     var availableStreams by remember {
         mutableStateOf(com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
             emptyList(), initialRequest.streams, includeHeadersInIdentity = initialRequest.isLive && !isTv
         ))
+    }
+    /** Distinct qualities across the loaded streams, best first — the Quality picker options. */
+    val qualityOptions = remember(availableStreams) {
+        val order = listOf("4K", "2160P", "1440P", "1080P", "720P", "480P", "360P")
+        availableStreams
+            .mapNotNull { stream -> streamQualityLabel(stream)?.let { it to stream } }
+            .groupBy({ it.first }, { it.second })
+            .entries
+            .sortedBy { (label, _) -> order.indexOf(label).takeIf { it >= 0 } ?: Int.MAX_VALUE }
+            .map { (label, streams) -> label to streams.first() }
     }
     /** Live fallback never retries the same URL/header tuple during this channel session. */
     var attemptedLiveSourceIds by remember { mutableStateOf(emptySet<String>()) }
@@ -940,11 +954,12 @@ fun PlayerScreen(
     // they still dismiss themselves before this runs.)
     BackHandler {
         when {
-            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen -> {
+            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen -> {
                 tracksOpen = false
                 subSearchOpen = false
                 sourcesOpen = false
                 episodesOpen = false
+                qualityOpen = false
             }
             showControls && !locked -> showControls = false
             else -> onBack()
@@ -1476,6 +1491,8 @@ fun PlayerScreen(
         } else stream.url == currentRequest.streamUrl
         if (sameCandidate) return
         sourcesOpen = false
+        // Picking a stream directly is an explicit quality choice.
+        qualitySelection = streamQualityLabel(stream)
         pokeIndicator(
             PlayerIndicator.Message("Source: ${streamQualityLabel(stream) ?: stream.sourceName ?: "switched"}")
         )
@@ -1490,6 +1507,19 @@ fun PlayerScreen(
             startAtMs = player.currentPosition,
             autoplay = true
         )
+    }
+
+    /**
+     * Quality picker selection: null = Auto (best available quality),
+     * otherwise the first stream carrying that quality label. Reuses
+     * [switchSource] so position and headers carry over.
+     */
+    fun switchQuality(label: String?) {
+        val target = if (label == null) qualityOptions.firstOrNull()?.second
+        else qualityOptions.firstOrNull { it.first == label }?.second
+        qualityOpen = false
+        if (target != null) switchSource(target)
+        qualitySelection = label
     }
 
     /**
@@ -2494,7 +2524,7 @@ fun PlayerScreen(
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen ||
+        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen ||
             speedMenuOpen || resumeOfferMs != null || playerError != null
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -2565,7 +2595,7 @@ fun PlayerScreen(
     // container, so the remote can never stay dead. Skipped while a sheet or
     // dialog (separate window) legitimately owns focus.
     var rootHasFocus by remember { mutableStateOf(true) }
-    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen ||
+    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen ||
         speedMenuOpen || resumeOfferMs != null || downloadStream != null
     LaunchedEffect(rootHasFocus, isTv, sheetUp, showControls, playerError) {
         if (isTv && !rootHasFocus && !sheetUp && playerError == null) {
@@ -3187,11 +3217,9 @@ fun PlayerScreen(
                                 icon = Icons.Filled.HighQuality,
                                 label = streamLabelText ?: "Quality",
                                 onClick = {
-                                    // Plavio has no separate quality picker:
-                                    // quality changes by picking another
-                                    // stream, so this opens Sources.
+                                    // Fresh fetch when opening Quality — ensures full list, not stale partial
                                     refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                                    sourcesOpen = true
+                                    qualityOpen = true
                                 }
                             )
                             PillBarButton(
@@ -4131,6 +4159,76 @@ fun PlayerScreen(
                     settings = repository.settings,
                     poster = currentRequest.poster
                 )
+            }
+        }
+
+        // In-player Quality picker (Nuvio PlayerQualityPanel content in
+        // Plavio's bottom-sheet panel shape): Auto first, then one row per
+        // distinct quality, best first. Picking one switches to a stream
+        // of that quality at the current position.
+        if (qualityOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { qualityOpen = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                dragHandle = null,
+                containerColor = Color(0xFF14141F)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
+                ) {
+                    item {
+                        Text(
+                            "Quality",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                        )
+                    }
+                    if (streamsLoading && qualityOptions.isEmpty()) {
+                        item {
+                            Box(
+                                Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = LocalPalette.current.accent)
+                            }
+                        }
+                    } else if (qualityOptions.isEmpty()) {
+                        item {
+                            TrackRow(
+                                label = streamLabelText ?: "Current quality",
+                                selected = true,
+                                onClick = {}
+                            )
+                        }
+                        item {
+                            Text(
+                                "This stream does not expose selectable quality variants.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+                            )
+                        }
+                    } else {
+                        val bestLabel = qualityOptions.first().first
+                        item {
+                            TrackRow(
+                                label = "Auto ($bestLabel)",
+                                selected = qualitySelection == null,
+                                onClick = { switchQuality(null) }
+                            )
+                        }
+                        items(qualityOptions, key = { it.first }) { (label, _) ->
+                            TrackRow(
+                                label = label,
+                                selected = qualitySelection == label,
+                                onClick = { switchQuality(label) }
+                            )
+                        }
+                    }
+                }
             }
         }
 
