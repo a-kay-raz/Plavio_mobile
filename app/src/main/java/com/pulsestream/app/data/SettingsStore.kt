@@ -778,6 +778,15 @@ class SettingsStore(context: Context) {
         get() = prefLong(KEY_HOME_REFRESHED_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_HOME_REFRESHED_AT, value).apply()
 
+    /**
+     * Home catalog row preferences blob (see HomeRowPrefs.kt): one JSON
+     * string holding every row's hide/order/rename/pin/hero-source choice,
+     * plus the hero + catalog-type + unreleased switches. Nuvio's model.
+     */
+    var homeRowPrefsJson: String?
+        get() = prefs.getString(KEY_HOME_ROW_PREFS, null)
+        set(value) = prefs.edit().putString(KEY_HOME_ROW_PREFS, value).apply()
+
     // ------------------------------------------------------------------
     // Streams section (v0.8.31+): per-source caps, quality order, autoplay.
     // ------------------------------------------------------------------
@@ -984,6 +993,7 @@ class SettingsStore(context: Context) {
         private const val KEY_LIVE_RECENT = "live_recent"
         private const val KEY_M3U_LISTS = "m3u_playlists"
         private const val KEY_HOME_REFRESHED_AT = "home_catalogs_refreshed_at"
+        private const val KEY_HOME_ROW_PREFS = "home_catalog_row_prefs"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_SHOW_SKIP = "show_skip_button"
         private const val KEY_SUBTITLE_LANGS = "subtitle_languages"

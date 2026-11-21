@@ -412,15 +412,195 @@ class StreamRepository(
     @Volatile
     private var trailersCache: Pair<Long, Pair<List<TrailerItem>, List<TrailerItem>>>? = null
 
-    /** Whether an addon's catalogs appear on the Home screen. */
-    suspend fun setAddonShowOnHome(id: String, show: Boolean) = withContext(Dispatchers.IO) {
-        db.addonDao().setShowOnHome(id, show)
-        _catalogVisibility.value += 1
-    }
-
     /** Bumped whenever Home catalog visibility changes — Home reloads on it. */
     private val _catalogVisibility = MutableStateFlow(0)
     val catalogVisibility: StateFlow<Int> = _catalogVisibility.asStateFlow()
+
+    // ---- Home catalog row preferences (Nuvio parity) ----
+    //
+    // One JSON blob, one record per derived row: hide / reorder / rename /
+    // pin-top / pin-bottom / hero-source. The old per-addon showOnHome
+    // flag is retired — its one-time migration lives in
+    // normalizeHomeRowPrefs — and setAddonShowOnHome is gone with it.
+
+    /** Current row prefs, decoded from the single JSON blob (defaults when absent/corrupt). */
+    suspend fun homeRowPrefs(): StoredHomeRowPrefs = withContext(Dispatchers.IO) {
+        decodeHomeRowPrefs(settings.homeRowPrefsJson)
+    }
+
+    /** Persists prefs; user edits bump visibility so Home reloads. */
+    private fun saveHomeRowPrefs(prefs: StoredHomeRowPrefs, notify: Boolean = true) {
+        settings.homeRowPrefsJson = prefs.encode()
+        if (notify) _catalogVisibility.value += 1
+    }
+
+    /**
+     * Adds a pref record for every row that lacks one, caps hero sources
+     * at HOME_HERO_SOURCE_LIMIT, and retires the old per-addon showOnHome
+     * flag: an addon that was hidden from Home gets all its rows hidden
+     * once, then its flag is flipped on so the row prefs are the single
+     * source of truth. Persists only when something changed, without
+     * notifying — Home is already loading these rows.
+     */
+    private suspend fun normalizeHomeRowPrefs(
+        rows: List<CatalogRow>,
+        byAddonId: Map<String, InstalledAddon>
+    ): StoredHomeRowPrefs {
+        val prefs = homeRowPrefs()
+        val byKey = prefs.items.associateBy { it.key }.toMutableMap()
+        var changed = false
+        var nextOrder = (prefs.items.maxOfOrNull { it.order } ?: -1) + 1
+        val retiredAddons = mutableSetOf<String>()
+        for (row in rows) {
+            val key = row.rowKey()
+            val addonHidden = byAddonId[row.addonId]?.showOnHome == false
+            val existing = byKey[key]
+            if (existing == null) {
+                byKey[key] = StoredHomeRowPref(
+                    key = key, enabled = !addonHidden, order = nextOrder++
+                )
+                changed = true
+            } else if (addonHidden && existing.enabled) {
+                byKey[key] = existing.copy(enabled = false)
+                changed = true
+            }
+            if (addonHidden) retiredAddons.add(row.addonId)
+        }
+        // Hero cap: at most the first HOME_HERO_SOURCE_LIMIT enabled rows
+        // feed the hero.
+        val ordered = StoredHomeRowPrefs(items = byKey.values.toList()).displayOrder()
+        val heroOn = ordered.filter { it.heroSourceEnabled && it.enabled }
+        if (heroOn.size > HOME_HERO_SOURCE_LIMIT) {
+            heroOn.drop(HOME_HERO_SOURCE_LIMIT).forEach { over ->
+                byKey[over.key] = over.copy(heroSourceEnabled = false)
+            }
+            changed = true
+        }
+        if (changed) {
+            saveHomeRowPrefs(
+                prefs.copy(items = byKey.values.toList()), notify = false
+            )
+        }
+        for (addonId in retiredAddons) {
+            runCatching { db.addonDao().setShowOnHome(addonId, true) }
+        }
+        return prefs.copy(items = byKey.values.toList())
+    }
+
+    /**
+     * Applies the row prefs to freshly sorted rows: hidden rows out (Home
+     * only), custom titles on, unreleased items out when the switch is on,
+     * pinned-top first / pinned-bottom last. Empty rows are dropped, like
+     * Nuvio — a row with nothing to show is not a row. For the settings
+     * screen ([forSettings]) nothing is hidden or dropped: every row must
+     * stay listed so it can be re-shown.
+     */
+    private suspend fun applyHomeRowPrefs(
+        rows: List<CatalogRow>,
+        byAddonId: Map<String, InstalledAddon>,
+        forSettings: Boolean = false
+    ): List<CatalogRow> {
+        val prefs = normalizeHomeRowPrefs(rows, byAddonId)
+        val byKey = prefs.items.associateBy { it.key }
+        val currentYear = java.time.LocalDate.now().year
+        val orderIndex = prefs.displayOrder()
+            .mapIndexed { index, pref -> pref.key to index }.toMap()
+        return rows.mapNotNull { row ->
+            val pref = byKey[row.rowKey()]
+            if (!forSettings && pref?.enabled == false) return@mapNotNull null
+            var items = row.items
+            if (!forSettings && prefs.hideUnreleasedContent) {
+                items = items.filter { !it.isUnreleased(currentYear) }
+            }
+            if (!forSettings && items.isEmpty()) return@mapNotNull null
+            // The settings screen lists rows by their default title and
+            // reads the custom title from prefs itself — it must not have
+            // the rename baked into the row.
+            val title = if (forSettings) row.catalogName
+            else pref?.customTitle?.takeIf { it.isNotBlank() } ?: row.catalogName
+            row.copy(catalogName = title, items = items)
+        }.sortedBy { row -> orderIndex[row.rowKey()] ?: Int.MAX_VALUE }
+    }
+
+    /** Hide / show one row. */
+    suspend fun setHomeRowEnabled(key: String, enabled: Boolean) {
+        val prefs = homeRowPrefs()
+        saveHomeRowPrefs(prefs.copy(items = prefs.items.map {
+            if (it.key == key) it.copy(enabled = enabled) else it
+        }))
+    }
+
+    /** Rename a row; blank falls back to its default title. */
+    suspend fun setHomeRowTitle(key: String, title: String) {
+        val prefs = homeRowPrefs()
+        saveHomeRowPrefs(prefs.copy(items = prefs.items.map {
+            if (it.key == key) it.copy(customTitle = title.trim()) else it
+        }))
+    }
+
+    /** Pin a row to the top / bottom, or back to its normal spot. */
+    suspend fun setHomeRowPlacement(key: String, placement: HomeRowPlacement) {
+        val prefs = homeRowPrefs()
+        saveHomeRowPrefs(prefs.copy(items = prefs.items.map {
+            if (it.key == key) it.copy(rowPlacement = placement.storage) else it
+        }))
+    }
+
+    /** Feed the hero from this row — at most HOME_HERO_SOURCE_LIMIT rows. */
+    suspend fun setHomeRowHeroSource(key: String, enabled: Boolean) {
+        val prefs = homeRowPrefs()
+        if (enabled && prefs.items.count { it.heroSourceEnabled } >= HOME_HERO_SOURCE_LIMIT &&
+            prefs.items.firstOrNull { it.key == key }?.heroSourceEnabled != true) return
+        saveHomeRowPrefs(prefs.copy(items = prefs.items.map {
+            if (it.key == key) it.copy(heroSourceEnabled = enabled) else it
+        }))
+    }
+
+    /**
+     * Move a row one step within its own pin group and visibility list.
+     * Never crosses a pin boundary — unpin first, like Nuvio.
+     */
+    suspend fun moveHomeRow(key: String, up: Boolean, visible: Boolean) {
+        val prefs = homeRowPrefs()
+        val group = if (visible) prefs.visibleItems() else prefs.hiddenItems()
+        val idx = group.indexOfFirst { it.key == key }
+        if (idx < 0) return
+        val target = idx + if (up) -1 else 1
+        if (target !in group.indices) return
+        if (group[idx].rowPlacement != group[target].rowPlacement) return
+        val a = group[idx]
+        val b = group[target]
+        saveHomeRowPrefs(prefs.copy(items = prefs.items.map {
+            when (it.key) {
+                a.key -> it.copy(order = b.order)
+                b.key -> it.copy(order = a.order)
+                else -> it
+            }
+        }))
+    }
+
+    /** Show / hide the hero carousel on Home. */
+    suspend fun setHomeHeroEnabled(enabled: Boolean) {
+        val prefs = homeRowPrefs()
+        saveHomeRowPrefs(prefs.copy(heroEnabled = enabled))
+    }
+
+    /** Show the addon name under each row title ("PlavioMeta: Trending" style). */
+    suspend fun setHomeShowCatalogType(show: Boolean) {
+        val prefs = homeRowPrefs()
+        saveHomeRowPrefs(prefs.copy(showCatalogType = show))
+    }
+
+    /** Hide titles whose release year is in the future. */
+    suspend fun setHomeHideUnreleased(hide: Boolean) {
+        val prefs = homeRowPrefs()
+        saveHomeRowPrefs(prefs.copy(hideUnreleasedContent = hide))
+    }
+
+    /** Back to defaults: every row visible, in addon order, first two feed the hero. */
+    suspend fun resetHomeRowPrefs() {
+        saveHomeRowPrefs(StoredHomeRowPrefs())
+    }
 
     /**
      * Loads catalogs from every installed addon that declares the catalog
@@ -489,7 +669,11 @@ class StreamRepository(
     }
 
     private suspend fun doRefreshCatalogRows(): List<CatalogRow> = withContext(Dispatchers.IO) {
-        val installed = enabledAddons().filter { it.showOnHome }
+        // Rows come from every enabled addon now — Home visibility is
+        // per-row (row prefs), not per-addon; the old showOnHome gate was
+        // retired when the row prefs landed (its one-time migration lives
+        // in normalizeHomeRowPrefs).
+        val installed = enabledAddons()
         val successfulManifests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val authoritativeKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val listedManifestKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -568,7 +752,10 @@ class StreamRepository(
             cached.catalogName, cached.type, cached.catalogId, CatalogCodec.decodeMetas(cached.itemsJson)) }
         val displayedRows = (rows + retained).distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
         updateSearchCache(displayedRows)
-        sortRowsByPreference(displayedRows, installed.associateBy { it.id })
+        applyHomeRowPrefs(
+            sortRowsByPreference(displayedRows, installed.associateBy { it.id }),
+            installed.associateBy { it.id }
+        )
     }
 
     /**
@@ -590,7 +777,7 @@ class StreamRepository(
      */
     suspend fun loadCatalogRowsCached(): List<CatalogRow> = withContext(Dispatchers.IO) {
         try {
-            val visible = enabledAddons().filter { it.showOnHome }
+            val visible = enabledAddons()
             val visibleIds = visible.map { it.id }.toSet()
             val rows = db.catalogCacheDao().getAll()
                 .filter { it.addonId in visibleIds }
@@ -607,10 +794,38 @@ class StreamRepository(
                 }.filter { it.items.isNotEmpty() }
                 .distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
             updateSearchCache(rows)
-            sortRowsByPreference(rows, visible.associateBy { it.id })
+            applyHomeRowPrefs(
+                sortRowsByPreference(rows, visible.associateBy { it.id }),
+                visible.associateBy { it.id }
+            )
         } catch (_: Exception) {
             // Oversized/corrupt row slipped through — drop it and carry on.
             pruneOversizedCache()
+            emptyList()
+        }
+    }
+
+    /** Every Home row for the settings screen, including hidden ones. */
+    suspend fun allHomeCatalogRows(): List<CatalogRow> = withContext(Dispatchers.IO) {
+        try {
+            val installed = enabledAddons()
+            val byAddon = installed.associateBy { it.id }
+            val rows = db.catalogCacheDao().getAll()
+                .filter { it.addonId in byAddon.keys }
+                .map { cached ->
+                    CatalogRow(
+                        addonId = cached.addonId,
+                        addonName = cached.addonName,
+                        baseUrl = cached.baseUrl,
+                        catalogName = cached.catalogName,
+                        type = cached.type,
+                        catalogId = cached.catalogId,
+                        items = CatalogCodec.decodeMetas(cached.itemsJson)
+                    )
+                }.filter { it.type != "tv" }
+                .distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
+            applyHomeRowPrefs(rows, byAddon, forSettings = true)
+        } catch (_: Exception) {
             emptyList()
         }
     }

@@ -85,7 +85,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pulsestream.app.data.CatalogRow
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.PlaybackRequest
+import com.pulsestream.app.data.StoredHomeRowPrefs
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.heroSourceKeys
+import com.pulsestream.app.data.rowKey
 import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
@@ -132,6 +135,10 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
     var uiState by mutableStateOf<HomeUiState>(HomeUiState.Loading)
         private set
 
+    /** Row prefs (hide/order/rename/pin/hero-source) — read after each row load. */
+    var homePrefs by mutableStateOf(StoredHomeRowPrefs())
+        private set
+
     /**
      * Cache-first loading: show cached catalogs instantly, then quietly
      * refresh in the background — but only when the cache is stale (the
@@ -142,6 +149,9 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
         viewModelScope.launch {
             if (!forceRefresh) {
                 val cached = repo.loadCatalogRowsCached().filter { it.type != "tv" }
+                // Prefs are read after the row load — the load normalizes
+                // them (new rows get records), so this is never stale.
+                homePrefs = repo.homeRowPrefs()
                 if (cached.isNotEmpty()) {
                     val stale = !repo.isCatalogCacheFresh()
                     uiState = HomeUiState.Content(cached, refreshing = stale)
@@ -158,6 +168,7 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
                 // Live TV has its own tab — never show tv-type rows on Home
                 // (hero or cards).
                 val rows = repo.refreshCatalogRows().filter { it.type != "tv" }
+                homePrefs = repo.homeRowPrefs()
                 uiState = if (rows.isEmpty()) HomeUiState.Empty else HomeUiState.Content(rows)
             } catch (e: Exception) {
                 uiState = HomeUiState.Error(e.message ?: "Couldn't load catalogs")
@@ -248,7 +259,15 @@ fun HomeScreen(
                 is HomeUiState.Content -> {
                     // Hero carousel data: computed once per row-set, outside the
                     // LazyColumn DSL (remember can't run inside the list scope).
-                    val featured = remember(state.rows) { featuredTitles(state.rows) }
+                    // The hero feeds ONLY from the rows picked as hero sources
+                    // (max 2, Nuvio) — not from every row — and takes up to 8
+                    // titles, shuffled by featuredTitles' backdrop-first order.
+                    val prefs = vm.homePrefs
+                    val heroRows = remember(state.rows, prefs) {
+                        val heroKeys = prefs.heroSourceKeys()
+                        state.rows.filter { row -> row.rowKey() in heroKeys }
+                    }
+                    val featured = remember(heroRows) { featuredTitles(heroRows, max = 8) }
                     // Dock Home-tap → scroll to the very top (v0.12.4).
                     // handledScrollRequest is saveable so a request fired
                     // while Home sat in the back stack is honoured once,
@@ -326,8 +345,9 @@ fun HomeScreen(
                     ) {
                         // Hero carousel: featured titles with backdrop art, first item
                         // so it's the first thing on screen. Explicit key keeps it
-                        // stable while rows refresh underneath.
-                        if (featured.isNotEmpty()) {
+                        // stable while rows refresh underneath. Off when the user
+                        // turned the hero off in Home catalogs settings.
+                        if (prefs.heroEnabled && featured.isNotEmpty()) {
                             item(key = "hero_carousel") {
                                 // Pinned hero (v0.12.5, owner's order): the
                                 // hero stays at the top while the catalog
@@ -425,9 +445,11 @@ fun HomeScreen(
                                     row.catalogName,
                                     // Don't repeat the addon name when the catalog name
                                     // already starts with it ("PlavioMeta: Trending
-                                    // Movies" + "PlavioMeta" looks broken).
+                                    // Movies" + "PlavioMeta" looks broken). The whole
+                                    // subtitle goes away with "Show catalog type" off.
                                     row.addonName.takeIf {
-                                        !row.catalogName.startsWith(it, ignoreCase = true)
+                                        prefs.showCatalogType &&
+                                            !row.catalogName.startsWith(it, ignoreCase = true)
                                     },
                                     onMoreClick = { onOpenCatalog(row) }
                                 )
