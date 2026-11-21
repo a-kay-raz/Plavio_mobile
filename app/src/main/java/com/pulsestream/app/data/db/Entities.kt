@@ -313,7 +313,10 @@ data class DownloadItem(
     val showKey: String = "",
     val seriesName: String = "",
     val season: Int = 0,
-    val episode: Int = 0
+    val episode: Int = 0,
+    // Step 46: subtitle URLs captured at enqueue time (org.json array of
+    // {"url","lang"}) — fetched into sidecars after the download completes.
+    val subtitlesJson: String = ""
 )
 
 @Dao
@@ -329,6 +332,11 @@ interface DownloadDao {
 
     @Query("SELECT * FROM downloads WHERE url = :url AND status != 'CANCELLED' LIMIT 1")
     suspend fun getByUrl(url: String): DownloadItem?
+
+    // Step 46: offline playback looks a download up by its file path to
+    // attach the subtitle sidecars + cached poster.
+    @Query("SELECT * FROM downloads WHERE filePath = :filePath LIMIT 1")
+    suspend fun getByFilePath(filePath: String): DownloadItem?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: DownloadItem)

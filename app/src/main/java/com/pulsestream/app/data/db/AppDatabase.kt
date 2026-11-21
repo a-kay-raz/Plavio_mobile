@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CustomListItem::class,
         WatchedRecord::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -224,5 +224,12 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         db.execSQL("ALTER TABLE downloads ADD COLUMN seriesName TEXT NOT NULL DEFAULT ''")
         db.execSQL("ALTER TABLE downloads ADD COLUMN season INTEGER NOT NULL DEFAULT 0")
         db.execSQL("ALTER TABLE downloads ADD COLUMN episode INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** v14 → v15 (Step 46): subtitle URLs captured at enqueue time on downloads (fetched into sidecars after completion). */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE downloads ADD COLUMN subtitlesJson TEXT NOT NULL DEFAULT ''")
     }
 }

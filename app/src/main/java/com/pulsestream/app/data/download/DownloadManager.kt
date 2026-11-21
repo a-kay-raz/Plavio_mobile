@@ -167,6 +167,10 @@ class DownloadManager private constructor(private val appContext: Context) {
     fun downloadsDir(): File = File(appContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
     fun observeAll() = dao.observeAll()
     suspend fun getByUrl(url: String): DownloadItem? = dao.getByUrl(url)
+
+    // Step 46: offline playback looks a download up by its file path to
+    // attach the subtitle sidecars + cached poster.
+    suspend fun getByFilePath(filePath: String): DownloadItem? = dao.getByFilePath(filePath)
     fun isWifiOnlyDownloads(): Boolean = prefs.getBoolean(KEY_WIFI_ONLY, false)
     fun setWifiOnlyDownloads(enabled: Boolean) { prefs.edit().putBoolean(KEY_WIFI_ONLY, enabled).apply() }
 
@@ -301,7 +305,10 @@ class DownloadManager private constructor(private val appContext: Context) {
         showKey: String = "",
         seriesName: String = "",
         season: Int = 0,
-        episode: Int = 0
+        episode: Int = 0,
+        // Step 46: subtitle URLs captured at enqueue time — fetched into
+        // sidecars once the download completes.
+        subtitles: List<com.pulsestream.app.data.Subtitle> = emptyList()
     ): String {
         require(!isDashDownloadUrl(url)) {
             "DASH streams can't be saved as offline downloads yet."
@@ -335,7 +342,8 @@ class DownloadManager private constructor(private val appContext: Context) {
             showKey = showKey,
             seriesName = seriesName,
             season = season,
-            episode = episode
+            episode = episode,
+            subtitlesJson = DownloadSubtitles.encodeSubtitles(subtitles)
         )
         withContext(Dispatchers.IO) { dao.upsert(item) }
         // Step 36: a paused show stays paused — new episodes queue as PAUSED
@@ -485,6 +493,14 @@ class DownloadManager private constructor(private val appContext: Context) {
                 if (!isContentUriPath(item.filePath)) {
                     runCatching { metadataFile(item).delete() }
                 }
+                // Step 46: drop this download's subtitle sidecars, and the
+                // cached show meta when no download of the show remains
+                // (movies: the meta key is the item id, so it always goes).
+                DownloadSubtitles.deleteSidecars(appContext, id)
+                val metaKey = item.showKey.ifEmpty { item.id }
+                val showStillDownloaded = item.showKey.isNotEmpty() &&
+                    dao.getAll().any { it.showKey == item.showKey && it.id != id }
+                if (!showStillDownloaded) OfflineShowMetadata.delete(appContext, metaKey)
                 dao.deleteById(id)
             }
         }
@@ -699,6 +715,9 @@ class DownloadManager private constructor(private val appContext: Context) {
             }
             // Step 37: move the finished file into the custom folder when set.
             moveCompletedToExternal(item)
+            // Step 46: fetch the captured subtitles into sidecars (fire-and-
+            // forget — never blocks or fails the completed download).
+            scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
             _activeDownloads.value = _activeDownloads.value - item.id
             Log.i(TAG, "Download completed: ${item.id} ($downloaded bytes)")
             }
@@ -912,6 +931,9 @@ class DownloadManager private constructor(private val appContext: Context) {
         }
         // Step 37: move the finished file into the custom folder when set.
         moveCompletedToExternal(item)
+        // Step 46: fetch the captured subtitles into sidecars (fire-and-
+        // forget — never blocks or fails the completed download).
+        scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
         _activeDownloads.value = _activeDownloads.value - item.id
         Log.i(TAG, "Download completed (segmented): ${item.id} (${probe.total} bytes)")
     }
@@ -1203,6 +1225,9 @@ class DownloadManager private constructor(private val appContext: Context) {
         }
         // Step 37: move the finished file into the custom folder when set.
         moveCompletedToExternal(item)
+        // Step 46: fetch the captured subtitles into sidecars (fire-and-
+        // forget — never blocks or fails the completed download).
+        scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
         _activeDownloads.value = _activeDownloads.value - item.id
         Log.i(TAG, "Download completed (HLS): ${item.id} ($size bytes)")
     }

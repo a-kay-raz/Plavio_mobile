@@ -24,8 +24,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pulsestream.app.data.db.DownloadItem
 import com.pulsestream.app.data.download.DownloadManager
+import com.pulsestream.app.data.download.OfflineShowMetadata
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlassIconButton
+import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.WifiOnlyDownloadsControl
 import com.pulsestream.app.ui.theme.GlassBorder
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -650,17 +652,33 @@ private fun CompletedDownloadRow(
             // that could only fail — say so plainly instead.
             // Step 37: content-URI-aware — moved files live in the SAF folder.
             val fileMissing = remember(item.id, item.filePath) { !manager.downloadFileExists(item.filePath) }
+            // Step 46: cached poster for offline browsing (movies: the meta
+            // key is the item id; series episodes: the show key).
+            val context = LocalContext.current
+            val poster = remember(item.id) {
+                OfflineShowMetadata.posterFile(context, item.showKey.ifEmpty { item.id })
+            }
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Filled.Movie,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
-                    )
+                    if (poster != null) {
+                        SafePosterImage(
+                            model = poster,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -748,9 +766,23 @@ private fun ShowDownloadGroup(
         if (paused > 0) append(" · $paused paused")
     }
 
+    // Step 46: cached poster for offline browsing (null when the show was
+    // downloaded before Step 46 or the poster fetch failed).
+    val poster = remember(showKey) { OfflineShowMetadata.posterFile(context, showKey) }
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (poster != null) {
+                    SafePosterImage(
+                        model = poster,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(Modifier.width(10.dp))
+                }
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
