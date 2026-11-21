@@ -150,7 +150,8 @@ fun SettingsScreen(
     onGoToDownloads: () -> Unit = {},
     onGoToCollections: () -> Unit = {},
     onGoToTracking: () -> Unit = {},
-    onGoToMediaServers: () -> Unit = {}
+    onGoToMediaServers: () -> Unit = {},
+    onGoToProfiles: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -328,6 +329,17 @@ fun SettingsScreen(
                 title = "Media Servers",
                 subtitle = "Your Jellyfin, Emby, Plex or Silo libraries",
                 onClick = onGoToMediaServers,
+                compact = true
+            )
+        },
+        // Step 56: profiles — each keeps its own library, progress and settings.
+        SettingsEntry(sectionGeneral, "Profiles",
+            "profiles switch manage pin lock multi profile") {
+            SettingsNavRow(
+                icon = Icons.Filled.Person,
+                title = "Profiles",
+                subtitle = "Switch profiles, each with its own library",
+                onClick = onGoToProfiles,
                 compact = true
             )
         },

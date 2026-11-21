@@ -4,6 +4,7 @@ import com.pulsestream.app.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.CatalogCache
 import com.pulsestream.app.data.db.CustomList
 import com.pulsestream.app.data.db.WatchedRecord
@@ -55,6 +56,8 @@ data class BackupPreview(val version: Int, val addonCount: Int, val watchlistCou
 
 class StreamRepository(
     private val db: AppDatabase,
+    /** Step 56: the active profile's database — library/progress DAOs read from here. */
+    private val profileDb: ProfileDatabase,
     val api: StremioApi,
     val settings: SettingsStore
 ) {
@@ -75,14 +78,14 @@ class StreamRepository(
     init {
         // Keep the process-wide watched set current for poster/episode pills.
         repoScope.launch {
-            db.watchedDao().observeKeys().collect { keys ->
+            profileDb.watchedDao().observeKeys().collect { keys ->
                 WatchedMarks.keys.value = keys.toSet()
             }
         }
     }
     val continueWatching: Flow<List<PlaybackState>> =
-        db.playbackDao().observeRecent().map { dedupePlaybackRows(it) }
-    val watchlist: Flow<List<WatchlistItem>> = db.watchlistDao().observeAll()
+        profileDb.playbackDao().observeRecent().map { dedupePlaybackRows(it) }
+    val watchlist: Flow<List<WatchlistItem>> = profileDb.watchlistDao().observeAll()
 
     /** In-memory cache of every catalog item loaded on Home — used for search. */
     @Volatile
@@ -1863,10 +1866,10 @@ class StreamRepository(
     }
 
     suspend fun getSavedPosition(key: String): Long =
-        withContext(Dispatchers.IO) { db.playbackDao().getByKey(key)?.positionMs ?: 0L }
+        withContext(Dispatchers.IO) { profileDb.playbackDao().getByKey(key)?.positionMs ?: 0L }
 
     suspend fun deleteSavedPosition(key: String) =
-        withContext(Dispatchers.IO) { db.playbackDao().deleteByKey(key) }
+        withContext(Dispatchers.IO) { profileDb.playbackDao().deleteByKey(key) }
 
     /**
      * Continue Watching identity: rows are keyed by stream URL, so the
@@ -1902,8 +1905,8 @@ class StreamRepository(
     suspend fun setEpisodeWatched(seriesId: String, season: Int, episode: Int, watched: Boolean) =
         withContext(Dispatchers.IO) {
             val key = WatchedMarks.episodeKey(seriesId, season, episode)
-            if (watched) db.watchedDao().upsert(WatchedRecord(key, System.currentTimeMillis()))
-            else db.watchedDao().deleteByKey(key)
+            if (watched) profileDb.watchedDao().upsert(WatchedRecord(key, System.currentTimeMillis()))
+            else profileDb.watchedDao().deleteByKey(key)
             // Step 34: queue the change for the Simkl sync engine.
             SimklSyncEngine.enqueueWatched(settings, "series", seriesId, season = season, episode = episode, watched = watched)
         }
@@ -1914,14 +1917,14 @@ class StreamRepository(
             if (watched) {
                 val now = System.currentTimeMillis()
                 episodes.filter { it.season == season }.forEach { video ->
-                    db.watchedDao().upsert(
+                    profileDb.watchedDao().upsert(
                         WatchedRecord(WatchedMarks.episodeKey(seriesId, video.season, video.episode), now)
                     )
                     // Step 34: queue each episode for the Simkl sync engine.
                     SimklSyncEngine.enqueueWatched(settings, "series", seriesId, season = video.season, episode = video.episode, watched = true)
                 }
             } else {
-                db.watchedDao().deleteByPrefix("e|$seriesId|$season|")
+                profileDb.watchedDao().deleteByPrefix("e|$seriesId|$season|")
                 // Step 34: queue each episode's unwatch for the Simkl sync engine.
                 episodes.filter { it.season == season }.forEach { video ->
                     SimklSyncEngine.enqueueWatched(settings, "series", seriesId, season = video.season, episode = video.episode, watched = false)
@@ -1951,7 +1954,7 @@ class StreamRepository(
                 WatchedMarks.movieKey(videoId)
             }
             runCatching {
-                db.watchedDao().upsert(WatchedRecord(watchedKey, System.currentTimeMillis()))
+                profileDb.watchedDao().upsert(WatchedRecord(watchedKey, System.currentTimeMillis()))
             }
             // Step 55: server titles play back their watched state to the
             // server (videoId "server:{serverId}:{itemId}"). Best-effort.
@@ -1979,18 +1982,18 @@ class StreamRepository(
                 positionMs, durationMs, imdbId, season, episode, 0L)
         )
         runCatching {
-            db.playbackDao().getAll()
+            profileDb.playbackDao().getAll()
                 .filter { it.key != streamUrl && playbackIdentity(it) == identity }
-                .forEach { db.playbackDao().deleteByKey(it.key) }
+                .forEach { profileDb.playbackDao().deleteByKey(it.key) }
         }
         // Don't clutter Continue Watching with barely-started items, and drop
         // entries the user effectively finished (less than 30s left).
         if (durationMs > 0 && durationMs - positionMs < 30_000) {
-            db.playbackDao().deleteByKey(streamUrl)
+            profileDb.playbackDao().deleteByKey(streamUrl)
             return@withContext
         }
         if (positionMs < 10_000) return@withContext
-        db.playbackDao().upsert(
+        profileDb.playbackDao().upsert(
             PlaybackState(
                 key = streamUrl,
                 title = title,
@@ -2017,7 +2020,7 @@ class StreamRepository(
     var onWatchlistChanged: (() -> Unit)? = null
 
     fun observeWatchlistItem(key: String): Flow<WatchlistItem?> =
-        db.watchlistDao().observeByKey(key)
+        profileDb.watchlistDao().observeByKey(key)
 
     suspend fun toggleWatchlist(
         addonId: String,
@@ -2032,10 +2035,10 @@ class StreamRepository(
         // can't upsert after the delete.
         writeMutex.withLock {
             val key = "$addonId|$type|$metaId"
-            if (db.watchlistDao().getByKey(key) != null) {
-                db.watchlistDao().deleteByKey(key)
+            if (profileDb.watchlistDao().getByKey(key) != null) {
+                profileDb.watchlistDao().deleteByKey(key)
             } else {
-                db.watchlistDao().upsert(
+                profileDb.watchlistDao().upsert(
                     WatchlistItem(
                         key = key,
                         addonId = addonId,
@@ -2642,13 +2645,13 @@ class StreamRepository(
                     } }))
                 }
                 if (includeWatchlist) {
-                    put("watchlist", JSONArray(db.watchlistDao().getAll().map { w -> JSONObject().apply {
+                    put("watchlist", JSONArray(profileDb.watchlistDao().getAll().map { w -> JSONObject().apply {
                         put("key", w.key); put("addonId", w.addonId); put("type", w.type); put("metaId", w.metaId)
                         put("name", w.name); put("poster", w.poster?.let(::safeBackupUrl) ?: JSONObject.NULL); put("addedAt", w.addedAt)
                     } }))
                 }
                 if (includePlayback) {
-                    put("playback", JSONArray(db.playbackDao().getAll().map { state -> JSONObject().apply {
+                    put("playback", JSONArray(profileDb.playbackDao().getAll().map { state -> JSONObject().apply {
                         put("key", state.key); put("title", state.title)
                         put("poster", state.poster?.let(::safeBackupUrl) ?: JSONObject.NULL); put("videoId", state.videoId)
                         put("streamUrl", safeBackupUrl(state.streamUrl)); put("positionMs", state.positionMs)
@@ -2657,10 +2660,10 @@ class StreamRepository(
                     } }))
                 }
                 if (includeCustomLists) {
-                    put("customLists", JSONArray(db.customListDao().getLists().map { l -> JSONObject().apply {
+                    put("customLists", JSONArray(profileDb.customListDao().getLists().map { l -> JSONObject().apply {
                         put("id", l.id); put("name", l.name); put("createdAt", l.createdAt)
                     } }))
-                    put("customListItems", JSONArray(db.customListDao().getAllItems().map { item -> JSONObject().apply {
+                    put("customListItems", JSONArray(profileDb.customListDao().getAllItems().map { item -> JSONObject().apply {
                         put("listId", item.listId); put("itemKey", item.itemKey); put("addonId", item.addonId)
                         put("type", item.type); put("metaId", item.metaId); put("name", item.name)
                         put("poster", item.poster?.let(::safeBackupUrl) ?: JSONObject.NULL); put("addedAt", item.addedAt)
@@ -2690,16 +2693,16 @@ class StreamRepository(
             try {
                 db.withTransaction {
                     parsed.addons?.let { rows -> db.addonDao().clearAll(); rows.forEach { db.addonDao().upsert(it) } }
-                    parsed.watchlist?.let { rows -> db.watchlistDao().clearAll(); rows.forEach { db.watchlistDao().upsert(it) } }
-                    parsed.playback?.let { rows -> db.playbackDao().clearAll(); rows.forEach { db.playbackDao().upsert(it) } }
+                    parsed.watchlist?.let { rows -> profileDb.watchlistDao().clearAll(); rows.forEach { profileDb.watchlistDao().upsert(it) } }
+                    parsed.playback?.let { rows -> profileDb.playbackDao().clearAll(); rows.forEach { profileDb.playbackDao().upsert(it) } }
                     parsed.lists?.let { rows ->
-                        db.customListDao().clearAllItems(); db.customListDao().clearLists()
-                        if (rows.isNotEmpty()) db.customListDao().insertLists(rows)
+                        profileDb.customListDao().clearAllItems(); profileDb.customListDao().clearLists()
+                        if (rows.isNotEmpty()) profileDb.customListDao().insertLists(rows)
                         val items = parsed.listItems.orEmpty()
-                        if (items.isNotEmpty()) db.customListDao().insertItems(items)
+                        if (items.isNotEmpty()) profileDb.customListDao().insertItems(items)
                     } ?: parsed.listItems?.let { rows ->
-                        db.customListDao().clearAllItems()
-                        if (rows.isNotEmpty()) db.customListDao().insertItems(rows)
+                        profileDb.customListDao().clearAllItems()
+                        if (rows.isNotEmpty()) profileDb.customListDao().insertItems(rows)
                     }
                     db.subtitleCacheDao().clearAll(); db.catalogCacheDao().clearAll()
                     parsed.settings?.let { settings.importAllPrefs(it) }

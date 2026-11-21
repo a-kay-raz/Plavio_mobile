@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
@@ -51,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +68,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.pulsestream.app.data.ProfileStore
+import com.pulsestream.app.data.ProfilesRepository
 import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.cloud.GoogleDriveSyncManager
@@ -88,7 +92,11 @@ import kotlinx.coroutines.withContext
 @Composable
 fun AccountScreen(
     repository: StreamRepository,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    // Step 56: the profiles repository (for mirroring name/avatar edits
+    // into the active Profile row) + the switcher entry point.
+    profilesRepository: ProfilesRepository? = null,
+    onGoToProfiles: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -105,6 +113,26 @@ fun AccountScreen(
     var editingName by remember { mutableStateOf(false) }
     var nameDraft by remember { mutableStateOf("") }
     val profileName = remember(refreshTick) { repository.settings.profileUserName }
+
+    // Step 56: the active Profile row — name/avatar edits below mirror
+    // into it so the Profiles screen and this screen never disagree.
+    val profiles by profilesRepository?.observeProfiles()
+        ?.collectAsState(initial = emptyList())
+        ?: remember { mutableStateOf<List<com.pulsestream.app.data.db.Profile>>(emptyList()) }
+    val activeProfile = remember(profiles) {
+        profiles.firstOrNull { it.id == ProfileStore.activeProfileId(context) }
+    }
+    fun syncProfileRow(name: String? = null, avatar: String? = null) {
+        val current = activeProfile ?: return
+        scope.launch {
+            profilesRepository?.update(
+                current.copy(
+                    name = name ?: current.name,
+                    avatar = avatar ?: current.avatar
+                )
+            )
+        }
+    }
 
     val isSignedIn = remember(refreshTick) { sync.isSignedIn() }
     val accountEmail = remember(refreshTick) { sync.getAccountEmail() }
@@ -184,6 +212,7 @@ fun AccountScreen(
                 }
                 if (saved) {
                     repository.settings.profileAvatar = "photo"
+                    syncProfileRow(avatar = "photo")
                     message = "Profile picture updated."
                 } else {
                     error = "Couldn't use that photo."
@@ -344,6 +373,16 @@ fun AccountScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("Change picture")
                         }
+                    // Step 56: switch to another profile (or manage them).
+                    OutlinedButton(onClick = onGoToProfiles) {
+                        Icon(
+                            Icons.Filled.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Switch profile")
+                    }
                     }
                 }
 
@@ -561,6 +600,7 @@ fun AccountScreen(
                                                 .clip(CircleShape)
                                                 .clickable {
                                                     repository.settings.profileAvatar = "preset:${preset.id}"
+                                                    syncProfileRow(avatar = "preset:${preset.id}")
                                                     showPicker = false
                                                     refreshTick++
                                                 },
@@ -572,6 +612,7 @@ fun AccountScreen(
                                     TextButton(
                                         onClick = {
                                             repository.settings.profileAvatar = ""
+                                            syncProfileRow(avatar = "")
                                             repository.settings.deleteProfilePhoto()
                                             showPicker = false
                                             refreshTick++
@@ -611,6 +652,7 @@ fun AccountScreen(
                         confirmButton = {
                             TextButton(onClick = {
                                 repository.settings.profileUserName = nameDraft
+                                syncProfileRow(name = nameDraft)
                                 editingName = false
                                 refreshTick++
                             }) { Text("Save") }

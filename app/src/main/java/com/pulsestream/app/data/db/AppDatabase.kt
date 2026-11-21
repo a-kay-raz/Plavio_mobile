@@ -18,9 +18,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WatchedRecord::class,
         Collection::class,
         CollectionFolder::class,
-        CollectionSourceRow::class
+        CollectionSourceRow::class,
+        Profile::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun customListDao(): CustomListDao
     abstract fun watchedDao(): WatchedDao
     abstract fun collectionDao(): CollectionDao
+    abstract fun profileDao(): ProfileDao
 }
 
 /**
@@ -296,6 +298,27 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
                 sortBy TEXT,
                 sortHow TEXT,
                 sortOrder INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+    }
+}
+
+/** v18 → v19 (Step 56): profiles table in the global database. The
+ * per-profile library tables are NOT moved here — each profile gets
+ * its own database file (ProfileDatabase), seeded once from the old
+ * global rows by ProfileStore.migrateLegacyData. */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS profiles (
+                id TEXT NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL,
+                avatarColorHex TEXT NOT NULL,
+                avatar TEXT NOT NULL,
+                pinHash TEXT,
+                pinSalt TEXT,
+                createdAt INTEGER NOT NULL,
+                sortOrder INTEGER NOT NULL
             )"""
         )
     }

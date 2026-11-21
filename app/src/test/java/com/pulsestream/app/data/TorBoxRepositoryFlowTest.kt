@@ -2,6 +2,7 @@ package com.pulsestream.app.data
 
 import android.app.Application
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.InstalledAddon
 import com.pulsestream.app.data.debrid.DebridResolveResult
 import com.pulsestream.app.data.debrid.TorBoxApi
@@ -27,12 +28,13 @@ class TorBoxRepositoryFlowTest {
 
     @Before fun setup() {
         val db = mockk<AppDatabase>(relaxed = true)
+        val profileDb = mockk<ProfileDatabase>(relaxed = true)
         api = mockk()
         settings = mockk(relaxed = true)
         coEvery { db.addonDao().getAll() } returns listOf(addon)
         every { settings.torboxApiKey } returns "fixture-key-not-real"
         every { settings.realDebridApiKey } returns null
-        repository = StreamRepository(db, api, settings)
+        repository = StreamRepository(db, profileDb, api, settings)
         mockkConstructor(TorBoxApi::class)
         SourceDiagnostics.clear()
     }

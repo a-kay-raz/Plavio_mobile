@@ -132,6 +132,8 @@ import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.PlayerChoice
 import com.pulsestream.app.data.CollectionRepository
 import com.pulsestream.app.data.CustomListsRepository
+import com.pulsestream.app.data.ProfileStore
+import com.pulsestream.app.data.ProfilesRepository
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.notifications.EpisodeNotifications
 import com.pulsestream.app.data.notifications.NotificationNav
@@ -147,6 +149,8 @@ import com.pulsestream.app.ui.screens.OnboardingScreen
 import com.pulsestream.app.ui.screens.SplashScreen
 import com.pulsestream.app.ui.screens.SettingsScreen
 import com.pulsestream.app.ui.screens.AccountScreen
+import com.pulsestream.app.ui.screens.PinEntryDialog
+import com.pulsestream.app.ui.screens.ProfilesScreen
 import com.pulsestream.app.ui.screens.AddonsScreen
 import com.pulsestream.app.ui.screens.CatalogScreen
 import com.pulsestream.app.ui.screens.ContinueWatchingSettingsScreen
@@ -703,8 +707,28 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val app = appContext as PulseApp
     val repository = remember { app.repository }
-    val listsRepository = remember { CustomListsRepository(app.database) }
-    val collectionRepository = remember { CollectionRepository(app.database) }
+    val listsRepository = remember { CustomListsRepository(app.profileDatabase) }
+    val collectionRepository = remember { CollectionRepository(app.profileDatabase) }
+    // Step 56: profiles live in the global database.
+    val profilesRepository = remember { ProfilesRepository(app.database) }
+
+    // Step 56: cold-start PIN gate — a PIN-locked active profile asks
+    // for its PIN before Home shows. The check runs once per process;
+    // a profile unlocked once stays unlocked until the process dies.
+    var pinCheckDone by remember { mutableStateOf(false) }
+    var lockedProfile by remember { mutableStateOf<com.pulsestream.app.data.db.Profile?>(null) }
+    LaunchedEffect(Unit) {
+        val activeId = ProfileStore.activeProfileId(appContext)
+        val profile = activeId?.let {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                profilesRepository.getById(it)
+            }
+        }
+        if (profile != null && profile.pinEnabled && !ProfileStore.isUnlocked(profile.id)) {
+            lockedProfile = profile
+        }
+        pinCheckDone = true
+    }
     // Activity context for the "Ask every time" player chooser dialog.
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
 
@@ -1124,6 +1148,19 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
         info = updateInfo,
         onDismiss = { updateInfo = null }
     )
+
+    // Step 56: cold-start PIN gate — blocks the whole UI until the
+    // locked active profile is unlocked (dismissing exits the app).
+    if (pinCheckDone && lockedProfile != null) {
+        PinEntryDialog(
+            profile = lockedProfile!!,
+            onDismiss = { activity?.finish() },
+            onUnlocked = {
+                ProfileStore.markUnlocked(lockedProfile!!.id)
+                lockedProfile = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -1465,7 +1502,8 @@ private fun PulseNavGraph(
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
                 onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) },
-                onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) }
+                onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) },
+                onGoToProfiles = { navController.navigate(Routes.PROFILES) }
             )
         }
         composable(Routes.MEDIA_SERVERS) {
@@ -1548,6 +1586,14 @@ private fun PulseNavGraph(
         composable(Routes.ACCOUNT) {
             AccountScreen(
                 repository = repository,
+                onBack = { navController.popBackStack() },
+                profilesRepository = profilesRepository,
+                onGoToProfiles = { navController.navigate(Routes.PROFILES) }
+            )
+        }
+        composable(Routes.PROFILES) {
+            ProfilesScreen(
+                profilesRepository = profilesRepository,
                 onBack = { navController.popBackStack() }
             )
         }

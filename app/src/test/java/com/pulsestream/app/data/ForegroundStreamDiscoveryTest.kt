@@ -2,6 +2,7 @@ package com.pulsestream.app.data
 
 import android.app.Application
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.InstalledAddon
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -28,11 +29,12 @@ class ForegroundStreamDiscoveryTest {
 
     private fun repository(api: StremioApi, addons: List<InstalledAddon>): StreamRepository {
         val db = mockk<AppDatabase>(relaxed = true)
+        val profileDb = mockk<ProfileDatabase>(relaxed = true)
         val settings = mockk<SettingsStore>(relaxed = true)
         every { settings.torboxApiKey } returns null
         every { settings.realDebridApiKey } returns null
         coEvery { db.addonDao().getAll() } returns addons
-        return StreamRepository(db, api, settings)
+        return StreamRepository(db, profileDb, api, settings)
     }
 
     @Test fun liveDiscoveryDoesNotWaitForSaturatedBackgroundCatalogGate() = runBlocking {
