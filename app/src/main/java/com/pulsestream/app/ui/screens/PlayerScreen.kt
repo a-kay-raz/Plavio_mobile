@@ -124,6 +124,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.onSizeChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -814,6 +815,15 @@ fun PlayerScreen(
     val aspectLabel = ASPECT_MODES.firstOrNull { it.first == aspectMode }?.second ?: "Fit"
 
     var isBuffering by remember { mutableStateOf(true) }
+    // Staged startup text (Nuvio PlayerLoadingStatus): what the player is
+    // doing right now, updated by the poll below — "Opening source…" while
+    // the media is being (re)built or the player is idle, "Reading
+    // tracks…" once preparing but before any track is known, "Buffering…"
+    // once tracks are in and data is awaited.
+    var loadingStep by remember { mutableStateOf("Opening source…") }
+    // Measured height of the header row, so the device-status strip can
+    // sit directly under it without overlapping the title.
+    var headerHeightPx by remember { mutableIntStateOf(0) }
     var switchingMedia by remember { mutableStateOf(false) }
     /** True once the current request has actually played — gates the
      * startup presentation (backdrop + orbit) against a plain rebuffer
@@ -2208,6 +2218,12 @@ fun PlayerScreen(
             if (c.isPlaying) hasStartedPlayback = true
             isBuffering = c.playbackState == Player.STATE_BUFFERING ||
                 c.playbackState == Player.STATE_IDLE
+            loadingStep = when {
+                switchingMedia -> "Opening source…"
+                c.playbackState == Player.STATE_IDLE -> "Opening source…"
+                c.currentTracks.groups.isEmpty() -> "Reading tracks…"
+                else -> "Buffering…"
+            }
             volumePercent = displayVolumePercent()
             // A rebuilt player (source/episode switch) has a new audio
             // session — re-attach the boost enhancer to it.
@@ -2647,11 +2663,11 @@ fun PlayerScreen(
         // Startup presentation (owner's pick 2026-10-24 — "Backdrop
         // + orbit"): while the current request has not played yet, the
         // connecting state is the title's art full-screen, dimmed, the
-        // title and the orbit loader — no process wording at all. The
-        // stall / failover machinery behind it is unchanged; only this
-        // presentation follows the treatment. Once playback has begun,
-        // a rebuffer shows just the orbit over the video. Suppressed on
-        // a fatal error — the error overlay takes its place (#4).
+        // title, the orbit loader and the staged step text (Nuvio
+        // PlayerLoadingStatus — "Opening source… / Reading tracks… /
+        // Buffering…" instead of a bare spinner). Once playback has begun,
+        // a rebuffer shows just the orbit + "Buffering…" over the video.
+        // Suppressed on a fatal error — the error overlay takes its place (#4).
         if ((isBuffering || switchingMedia) && playerError == null) {
             if (!hasStartedPlayback) {
                 Box(Modifier.fillMaxSize()) {
@@ -2682,11 +2698,27 @@ fun PlayerScreen(
                         )
                         Spacer(Modifier.height(20.dp))
                         OrbitDots(Modifier.size(54.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            loadingStep,
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    OrbitDots(Modifier.size(48.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        OrbitDots(Modifier.size(48.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Buffering…",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -2989,6 +3021,18 @@ fun PlayerScreen(
             }
         }
 
+        // Pause metadata overlay (Nuvio PauseMetadataOverlay): while
+        // paused, the title/episode/provider show big over a gradient,
+        // under the transport controls so they stay usable. Hidden until
+        // playback has actually started, on error, and in PiP.
+        if (!isPlaying && hasStartedPlayback && playerError == null && !inPip) {
+            PauseMetadataOverlay(
+                title = headerTitle,
+                episodeLine = episodeLine,
+                providerName = sourceNameText
+            )
+        }
+
         // Controls overlay.
         AnimatedVisibility(
             visible = showControls && !locked,
@@ -3027,7 +3071,8 @@ fun PlayerScreen(
                     Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(top = 8.dp, start = 20.dp, end = 20.dp),
+                        .padding(top = 8.dp, start = 20.dp, end = 20.dp)
+                        .onSizeChanged { headerHeightPx = it.height },
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -3140,6 +3185,17 @@ fun PlayerScreen(
                         )
                     }
                 }
+
+                // Device-status strip (Nuvio PlayerDeviceStatusOverlay):
+                // clock + battery + network, top-center directly under
+                // the header. Reads live while the controls are up.
+                val deviceStatus = rememberPlayerDeviceStatus()
+                PlayerDeviceStatusStrip(
+                    status = deviceStatus,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = with(LocalDensity.current) { headerHeightPx.toDp() } + 8.dp)
+                )
 
                 // ---- Center transport (Nuvio legacy: 56dp gap, 10dp lift,
                 // 34dp play icon in a glass circle, 34dp skip icons) ----
