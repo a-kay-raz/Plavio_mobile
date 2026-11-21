@@ -16,7 +16,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
 
 /**
- * Plex client (Nuvio servers/plex/*, scoped port): PIN sign-in via
+ * Plex client (Nuvio servers/plex/, scoped port): PIN sign-in via
  * plex.tv, resource discovery, library sections + items, direct-play
  * stream URLs and scrobble. Transcoding is NOT ported — direct play
  * only; a file the device cannot play directly will fail in the

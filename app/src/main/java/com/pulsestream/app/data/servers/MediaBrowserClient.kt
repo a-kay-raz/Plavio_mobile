@@ -13,7 +13,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Jellyfin + Emby client (Nuvio servers/mediabrowser/*, scoped port).
+ * Jellyfin + Emby client (Nuvio servers/mediabrowser/, scoped port).
  * Both speak the same MediaBrowser API: username/password auth, Views
  * as libraries, Items with ParentId, direct stream URLs, played
  * marking. Auth uses X-Emby-Authorization; reads use api_key.
