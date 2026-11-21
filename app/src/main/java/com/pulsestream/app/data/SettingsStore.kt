@@ -149,59 +149,15 @@ fun subtitleLangMatches(tag: String?, preferredCode: String): Boolean {
     val t = tag?.lowercase()?.trim().orEmpty()
     if (t.isEmpty()) return false
     val p = preferredCode.lowercase().trim()
-    // ISO 639-2/B (and OpenSubtitles quirks) → canonical 639-1 primary subtag.
-    fun canon(code: String): String {
-        val parts = code.split('-', '_')
-        val head = when (parts[0]) {
-            "eng" -> "en"
-            "spa" -> "es"
-            "fre", "fra" -> "fr"
-            "deu", "ger" -> "de"
-            "ita" -> "it"
-            "por", "pob" -> "pt"
-            "rus" -> "ru"
-            "ara" -> "ar"
-            "hin" -> "hi"
-            "urd" -> "ur"
-            "tur" -> "tr"
-            "zho", "chi" -> "zh"
-            "jpn" -> "ja"
-            "kor" -> "ko"
-            "nld", "dut" -> "nl"
-            "swe" -> "sv"
-            "nor", "nob" -> "no"
-            "dan" -> "da"
-            "fin" -> "fi"
-            "pol" -> "pl"
-            "ces", "cze" -> "cs"
-            "slk", "slo" -> "sk"
-            "ron", "rum" -> "ro"
-            "ell", "gre" -> "el"
-            "heb" -> "he"
-            "tha" -> "th"
-            "vie" -> "vi"
-            "ind" -> "id"
-            "msa", "may" -> "ms"
-            "tam" -> "ta"
-            "tel" -> "te"
-            "ben" -> "bn"
-            "mar" -> "mr"
-            "pan" -> "pa"
-            "guj" -> "gu"
-            "ukr" -> "uk"
-            "hun" -> "hu"
-            "srp", "scc" -> "sr"
-            "hrv" -> "hr"
-            "bos" -> "bs"
-            "slv" -> "sl"
-            "bul" -> "bg"
-            "cat" -> "ca"
-            else -> parts[0]
-        }
-        return (listOf(head) + parts.drop(1)).joinToString("-")
-    }
-    val normT = canon(t)
-    val normP = canon(p)
+    val normT = normalizeSubtitleLanguageCode(t)
+    val normP = normalizeSubtitleLanguageCode(p)
+    if (normT.isEmpty() || normP.isEmpty()) return false
+    // Step 38 (Nuvio matchesNormalizedLanguage): a Castilian "es" preference
+    // must NOT match a LatAm "es-419" track (and vice versa); same for pt/pt-br.
+    if (normP == "es") return normT == "es"
+    if (normP == "es-419") return normT == "es-419"
+    if (normP == "pt") return normT == "pt"
+    if (normP == "pt-br") return normT == "pt-br"
     if (normT == normP) return true
     // Subtag-boundary prefix only — never a bare string prefix.
     fun startsSubtag(longer: String, shorter: String): Boolean =
@@ -209,6 +165,122 @@ fun subtitleLangMatches(tag: String?, preferredCode: String): Boolean {
             longer.startsWith(shorter) &&
             longer[shorter.length] == '-'
     return startsSubtag(normT, normP) || startsSubtag(normP, normT)
+}
+
+/**
+ * Step 38: normalize a language tag to its canonical form (Nuvio
+ * SubtitleLanguageMatching.normalizeLanguageCode). Name forms resolve to
+ * their variant — "Spanish (Latin America)" → "es-419", "Português (Brasil)"
+ * → "pt-br" — and ISO 639-2 codes map to 639-1 via the overrides below.
+ * Returns "" for a blank tag.
+ */
+fun normalizeSubtitleLanguageCode(lang: String?): String {
+    val code = lang?.trim()?.lowercase().orEmpty()
+    if (code.isBlank()) return ""
+    val normalizedCode = code.replace('_', '-')
+    val tokenized = normalizedCode
+        .replace('-', ' ')
+        .replace('.', ' ')
+        .replace('/', ' ')
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    val words = tokenized.split(' ').toSet()
+    fun containsAny(vararg values: String): Boolean = values.any { value ->
+        // "la" is a substring trap ("malayalam", "flamenco") — it only
+        // counts as its own token; the rest keep Nuvio's substring rule.
+        if (value == "la") words.contains("la") else tokenized.contains(value)
+    }
+    if (containsAny("portuguese", "portugues")) {
+        return when {
+            containsAny("brazil", "brasil", "brazilian", "brasileiro", "pt br", "ptbr", "pob", "(br)") ->
+                "pt-br"
+            containsAny("portugal", "european", "europeu", "iberian", "pt pt", "ptpt") ->
+                "pt"
+            else -> "pt"
+        }
+    }
+    if (containsAny("spanish", "espanol", "español", "castellano")) {
+        return if (containsAny(
+                "latin", "latino", "latinoamerica", "latinoamericano",
+                "lat am", "latam", "es 419", "es419", "la", "(419)",
+            )
+        ) "es-419" else "es"
+    }
+    if (containsAny("bahasa indonesia", "indonesian", "indonesia")) return "id"
+    if (containsAny("bahasa malaysia", "bahasa melayu", "malaysian")) return "ms"
+    return SUBTITLE_LANGUAGE_OVERRIDES[code] ?: normalizedCode
+}
+
+private val SUBTITLE_LANGUAGE_OVERRIDES = mapOf(
+    "pt" to "pt", "pt-pt" to "pt", "pt_pt" to "pt", "por" to "pt",
+    "pt-br" to "pt-br", "pt_br" to "pt-br", "br" to "pt-br", "pob" to "pt-br",
+    "fre" to "fr", "ger" to "de", "deu" to "de", "dut" to "nl", "nld" to "nl",
+    "chi" to "zh", "zho" to "zh", "jpn" to "ja", "kor" to "ko", "ara" to "ar",
+    "hin" to "hi", "rus" to "ru", "pol" to "pl", "spa" to "es", "spl" to "es-419",
+    "es-419" to "es-419", "es_419" to "es-419", "es-la" to "es-419", "es-lat" to "es-419",
+    "fra" to "fr", "ita" to "it", "eng" to "en", "swe" to "sv", "nor" to "no",
+    "dan" to "da", "fin" to "fi", "tur" to "tr", "ell" to "el", "gre" to "el",
+    "heb" to "he", "tha" to "th", "vie" to "vi", "ind" to "id", "msa" to "ms",
+    "may" to "ms", "ces" to "cs", "cze" to "cs", "hun" to "hu", "ron" to "ro",
+    "rum" to "ro", "ukr" to "uk", "bul" to "bg", "hrv" to "hr", "srp" to "sr",
+    "slk" to "sk", "slo" to "sk", "slv" to "sl", "zht" to "zh-tw", "zhs" to "zh-cn",
+    "chi-tw" to "zh-tw", "chi-cn" to "zh-cn", "zh-tw" to "zh-tw", "zh_tw" to "zh-tw",
+    "zh-cn" to "zh-cn", "zh_cn" to "zh-cn", "cat" to "ca", "alb" to "sq",
+    "sqi" to "sq", "bos" to "bs", "mac" to "mk", "mkd" to "mk", "lav" to "lv",
+    "lit" to "lt", "est" to "et", "isl" to "is", "ice" to "is", "glg" to "gl",
+    "baq" to "eu", "eus" to "eu", "wel" to "cy", "cym" to "cy", "gle" to "ga",
+    "ben" to "bn", "tam" to "ta", "tel" to "te", "mal" to "ml", "kan" to "kn",
+    "mar" to "mr", "pan" to "pa", "guj" to "gu", "urd" to "ur", "fas" to "fa",
+    "per" to "fa", "amh" to "am", "swa" to "sw", "zul" to "zu", "afr" to "af",
+    "mlt" to "mt", "bel" to "be", "geo" to "ka", "kat" to "ka", "arm" to "hy",
+    "hye" to "hy", "aze" to "az", "kaz" to "kk", "uzb" to "uz"
+)
+
+private val SUBTITLE_BRAZILIAN_TAGS = listOf(
+    "pt-br", "pt_br", "pob", "brazilian", "brazil", "brasil", "brasileiro", " br", "(br)",
+)
+private val SUBTITLE_EUROPEAN_PT_TAGS = listOf(
+    "pt-pt", "pt_pt", "iberian", "european", "portugal", "europeu", " eu", "(eu)",
+)
+private val SUBTITLE_LATINO_TAGS = listOf(
+    "es-419", "es_419", "es-la", "es-lat", "latino", "latinoamerica",
+    "latinoamericano", "latam", "lat am", "latin america",
+)
+private val SUBTITLE_CASTILIAN_TAGS = listOf(
+    "es-es", "es_es", "castilian", "castellano", "spain", "españa", "espana", "iberian",
+)
+private val SUBTITLE_INDONESIAN_TAGS = listOf(
+    "indonesia", "indonesian", "bahasa indonesia",
+)
+
+/**
+ * Step 38: detect a track's language variant from its language + display
+ * name + id (Nuvio SubtitleLanguageMatching.detectTrackLanguageVariant).
+ * A bare "es" track whose name says Latino is "es-419"; a bare "pt" track
+ * whose name says Brasil is "pt-br".
+ */
+fun detectTrackLanguageVariant(language: String?, name: String?, trackId: String?): String {
+    val baseLang = normalizeSubtitleLanguageCode(language ?: "")
+    val haystack = listOfNotNull(name, language, trackId).joinToString(" ").lowercase()
+    if (baseLang == "pt" || baseLang == "por") {
+        val hasBrazilian = SUBTITLE_BRAZILIAN_TAGS.any { haystack.contains(it) }
+        val hasEuropean = SUBTITLE_EUROPEAN_PT_TAGS.any { haystack.contains(it) }
+        if (hasBrazilian && !hasEuropean) return "pt-br"
+        if (hasEuropean && !hasBrazilian) return "pt"
+        return baseLang
+    }
+    if (baseLang == "es" || baseLang == "spa") {
+        val hasLatino = SUBTITLE_LATINO_TAGS.any { haystack.contains(it) }
+        val hasCastilian = SUBTITLE_CASTILIAN_TAGS.any { haystack.contains(it) }
+        if (hasLatino && !hasCastilian) return "es-419"
+        if (hasCastilian && !hasLatino) return "es"
+        return baseLang
+    }
+    if (baseLang == "ms" || baseLang == "msa" || baseLang == "may") {
+        if (SUBTITLE_INDONESIAN_TAGS.any { haystack.contains(it) }) return "id"
+        return baseLang
+    }
+    return baseLang
 }
 
 /** Quality buckets offered in Settings > Streams (canonical sort keys). */
@@ -822,6 +894,28 @@ class SettingsStore(context: Context) {
             else prefs.edit().putString(KEY_AUDIO_LANG, value).apply()
         }
 
+    /**
+     * Secondary preferred audio language (Step 38, Nuvio
+     * resolvePreferredAudioLanguageTargets): tried when no track matches
+     * the primary language. Null = no secondary preference.
+     */
+    var secondaryPreferredAudioLanguage: String?
+        get() = prefs.getString(KEY_SECONDARY_AUDIO_LANG, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_SECONDARY_AUDIO_LANG).apply()
+            else prefs.edit().putString(KEY_SECONDARY_AUDIO_LANG, value).apply()
+        }
+
+    /** Custom subtitle font id (Step 38): "default" | "sans" | "serif" | "mono" | "custom-<uuid>". */
+    var subtitleFontId: String
+        get() = prefs.getString(KEY_SUBTITLE_FONT_ID, "default") ?: "default"
+        set(value) = prefs.edit().putString(KEY_SUBTITLE_FONT_ID, value).apply()
+
+    /** Strip SDH (deaf/hard-of-hearing) cues — [hearing], (sound), "NAME:" labels (Step 38). */
+    var subtitleSdhFilter: Boolean
+        get() = prefs.getBoolean(KEY_SUBTITLE_SDH_FILTER, false)
+        set(value) = prefs.edit().putBoolean(KEY_SUBTITLE_SDH_FILTER, value).apply()
+
     /** Subtitle text color (ARGB int). Default: white. */
     var subtitleTextColor: Int
         get() = prefInt(KEY_SUB_COLOR, 0xFFFFFFFF.toInt())
@@ -1314,6 +1408,9 @@ class SettingsStore(context: Context) {
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"
+        private const val KEY_SECONDARY_AUDIO_LANG = "secondary_preferred_audio_language"
+        private const val KEY_SUBTITLE_FONT_ID = "subtitle_font_id"
+        private const val KEY_SUBTITLE_SDH_FILTER = "subtitle_sdh_filter"
         private const val KEY_SUB_COLOR = "subtitle_text_color"
         private const val KEY_SUB_SIZE = "subtitle_text_size_scale"
         private const val KEY_SUB_BG = "subtitle_background_color"

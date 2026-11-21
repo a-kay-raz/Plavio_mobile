@@ -1,5 +1,17 @@
 package com.pulsestream.app.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,10 +45,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.pulsestream.app.data.BuiltInSubtitleFonts
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.SubtitleFont
+import com.pulsestream.app.data.SubtitleFonts
 import com.pulsestream.app.data.formatOffsetMs
 import com.pulsestream.app.data.subtitleColorName
 import com.pulsestream.app.data.subtitleEdgeName
+import com.pulsestream.app.data.subtitleFontLabel
 import com.pulsestream.app.data.subtitleLanguageName
 import com.pulsestream.app.data.subtitleSizeName
 import com.pulsestream.app.ui.components.GlowBackground
@@ -54,10 +70,18 @@ fun SubtitleSettingsScreen(
     onBack: () -> Unit = {}
 ) {
     val settings = repository.settings
+    val context = LocalContext.current
     var subLangs by remember { mutableStateOf(settings.subtitleLanguages) }
     var subLangPickerOpen by remember { mutableStateOf(false) }
     var subStyleOpen by remember { mutableStateOf(false) }
     var subStyleVersion by remember { mutableIntStateOf(0) }
+    // Step 38: subtitle font + SDH filter.
+    var subFontId by remember { mutableStateOf(settings.subtitleFontId) }
+    var subFontPickerOpen by remember { mutableStateOf(false) }
+    var sdhFilter by remember { mutableStateOf(settings.subtitleSdhFilter) }
+    var installedFonts by remember {
+        mutableStateOf(SubtitleFonts.installed(context))
+    }
     // Global subtitle timing offset (ms). Applied to every title on load;
     // fine-tune per title in the player.
     var subOffsetMs by remember { mutableLongStateOf(settings.subtitleOffsetMs) }
@@ -123,6 +147,28 @@ fun SubtitleSettingsScreen(
                             title = "Subtitle appearance",
                             subtitle = styleSummary,
                             onClick = { subStyleOpen = true }
+                        )
+                    },
+                    {
+                        // Step 38: custom subtitle font (built-ins + imported ttf/otf).
+                        SettingsNavRow(
+                            icon = Icons.Filled.TextFields,
+                            title = "Subtitle font",
+                            subtitle = subtitleFontLabel(subFontId, installedFonts),
+                            onClick = { subFontPickerOpen = true }
+                        )
+                    },
+                    {
+                        // Step 38: strip "[sound]" / "(sound)" / "NAME:" SDH cues.
+                        SettingsToggleRow(
+                            icon = Icons.Filled.VisibilityOff,
+                            title = "Filter SDH captions",
+                            subtitle = "Hide [sounds], (sounds) and speaker labels in subtitles",
+                            checked = sdhFilter,
+                            onCheckedChange = {
+                                settings.subtitleSdhFilter = it
+                                sdhFilter = it
+                            }
                         )
                     }
                 )
@@ -229,4 +275,142 @@ fun SubtitleSettingsScreen(
             }
         )
     }
+
+    if (subFontPickerOpen) {
+        SubtitleFontPickerDialog(
+            selectedId = subFontId,
+            fonts = installedFonts,
+            onSelect = { id ->
+                settings.subtitleFontId = id
+                subFontId = id
+                subFontPickerOpen = false
+            },
+            onDismiss = { subFontPickerOpen = false },
+            onFontsChanged = { installedFonts = SubtitleFonts.installed(context) },
+            onImported = { font ->
+                settings.subtitleFontId = font.id
+                subFontId = font.id
+                installedFonts = SubtitleFonts.installed(context)
+                subFontPickerOpen = false
+            },
+        )
+    }
+}
+
+/**
+ * Step 38 — subtitle font picker (Nuvio SubtitleFontPicker, Plavio-native):
+ * built-in faces with an "Aa" preview, imported ttf/otf fonts with delete,
+ * and a file import (SAF picker, validated + deduped by SubtitleFonts).
+ * Selecting a row applies it at once; importing applies the new font.
+ */
+@Composable
+private fun SubtitleFontPickerDialog(
+    selectedId: String,
+    fonts: List<SubtitleFont>,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onFontsChanged: () -> Unit,
+    onImported: (SubtitleFont) -> Unit,
+) {
+    val context = LocalContext.current
+    var importFailed by remember { mutableStateOf(false) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
+        if (bytes == null) {
+            importFailed = true
+            return@rememberLauncherForActivityResult
+        }
+        val name = uri.lastPathSegment?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() } ?: "Custom font"
+        runCatching { SubtitleFonts.import(context, name, bytes) }
+            .onSuccess { onImported(it) }
+            .onFailure { importFailed = true }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Subtitle font") },
+        text = {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                BuiltInSubtitleFonts.forEach { id ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(id) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selectedId == id, onClick = { onSelect(id) })
+                        Text(
+                            "Aa",
+                            fontFamily = when (id) {
+                                "serif" -> FontFamily.Serif
+                                "mono" -> FontFamily.Monospace
+                                "sans" -> FontFamily.SansSerif
+                                else -> FontFamily.Default
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                        Text(subtitleFontLabel(id, fonts))
+                    }
+                }
+                fonts.forEach { font ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(font.id) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = selectedId == font.id,
+                            onClick = { onSelect(font.id) },
+                        )
+                        Text(
+                            "Aa",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                        Text(
+                            font.name,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = {
+                            SubtitleFonts.remove(context, font.id)
+                            onFontsChanged()
+                            if (selectedId == font.id) onSelect("default")
+                        }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Remove ${font.name}")
+                        }
+                    }
+                }
+                if (importFailed) {
+                    Text(
+                        "That file is not a supported font (ttf/otf, up to 10 MB).",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+        dismissButton = {
+            TextButton(onClick = { importFailed = false; importLauncher.launch("*/*") }) {
+                Text("Import font")
+            }
+        },
+    )
 }
