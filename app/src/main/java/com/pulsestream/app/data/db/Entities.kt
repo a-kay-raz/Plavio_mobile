@@ -342,6 +342,10 @@ interface DownloadDao {
     @Query("UPDATE downloads SET status = 'COMPLETED', downloadedBytes = totalBytes, completedAt = :completedAt WHERE id = :id")
     suspend fun markCompleted(id: String, completedAt: Long)
 
+    // Step 37: after a move into the custom (SAF) folder, the file lives at a content URI.
+    @Query("UPDATE downloads SET filePath = :filePath WHERE id = :id")
+    suspend fun updateFilePath(id: String, filePath: String)
+
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun deleteById(id: String)
 

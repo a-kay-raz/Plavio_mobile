@@ -4,8 +4,11 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.StatFs
+import android.provider.OpenableColumns
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import com.pulsestream.app.data.PlaybackHeaders
 import com.pulsestream.app.data.db.AppDatabase
 import com.pulsestream.app.data.db.DownloadItem
@@ -77,6 +80,8 @@ class DownloadManager private constructor(private val appContext: Context) {
         private const val KEY_CONCURRENCY_LIMIT = "download_concurrency_limit"
         // Step 36: paused show keys (JSON array of meta ids).
         private const val KEY_PAUSED_SHOWS = "paused_download_shows"
+        // Step 37: custom download folder (SAF tree URI string, null = app-private dir).
+        private const val KEY_DOWNLOAD_LOCATION = "download_location_uri"
         /** Resolutions the confirm dialog offers for HLS streams (Nuvio DownloadPreferredResolution). */
         val RESOLUTION_OPTIONS = intArrayOf(720, 1080, 2160)
 
@@ -186,6 +191,95 @@ class DownloadManager private constructor(private val appContext: Context) {
 
     /** Free device storage bytes — storage bar. */
     fun storageFreeBytes(): Long = availableBytes()
+
+    // ---- Custom download location (Step 37, SAF) ----
+
+    /** SAF tree URI of the user-chosen downloads folder, null = app-private dir (default). */
+    fun getDownloadLocationUri(): String? = prefs.getString(KEY_DOWNLOAD_LOCATION, null)
+
+    fun setDownloadLocationUri(uri: String?) {
+        if (uri == null) prefs.edit().remove(KEY_DOWNLOAD_LOCATION).apply()
+        else prefs.edit().putString(KEY_DOWNLOAD_LOCATION, uri).apply()
+    }
+
+    /** Display name of the chosen folder (null when using the app-private dir). */
+    fun downloadLocationDisplayName(): String? {
+        val uri = getDownloadLocationUri() ?: return null
+        return runCatching {
+            DocumentFile.fromTreeUri(appContext, Uri.parse(uri))?.name
+        }.getOrNull()
+    }
+
+    fun isContentUriPath(path: String): Boolean = path.startsWith("content://")
+
+    /** Exists check that works for both private files and SAF content URIs. */
+    fun downloadFileExists(path: String): Boolean = if (isContentUriPath(path)) {
+        runCatching {
+            appContext.contentResolver.openInputStream(Uri.parse(path))?.close()
+            true
+        }.getOrDefault(false)
+    } else {
+        File(path).exists()
+    }
+
+    /** Size that works for both private files and SAF content URIs. */
+    fun downloadFileSize(path: String): Long = if (isContentUriPath(path)) {
+        runCatching {
+            appContext.contentResolver.query(
+                Uri.parse(path), arrayOf(OpenableColumns.SIZE), null, null, null
+            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else 0L } ?: 0L
+        }.getOrDefault(0L)
+    } else {
+        runCatching { File(path).length() }.getOrDefault(0L)
+    }
+
+    /** Delete that works for both private files and SAF content URIs. */
+    fun deleteDownloadFile(path: String) {
+        if (isContentUriPath(path)) {
+            runCatching { appContext.contentResolver.delete(Uri.parse(path), null, null) }
+        } else {
+            runCatching { File(path).delete() }
+        }
+    }
+
+    /**
+     * Move a finished download into the user-chosen folder (SAF). The engine
+     * stays File-based — downloads always land in the app-private dir first,
+     * then the finished file is copied into the SAF tree and the private copy
+     * (+ sidecars) deleted. Best-effort: a failed move keeps the file in the
+     * private dir, still playable. The item's filePath becomes the content URI.
+     */
+    private suspend fun moveCompletedToExternal(item: DownloadItem) {
+        val location = getDownloadLocationUri() ?: return
+        val treeUri = runCatching { Uri.parse(location) }.getOrNull() ?: return
+        val source = File(item.filePath)
+        if (!source.exists() || source.length() <= 0) return
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val tree = DocumentFile.fromTreeUri(appContext, treeUri)
+                    ?: throw IOException("Custom folder no longer available")
+                val mime = java.net.URLConnection.guessContentTypeFromName(item.fileName)
+                    ?: "application/octet-stream"
+                val dest = tree.createFile(mime, item.fileName)
+                    ?: throw IOException("Could not create file in the custom folder")
+                source.inputStream().use { input ->
+                    appContext.contentResolver.openOutputStream(dest.uri)?.use { output ->
+                        input.copyTo(output)
+                    } ?: throw IOException("Could not write to the custom folder")
+                }
+                val destUri = dest.uri.toString()
+                // Private copy + sidecars go only after the copy is complete.
+                source.delete()
+                runCatching { metadataFile(item).delete() }
+                runCatching { segmentsFile(item).delete() }
+                runCatching { File(item.filePath + ".hls").deleteRecursively() }
+                dao.updateFilePath(item.id, destUri)
+                Log.i(TAG, "Download moved to custom folder: ${item.id} -> $destUri")
+            }.onFailure { e ->
+                Log.w(TAG, "Could not move download to custom folder, keeping private copy: ${e.message}")
+            }
+        }
+    }
     fun storagePreflight(sizeBytes: Long?): Boolean =
         sizeBytes == null || sizeBytes <= 0 || DownloadProtocol.fitsWithReserve(
             availableBytes(), sizeBytes, STORAGE_RESERVE_BYTES
@@ -385,8 +479,12 @@ class DownloadManager private constructor(private val appContext: Context) {
         withContext(Dispatchers.IO) {
             val item = dao.getById(id)
             if (item != null) {
-                runCatching { File(item.filePath).delete() }
-                runCatching { metadataFile(item).delete() }
+                // Step 37: content-URI-aware delete; sidecars live only on
+                // private files (a moved file's sidecars were removed at move time).
+                deleteDownloadFile(item.filePath)
+                if (!isContentUriPath(item.filePath)) {
+                    runCatching { metadataFile(item).delete() }
+                }
                 dao.deleteById(id)
             }
         }
@@ -394,7 +492,8 @@ class DownloadManager private constructor(private val appContext: Context) {
     }
 
     suspend fun storageUsedBytes(): Long = withContext(Dispatchers.IO) {
-        dao.getAll().sumOf { item -> runCatching { File(item.filePath).takeIf { it.exists() }?.length() ?: 0L }.getOrDefault(0L) }
+        // Step 37: content-URI-aware — moved files live in the SAF folder.
+        dao.getAll().sumOf { item -> downloadFileSize(item.filePath) }
     }
 
     suspend fun probeSize(url: String, headers: Map<String, String> = emptyMap()): Long = withContext(Dispatchers.IO) {
@@ -598,6 +697,8 @@ class DownloadManager private constructor(private val appContext: Context) {
                 dao.upsert(item.copy(totalBytes = downloaded, downloadedBytes = downloaded, status = "DOWNLOADING", error = null))
                 dao.markCompleted(item.id, System.currentTimeMillis())
             }
+            // Step 37: move the finished file into the custom folder when set.
+            moveCompletedToExternal(item)
             _activeDownloads.value = _activeDownloads.value - item.id
             Log.i(TAG, "Download completed: ${item.id} ($downloaded bytes)")
             }
@@ -809,6 +910,8 @@ class DownloadManager private constructor(private val appContext: Context) {
             dao.upsert(item.copy(totalBytes = probe.total, downloadedBytes = probe.total, status = "DOWNLOADING", error = null))
             dao.markCompleted(item.id, System.currentTimeMillis())
         }
+        // Step 37: move the finished file into the custom folder when set.
+        moveCompletedToExternal(item)
         _activeDownloads.value = _activeDownloads.value - item.id
         Log.i(TAG, "Download completed (segmented): ${item.id} (${probe.total} bytes)")
     }
@@ -1098,6 +1201,8 @@ class DownloadManager private constructor(private val appContext: Context) {
             dao.upsert(item.copy(totalBytes = size, downloadedBytes = size, status = "DOWNLOADING", error = null))
             dao.markCompleted(item.id, System.currentTimeMillis())
         }
+        // Step 37: move the finished file into the custom folder when set.
+        moveCompletedToExternal(item)
         _activeDownloads.value = _activeDownloads.value - item.id
         Log.i(TAG, "Download completed (HLS): ${item.id} ($size bytes)")
     }

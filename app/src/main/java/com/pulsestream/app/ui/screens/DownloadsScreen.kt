@@ -32,7 +32,6 @@ import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -649,7 +648,8 @@ private fun CompletedDownloadRow(
     // v0.12.1: a completed row whose file was deleted
             // outside the app used to offer a Play button
             // that could only fail — say so plainly instead.
-            val fileMissing = remember(item.id, item.filePath) { !File(item.filePath).exists() }
+            // Step 37: content-URI-aware — moved files live in the SAF folder.
+            val fileMissing = remember(item.id, item.filePath) { !manager.downloadFileExists(item.filePath) }
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(14.dp),
@@ -684,7 +684,7 @@ private fun CompletedDownloadRow(
                                     // one; never guessed.
                                     val sizeText = manager.formatBytes(
                                         item.totalBytes.takeIf { it > 0 }
-                                            ?: File(item.filePath).length()
+                                            ?: manager.downloadFileSize(item.filePath)
                                     )
                                     val quality = DOWNLOAD_QUALITY_REGEX.find(item.title)?.value
                                         ?: DOWNLOAD_QUALITY_REGEX.find(item.fileName)?.value
