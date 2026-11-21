@@ -189,6 +189,14 @@ data class StreamItem(
     /** Optional Stremio video metadata retained for downstream playback decisions. */
     val videoSize: Long? = null,
     val filename: String? = null,
+    /**
+     * Step 60: the release group this stream belongs to — the addon's
+     * behaviorHints.bingeGroup when sent, else the release group
+     * derived from the filename (trailing -GROUP). Next-episode
+     * autoplay prefers streams with the same group as the episode
+     * just played, instead of re-ranking from scratch.
+     */
+    val bingeGroup: String? = null,
     /** Identity only: lets a cached HTTP link replace its pending row across progressive updates. */
     val resolvedInfoHash: String? = null
 )

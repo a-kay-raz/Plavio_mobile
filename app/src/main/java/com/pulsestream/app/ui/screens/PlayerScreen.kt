@@ -2,6 +2,7 @@
 
 package com.pulsestream.app.ui.screens
 
+import com.pulsestream.app.ui.components.pickAutoplayStream
 import com.pulsestream.app.ui.screens.player.*
 
 import android.app.Activity
@@ -198,7 +199,9 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import com.pulsestream.app.data.BingeGroupCache
 import com.pulsestream.app.data.CachedStreamLink
+import com.pulsestream.app.data.FilenameEpisodeMatcher
 import com.pulsestream.app.data.HlsQualityResolver
 import com.pulsestream.app.data.HlsQualityState
 import com.pulsestream.app.data.HlsQualityVariant
@@ -734,6 +737,18 @@ fun PlayerScreen(
         mimeType = PlaybackHeaders.inferMimeType(currentRequest.streamUrl)
     )
     var scrubPositionMs by remember { mutableStateOf<Long?>(null) }
+
+    // Step 60: binge groups — the release group of the stream now
+    // playing is saved under the series id, so the next episode's
+    // autoplay prefers the same group instead of re-ranking.
+    val bingeGroupCache = remember { BingeGroupCache(repository.settings) }
+    LaunchedEffect(currentRequest.metaId, currentRequest.videoId, currentRequest.streamUrl) {
+        val stream = currentRequest.streams.firstOrNull { it.url == currentRequest.streamUrl }
+        val group = stream?.bingeGroup
+        if (group != null && currentRequest.metaId.isNotBlank()) {
+            bingeGroupCache.save(currentRequest.metaId, group, stream.filename, stream.infoHash)
+        }
+    }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
 
     // PiP RemoteAction: the floating window's play/pause button toggles the
@@ -2250,7 +2265,31 @@ fun PlayerScreen(
             // Back to the main thread: everything below touches Compose state.
             withContext(Dispatchers.Main) {
                 val (playableStreams, hidden) = result?.streams?.let { ( it to 0 ) } ?: (emptyList<com.pulsestream.app.data.StreamItem>() to 0)
-                val stream = playableStreams.firstOrNull { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
+                // Step 60: next-episode autoplay stays on the same release
+                // group — the group saved when the current episode's
+                // stream started playing, plus the expected next
+                // filename built from the saved filename. Falls back to
+                // the first playable stream when nothing matches.
+                val preferredGroup = if (settings.autoplayPreferBingeGroup) {
+                    bingeGroupCache.get(currentRequest.metaId)
+                } else null
+                val preferredFilename = preferredGroup?.let {
+                    bingeGroupCache.getFilename(currentRequest.metaId)?.let { saved ->
+                        FilenameEpisodeMatcher.buildNextFilename(
+                            saved,
+                            currentRequest.season.takeIf { it > 0 },
+                            currentRequest.episode,
+                            video.season.takeIf { it > 0 },
+                            video.episode
+                        )
+                    }
+                }
+                val stream = pickAutoplayStream(
+                    playableStreams.filter { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) },
+                    settings, isEpisode = true,
+                    preferredBingeGroup = preferredGroup,
+                    preferredFilename = preferredFilename
+                ) ?: playableStreams.firstOrNull { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
                 if (stream == null) {
                     pokeIndicator(PlayerIndicator.Message("No sources found for this episode"))
                 } else {

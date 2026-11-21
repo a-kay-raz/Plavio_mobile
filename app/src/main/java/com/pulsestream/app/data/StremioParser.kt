@@ -273,7 +273,14 @@ object StremioParser {
                 mimeType = s.str("mimeType") ?: behaviorHints?.str("mimeType"),
                 videoSize = ((s["videoSize"] ?: behaviorHints?.get("videoSize")) as? JsonPrimitive)
                     ?.contentOrNull?.toLongOrNull(),
-                filename = s.str("filename") ?: behaviorHints?.str("filename")
+                filename = s.str("filename") ?: behaviorHints?.str("filename"),
+                // Step 60: the addon's behaviorHints.bingeGroup when sent,
+                // else the release group derived from the filename.
+                bingeGroup = behaviorHints?.str("bingeGroup")
+                    ?: extractReleaseGroup(
+                        s.str("filename") ?: behaviorHints?.str("filename")
+                            ?: s.str("filePath") ?: s.str("file")
+                    )
             )
         } ?: emptyList()
         val subtitles = (obj["subtitles"] as? JsonArray)?.mapNotNull { el ->

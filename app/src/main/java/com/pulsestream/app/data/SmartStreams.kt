@@ -502,8 +502,10 @@ data class SmartTarget(
     val languages: List<String> = emptyList(),
 )
 
-/** Scored ranking (Nuvio SmartStreamRanking, verbatim scoring; no binge-group bonus — Plavio has no binge groups). */
+/** Scored ranking (Nuvio SmartStreamRanking, verbatim scoring, now
+ * including the binge-group bonus — Step 60). */
 object SmartStreamRanking {
+    private const val BINGE_GROUP_BONUS = 25.0
     private const val HEAVY_4K_MBPS = 40.0
 
     fun runtimeSeconds(isEpisode: Boolean): Int = if (isEpisode) 45 * 60 else 120 * 60
@@ -740,6 +742,9 @@ object SmartStreamRanking {
         device: SmartDeviceProfile,
         isEpisode: Boolean,
         preferredLanguages: List<String> = emptyList(),
+        // Step 60: streams from the episode-just-played's release group
+        // earn Nuvio's +25 bonus.
+        preferredBingeGroup: String? = null,
     ): SmartAutoPlayRanking {
         val runtime = runtimeSeconds(isEpisode)
         val target = target(device, settings, preferredLanguages)
@@ -747,7 +752,11 @@ object SmartStreamRanking {
             .filter { !it.url.startsWith("infohash:", ignoreCase = true) }
             .mapIndexed { index, stream ->
                 val info = SmartStreamQuality.cached(stream)
-                SmartRankedStream(stream, info, score(info, device, target, runtime), index)
+                var streamScore = score(info, device, target, runtime)
+                if (preferredBingeGroup != null && stream.bingeGroup == preferredBingeGroup) {
+                    streamScore += BINGE_GROUP_BONUS
+                }
+                SmartRankedStream(stream, info, streamScore, index)
             }
             .filter { matches(it.info, settings.filters.copy(hideLowQuality = true)) }
             .sortedWith(compareByDescending<SmartRankedStream> { it.score }.thenBy { it.index })

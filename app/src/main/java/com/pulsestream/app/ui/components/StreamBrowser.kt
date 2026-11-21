@@ -368,11 +368,19 @@ fun applyStreamPreferences(
  * wins over the score. The size limit applies in both paths. Falls back to
  * the first stream when nothing matches, so autoplay never dead-ends on an
  * empty pick.
+ * Step 60 — binge groups: when [preferredBingeGroup] is set and any
+ * playable stream carries it, the pick is restricted to that group
+ * (Nuvio's tryBingeGroupOnly, hard preference, not just the +25
+ * ranking bonus — the bonus still orders within the group); when
+ * [preferredFilename] is set, exact filename matches come first
+ * inside the group. No group match → the whole list, as before.
  */
 fun pickAutoplayStream(
     streams: List<StreamItem>,
     settings: com.pulsestream.app.data.SettingsStore,
-    isEpisode: Boolean = false
+    isEpisode: Boolean = false,
+    preferredBingeGroup: String? = null,
+    preferredFilename: String? = null
 ): StreamItem? {
     // Filter out unresolved infohash: placeholders - only pick playable URLs.
     // Debrid resolution replaces these with real HTTP links asynchronously.
@@ -380,34 +388,49 @@ fun pickAutoplayStream(
     if (playable.isEmpty()) return null
     val prefQ = settings.autoplayQuality
     val maxGb = settings.autoplayMaxSizeGb
+    // Step 60: same release group first — only when one actually matches.
+    val groupPool = if (preferredBingeGroup != null) {
+        playable.filter { it.bingeGroup == preferredBingeGroup }.ifEmpty { null }
+    } else null
+    val pool = groupPool ?: playable
+    // Exact next-filename matches (built from the saved filename) lead
+    // inside the pool; the ranking still orders the rest.
+    val filenameFirst = if (preferredFilename != null) {
+        pool.filter { com.pulsestream.app.data.FilenameEpisodeMatcher.matches(it.filename, preferredFilename) }
+    } else emptyList()
 
     if (prefQ == "Auto") {
         val ranking = com.pulsestream.app.data.SmartStreamRanking.rankForAutoPlay(
-            streams = playable,
+            streams = pool,
             settings = settings.smartStreamSettings(),
             device = settings.smartDeviceProfile,
             isEpisode = isEpisode,
             preferredLanguages = settings.smartPreferredLanguages(),
+            preferredBingeGroup = preferredBingeGroup,
         )
         val ranked = ranking.ranked.map { it.stream }
         if (ranked.isNotEmpty()) {
-            return ranked.firstOrNull { s ->
+            val ordered = filenameFirst.filter { it in ranked } +
+                ranked.filter { it !in filenameFirst }
+            return ordered.firstOrNull { s ->
                 maxGb <= 0 || (streamSizeGb(s)?.let { it <= maxGb } ?: true)
-            } ?: ranked.firstOrNull()
+            } ?: ordered.firstOrNull()
         }
         // Ranking empty (everything filtered out): fall through to the legacy sort.
     }
     val order = settings.qualityOrder
-    val sorted = playable.sortedWith(compareBy { s ->
+    val sorted = pool.sortedWith(compareBy { s ->
         val q = canonicalStreamQuality(s)
         when {
             prefQ != "Auto" && q == prefQ -> -1
             else -> order.indexOf(q).takeIf { it >= 0 } ?: Int.MAX_VALUE
         }
     })
-    return sorted.firstOrNull { s ->
+    val ordered = filenameFirst.filter { it in sorted } +
+        sorted.filter { it !in filenameFirst }
+    return ordered.firstOrNull { s ->
         maxGb <= 0 || (streamSizeGb(s)?.let { it <= maxGb } ?: true)
-    } ?: sorted.firstOrNull()
+    } ?: ordered.firstOrNull()
 }
 
 // ---------------------------------------------------------------------------
