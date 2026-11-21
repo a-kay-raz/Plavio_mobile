@@ -12,6 +12,7 @@ import com.pulsestream.app.data.db.InstalledAddon
 import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.data.db.SubtitleCache
 import com.pulsestream.app.data.db.WatchlistItem
+import com.pulsestream.app.data.simkl.SimklSyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -1867,6 +1868,8 @@ class StreamRepository(
             val key = WatchedMarks.episodeKey(seriesId, season, episode)
             if (watched) db.watchedDao().upsert(WatchedRecord(key, System.currentTimeMillis()))
             else db.watchedDao().deleteByKey(key)
+            // Step 34: queue the change for the Simkl sync engine.
+            SimklSyncEngine.enqueueWatched(settings, "series", seriesId, season = season, episode = episode, watched = watched)
         }
 
     /** Manually mark a whole season watched/unwatched. */
@@ -1878,9 +1881,15 @@ class StreamRepository(
                     db.watchedDao().upsert(
                         WatchedRecord(WatchedMarks.episodeKey(seriesId, video.season, video.episode), now)
                     )
+                    // Step 34: queue each episode for the Simkl sync engine.
+                    SimklSyncEngine.enqueueWatched(settings, "series", seriesId, season = video.season, episode = video.episode, watched = true)
                 }
             } else {
                 db.watchedDao().deleteByPrefix("e|$seriesId|$season|")
+                // Step 34: queue each episode's unwatch for the Simkl sync engine.
+                episodes.filter { it.season == season }.forEach { video ->
+                    SimklSyncEngine.enqueueWatched(settings, "series", seriesId, season = video.season, episode = video.episode, watched = false)
+                }
             }
         }
 
@@ -1907,6 +1916,15 @@ class StreamRepository(
             }
             runCatching {
                 db.watchedDao().upsert(WatchedRecord(watchedKey, System.currentTimeMillis()))
+            }
+            // Step 34: finishing a title is a watch-state change — queue it
+            // for Simkl (only when we have a real IMDb id to send).
+            if (imdbId != null && imdbId.startsWith("tt")) {
+                if (season > 0 || episode > 0) {
+                    SimklSyncEngine.enqueueWatched(settings, "series", imdbId, title, season, episode, watched = true)
+                } else {
+                    SimklSyncEngine.enqueueWatched(settings, "movie", imdbId, title, watched = true)
+                }
             }
         }
         // Drop sibling rows for this same episode/movie stored under

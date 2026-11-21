@@ -4,6 +4,7 @@ import com.pulsestream.app.data.db.AppDatabase
 import com.pulsestream.app.data.db.WatchlistItem
 import com.pulsestream.app.data.db.WatchedRecord
 import com.pulsestream.app.data.simkl.SimklApi
+import com.pulsestream.app.data.simkl.SimklSyncEngine
 import com.pulsestream.app.data.trakt.TraktApi
 import com.pulsestream.app.data.trakt.TraktManager
 import kotlinx.coroutines.Dispatchers
@@ -177,15 +178,43 @@ class LibrarySyncManager(
             }
         }
 
+        // ---- Simkl sync engine (Step 34) ----
+        // Two-way: Simkl's watched state pulls into the local watched store
+        // (watermark-gated — no fetch when nothing changed), then pending
+        // local mutations flush to Simkl. A failure here never fails the
+        // watchlist merge above.
+        var simklSynced = ""
+        if (simklToken != null) {
+            runCatching {
+                when (val result = SimklSyncEngine.synchronize(simklToken, settings, db)) {
+                    is SimklSyncEngine.SimklSyncResult.Synced -> {
+                        val applied = SimklSyncEngine.flushMutations(simklToken, settings)
+                        simklSynced = " · Simkl sync: ${result.addedMovies + result.addedEpisodes} watched" +
+                            if (applied > 0) ", $applied pushed" else ""
+                    }
+                    SimklSyncEngine.SimklSyncResult.Unchanged -> {
+                        val applied = SimklSyncEngine.flushMutations(simklToken, settings)
+                        if (applied > 0) simklSynced = " · Simkl sync: $applied pushed"
+                    }
+                    is SimklSyncEngine.SimklSyncResult.Failed -> {
+                        simklSynced = " · Simkl sync failed"
+                    }
+                }
+            }
+        }
+
         settings.librarySyncedKeys = desired
         val services = listOfNotNull(
             if (traktRemote != null) "Trakt" else null,
             if (simklRemote != null) "Simkl" else null
         ).joinToString(" + ")
         finish(
-            "Synced with $services · ${desired.size} titles" +
-                if (addedLocal > 0) " · $addedLocal added here" else "" +
-                if (watchedPulled > 0) " · $watchedPulled watched from Trakt" else ""
+            buildString {
+                append("Synced with $services · ${desired.size} titles")
+                if (addedLocal > 0) append(" · $addedLocal added here")
+                if (watchedPulled > 0) append(" · $watchedPulled watched from Trakt")
+                append(simklSynced)
+            }
         )
     }
 }
