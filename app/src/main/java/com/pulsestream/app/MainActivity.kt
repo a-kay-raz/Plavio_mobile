@@ -1303,6 +1303,7 @@ private fun PulseNavGraph(
             HomeScreen(
                 repository = repository,
                 listsRepository = listsRepository,
+                collectionRepository = collectionRepository,
                 onOpenDetail = { addonId, type, metaId ->
                     openResolvedDetail(addonId, type, metaId)
                 },
@@ -1317,6 +1318,9 @@ private fun PulseNavGraph(
                     navController.navigate(
                         Routes.catalog(row.addonId, row.type, row.catalogId)
                     )
+                },
+                onOpenCollectionFolder = { folderId ->
+                    navController.navigate(Routes.collectionFolder(folderId))
                 },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onGoToLive = { navController.navigate(Routes.LIVE) },

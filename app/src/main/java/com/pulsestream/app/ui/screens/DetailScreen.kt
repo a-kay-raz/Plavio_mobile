@@ -655,6 +655,18 @@ private fun DetailContent(
     var shuffleSheetOpen by remember { mutableStateOf(false) }
     // Step 45: batch season download plan sheet.
     var batchSheetOpen by remember { mutableStateOf(false) }
+    // Step 51: TMDB collection the movie belongs to (Nuvio TMDB meta
+    // belongsToCollection) — name + titles, null when there is none.
+    var tmdbCollection by remember {
+        mutableStateOf<Pair<com.pulsestream.app.data.TmdbClient.TmdbCollectionRef, List<com.pulsestream.app.data.MetaPreview>>?>(null)
+    }
+    LaunchedEffect(meta.id, meta.type) {
+        tmdbCollection = if (meta.type == "movie") {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getMovieCollection(settings, meta.id)
+            }.getOrNull()
+        } else null
+    }
     val shufflePicker = remember(meta.id) {
         com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
     }
@@ -1366,6 +1378,33 @@ private fun DetailContent(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+        // Step 51: TMDB collection (Nuvio belongsToCollection) — "Part of
+        // the <name>" with the collection's movies. Movies only; needs a
+        // TMDB key, silent otherwise.
+        val collectionSection = tmdbCollection
+        if (collectionSection != null) {
+            item(key = "tmdb_collection") {
+                Text(
+                    "Part of the ${collectionSection.first.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(collectionSection.second, key = { it.id }) { preview ->
+                        com.pulsestream.app.ui.components.PosterCard(
+                            meta = preview,
+                            onClick = { onOpenDetail("", preview.type, preview.id) }
+                        )
                     }
                 }
                 Spacer(Modifier.height(8.dp))

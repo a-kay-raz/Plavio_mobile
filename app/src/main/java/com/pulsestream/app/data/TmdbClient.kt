@@ -373,4 +373,57 @@ object TmdbClient {
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { emptyList() }
     }
+
+    /**
+     * Step 51: the TMDB collection a movie belongs to (Nuvio TMDB meta
+     * belongsToCollection). Resolves the TMDB movie id from a "tmdb:movie:"
+     * id directly, or from an IMDb "tt" id via /find. Returns the
+     * collection ref + its titles, or null when there is none.
+     */
+    data class TmdbCollectionRef(
+        val id: Int,
+        val name: String,
+        val posterPath: String?,
+        val backdropPath: String?,
+    )
+
+    suspend fun getMovieCollection(
+        settings: SettingsStore,
+        metaId: String,
+    ): Pair<TmdbCollectionRef, List<MetaPreview>>? = withContext(Dispatchers.IO) {
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext null
+        try {
+            val tmdbMovieId: Int = when {
+                metaId.startsWith("tmdb:movie:") ->
+                    metaId.substringAfterLast(":").toIntOrNull() ?: return@withContext null
+                metaId.startsWith("tt") -> {
+                    val findUrl = "$BASE/find/$metaId?api_key=$apiKey&external_source=imdb_id&language=en-US"
+                    val findRoot = json.parseToJsonElement(
+                        BoundedHttp.get(findUrl, headers = mapOf("Accept" to "application/json"))
+                    ).jsonObject
+                    findRoot["movie_results"]?.jsonArray?.firstOrNull()?.jsonObject
+                        ?.get("id")?.jsonPrimitive?.content?.toIntOrNull()
+                        ?: return@withContext null
+                }
+                else -> return@withContext null
+            }
+            val url = "$BASE/movie/$tmdbMovieId?api_key=$apiKey&language=en-US"
+            val root = json.parseToJsonElement(
+                BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
+            ).jsonObject
+            val collectionObj = root["belongs_to_collection"]?.jsonObject ?: return@withContext null
+            val ref = TmdbCollectionRef(
+                id = collectionObj["id"]?.jsonPrimitive?.content?.toIntOrNull()
+                    ?: return@withContext null,
+                name = collectionObj["name"]?.jsonPrimitive?.content
+                    ?: return@withContext null,
+                posterPath = collectionObj["poster_path"]?.jsonPrimitive?.contentOrNull,
+                backdropPath = collectionObj["backdrop_path"]?.jsonPrimitive?.contentOrNull
+            )
+            val titles = getCollection(settings, ref.id)
+            if (titles.isEmpty()) return@withContext null
+            ref to titles
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { null }
+    }
 }
