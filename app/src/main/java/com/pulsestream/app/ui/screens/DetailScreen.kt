@@ -3169,7 +3169,8 @@ internal fun FullPageSourcePicker(
                         streams = browserState.filtered,
                         onPick = onPick,
                         onDownload = onDownload,
-                        compact = true
+                        compact = true,
+                        settings = settings
                     )
                 }
             }

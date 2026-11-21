@@ -73,6 +73,10 @@ import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.SmartSortMode
 import com.pulsestream.app.data.SmartStreamQuality
 import com.pulsestream.app.data.SmartStreamRanking
+import com.pulsestream.app.data.debridFormattedDescription
+import com.pulsestream.app.data.debridFormattedName
+import com.pulsestream.app.data.hasDebridPreferredTag
+import com.pulsestream.app.data.matchesDebridStreamPrefs
 import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.ui.theme.AppPalette
 import com.pulsestream.app.ui.theme.GlassBorder
@@ -323,15 +327,20 @@ fun applyStreamPreferences(
         .flatMap { (_, list) -> list.take(perSource) } else streams
     val pinned = settings.pinnedStreamSources
     val smart = settings.smartStreamSettings()
-    val filtered = capped.filter {
-        com.pulsestream.app.data.SmartStreamRanking.matches(
-            com.pulsestream.app.data.SmartStreamQuality.cached(it), smart.filters
-        )
+    // Step 44 — Debrid stream prefs: min quality / DV / HDR / codec /
+    // required / excluded tags filter the list; preferred tags boost.
+    val debridPrefs = settings.debridStreamFilterPrefs()
+    val filtered = capped.filter { stream ->
+        val info = com.pulsestream.app.data.SmartStreamQuality.cached(stream)
+        com.pulsestream.app.data.SmartStreamRanking.matches(info, smart.filters) &&
+            matchesDebridStreamPrefs(stream, info, debridPrefs)
     }
     val sorted = if (smart.sortMode == com.pulsestream.app.data.SmartSortMode.ADDON_ORDER) {
         val order = settings.qualityOrder
         filtered.sortedWith(compareByDescending<StreamItem> { s ->
             if (pinnedStreamSourceKey(s) in pinned) 1 else 0
+        }.thenByDescending { s ->
+            if (hasDebridPreferredTag(s, debridPrefs)) 1 else 0
         }.thenBy { s ->
             val idx = order.indexOf(canonicalStreamQuality(s))
             if (idx >= 0) idx else Int.MAX_VALUE
@@ -344,6 +353,8 @@ fun applyStreamPreferences(
         val smartIndex = smartSorted.withIndex().associate { it.value to it.index }
         filtered.sortedWith(compareByDescending<StreamItem> { s ->
             if (pinnedStreamSourceKey(s) in pinned) 1 else 0
+        }.thenByDescending { s ->
+            if (hasDebridPreferredTag(s, debridPrefs)) 1 else 0
         }.thenBy { s -> smartIndex[s] ?: Int.MAX_VALUE })
     }
     return sorted
@@ -428,13 +439,17 @@ fun rememberStreamBrowserState(
 ): StreamBrowserState {
     // The player shows the complete loaded set; other pickers retain the user's cap.
     // Step 42: the Smart prefs are remember keys, so changing a filter/sort in
-    // the Smart sheet re-orders the list immediately.
+    // the Smart sheet re-orders the list immediately. Step 44: same for the
+    // debrid stream prefs.
     val ordered = remember(
         streams, settings?.streamsPerSource, settings?.qualityOrder, settings?.pinnedStreamSources,
         settings?.smartSortMode, settings?.smartResolutionLimit, settings?.smartSaveDataOnMobile,
         settings?.smartFilterResolutions, settings?.smartFilterHdr, settings?.smartFilterCodecs,
         settings?.smartFilterAudio, settings?.smartFilterSources, settings?.smartFilterMaxSizeGb,
         settings?.smartFilterInstantOnly, settings?.smartFilterHideLowQuality,
+        settings?.debridMinQuality, settings?.debridDvFilter, settings?.debridHdrFilter,
+        settings?.debridCodecFilter, settings?.debridPreferredTags, settings?.debridRequiredTags,
+        settings?.debridExcludedTags,
         limitPerSource, isEpisode
     ) {
         if (settings != null) applyStreamPreferences(streams, settings, limitPerSource, isEpisode) else streams
@@ -613,7 +628,8 @@ fun StreamCard(
     selected: Boolean = false,
     onClick: () -> Unit,
     onDownload: ((StreamItem) -> Unit)? = null,
-    compact: Boolean = false
+    compact: Boolean = false,
+    settings: SettingsStore? = null
 ) {
     val palette = LocalPalette.current
     val unresolvedTorrent = stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)
@@ -621,7 +637,15 @@ fun StreamCard(
     // Full filename display (user's order): show the complete title/name,
     // never truncated. Prefer title (usually the full filename).
     val display = remember(stream) { streamDisplayModel(stream) }
-    val fullName = display.headline
+    // Step 44 — debrid name/description templates rename debrid-resolved
+    // rows; other rows keep their addon name.
+    val formattedName = remember(stream, settings?.debridNameTemplate) {
+        settings?.let { debridFormattedName(stream, it) }
+    }
+    val formattedDescription = remember(stream, settings?.debridDescriptionTemplate) {
+        settings?.let { debridFormattedDescription(stream, it) }
+    }
+    val fullName = formattedName ?: display.headline
     val shape = RoundedCornerShape(20.dp)
 
     if (compact) {
@@ -630,7 +654,9 @@ fun StreamCard(
             selected = selected,
             display = display,
             onClick = onClick,
-            onDownload = onDownload
+            onDownload = onDownload,
+            headline = fullName,
+            description = formattedDescription
         )
         return
     }
@@ -662,6 +688,15 @@ fun StreamCard(
                 lineHeight = 24.sp,
                 modifier = Modifier.fillMaxWidth()
             )
+            if (formattedDescription != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = formattedDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             if (!unresolvedTorrent && com.pulsestream.app.data.isUnseekableStreamUrl(stream.url)) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -703,7 +738,9 @@ private fun CompactStreamCard(
     selected: Boolean,
     display: StreamDisplayModel,
     onClick: () -> Unit,
-    onDownload: ((StreamItem) -> Unit)?
+    onDownload: ((StreamItem) -> Unit)?,
+    headline: String? = null,
+    description: String? = null
 ) {
     val palette = LocalPalette.current
     val shape = RoundedCornerShape(14.dp)
@@ -720,12 +757,20 @@ private fun CompactStreamCard(
     ) {
         Column(modifier = Modifier.weight(1f).clickable(enabled = !unresolvedTorrent, onClick = onClick).tvFocusRing(shape)) {
             Text(
-                text = display.headline,
+                text = headline ?: display.headline,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = TextPrimary,
                 lineHeight = 19.sp
             )
+            if (description != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
             if (unresolvedTorrent) {
                 Text("Torrent source · cached debrid link required", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
             }
@@ -780,7 +825,8 @@ fun StreamList(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     selectedUrl: String? = null,
     onDownload: ((StreamItem) -> Unit)? = null,
-    compact: Boolean = false
+    compact: Boolean = false,
+    settings: SettingsStore? = null
 ) {
     LazyColumn(
         modifier = modifier,
@@ -792,7 +838,8 @@ fun StreamList(
                 selected = stream.url == selectedUrl,
                 onClick = { onPick(stream) },
                 onDownload = onDownload,
-                compact = compact
+                compact = compact,
+                settings = settings
             )
         }
     }
@@ -807,7 +854,8 @@ fun LazyListScope.streamListItems(
     onPick: (StreamItem) -> Unit,
     selectedUrl: String? = null,
     onDownload: ((StreamItem) -> Unit)? = null,
-    compact: Boolean = false
+    compact: Boolean = false,
+    settings: SettingsStore? = null
 ) {
     itemsIndexed(streams, key = { index, s -> "${index}_${s.url}" }) { _, stream ->
         StreamCard(
@@ -815,7 +863,8 @@ fun LazyListScope.streamListItems(
             selected = stream.url == selectedUrl,
             onClick = { onPick(stream) },
             onDownload = onDownload,
-            compact = compact
+            compact = compact,
+            settings = settings
         )
     }
 }

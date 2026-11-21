@@ -31,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -48,7 +49,10 @@ import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.AUTOPLAY_QUALITY_OPTIONS
 import com.pulsestream.app.data.AUTOPLAY_SIZE_OPTIONS
 import com.pulsestream.app.data.QUALITY_ORDER_OPTIONS
+import com.pulsestream.app.data.SmartStreamQuality
+import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.formatDebridStreamText
 import com.pulsestream.app.data.autoplaySizeName
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
@@ -74,6 +78,20 @@ fun StreamsSettingsScreen(
     var autoplayMaxSize by remember { mutableStateOf(settings.autoplayMaxSizeGb) }
     var qualityPickerOpen by remember { mutableStateOf(false) }
     var sizePickerOpen by remember { mutableStateOf(false) }
+    // Step 44 — Debrid stream preferences.
+    var debridMinQuality by remember { mutableStateOf(settings.debridMinQuality) }
+    var debridDvFilter by remember { mutableStateOf(settings.debridDvFilter) }
+    var debridHdrFilter by remember { mutableStateOf(settings.debridHdrFilter) }
+    var debridCodecFilter by remember { mutableStateOf(settings.debridCodecFilter) }
+    var debridPreferredTags by remember { mutableStateOf(settings.debridPreferredTags.joinToString(", ")) }
+    var debridRequiredTags by remember { mutableStateOf(settings.debridRequiredTags.joinToString(", ")) }
+    var debridExcludedTags by remember { mutableStateOf(settings.debridExcludedTags.joinToString(", ")) }
+    var debridNameTemplate by remember { mutableStateOf(settings.debridNameTemplate) }
+    var debridDescriptionTemplate by remember { mutableStateOf(settings.debridDescriptionTemplate) }
+    var minQualityPickerOpen by remember { mutableStateOf(false) }
+    var dvPickerOpen by remember { mutableStateOf(false) }
+    var hdrPickerOpen by remember { mutableStateOf(false) }
+    var codecPickerOpen by remember { mutableStateOf(false) }
 
     if (qualityPickerOpen) {
         SingleSelectDialog(
@@ -99,6 +117,75 @@ fun StreamsSettingsScreen(
                 autoplayMaxSize = gb
                 settings.autoplayMaxSizeGb = gb
                 sizePickerOpen = false
+            }
+        )
+    }
+
+    if (minQualityPickerOpen) {
+        SingleSelectDialog(
+            title = "Minimum quality",
+            options = listOf("Any", "720p", "1080p", "4K"),
+            selected = when (debridMinQuality) {
+                "720" -> "720p"; "1080" -> "1080p"; "2160" -> "4K"; else -> "Any"
+            },
+            onDismiss = { minQualityPickerOpen = false },
+            onSelect = { label ->
+                debridMinQuality = when (label) {
+                    "720p" -> "720"; "1080p" -> "1080"; "4K" -> "2160"; else -> "any"
+                }
+                settings.debridMinQuality = debridMinQuality
+                minQualityPickerOpen = false
+            }
+        )
+    }
+    if (dvPickerOpen) {
+        SingleSelectDialog(
+            title = "Dolby Vision",
+            options = listOf("Any", "Only DV", "Exclude DV"),
+            selected = when (debridDvFilter) {
+                "only" -> "Only DV"; "exclude" -> "Exclude DV"; else -> "Any"
+            },
+            onDismiss = { dvPickerOpen = false },
+            onSelect = { label ->
+                debridDvFilter = when (label) {
+                    "Only DV" -> "only"; "Exclude DV" -> "exclude"; else -> "any"
+                }
+                settings.debridDvFilter = debridDvFilter
+                dvPickerOpen = false
+            }
+        )
+    }
+    if (hdrPickerOpen) {
+        SingleSelectDialog(
+            title = "HDR",
+            options = listOf("Any", "Only HDR", "Exclude HDR"),
+            selected = when (debridHdrFilter) {
+                "only" -> "Only HDR"; "exclude" -> "Exclude HDR"; else -> "Any"
+            },
+            onDismiss = { hdrPickerOpen = false },
+            onSelect = { label ->
+                debridHdrFilter = when (label) {
+                    "Only HDR" -> "only"; "Exclude HDR" -> "exclude"; else -> "any"
+                }
+                settings.debridHdrFilter = debridHdrFilter
+                hdrPickerOpen = false
+            }
+        )
+    }
+    if (codecPickerOpen) {
+        SingleSelectDialog(
+            title = "Codec",
+            options = listOf("Any", "H.264", "HEVC", "AV1"),
+            selected = when (debridCodecFilter) {
+                "h264" -> "H.264"; "hevc" -> "HEVC"; "av1" -> "AV1"; else -> "Any"
+            },
+            onDismiss = { codecPickerOpen = false },
+            onSelect = { label ->
+                debridCodecFilter = when (label) {
+                    "H.264" -> "h264"; "HEVC" -> "hevc"; "AV1" -> "av1"; else -> "any"
+                }
+                settings.debridCodecFilter = debridCodecFilter
+                codecPickerOpen = false
             }
         )
     }
@@ -359,6 +446,164 @@ fun StreamsSettingsScreen(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                 )
             }
+
+            // Step 44 — Debrid stream preferences: filters that narrow the
+            // list, tag lists, and name/description templates for
+            // debrid-resolved rows.
+            item(key = "debridPrefsHeader") {
+                SettingsSectionHeader("Debrid stream preferences")
+            }
+            item(key = "debridMinQuality") {
+                DebridPrefSelectRow(
+                    title = "Minimum quality",
+                    subtitle = "Hide streams below this resolution",
+                    valueLabel = when (debridMinQuality) {
+                        "720" -> "720p"; "1080" -> "1080p"; "2160" -> "4K"; else -> "Any"
+                    },
+                    onClick = { minQualityPickerOpen = true }
+                )
+            }
+            item(key = "debridDv") {
+                DebridPrefSelectRow(
+                    title = "Dolby Vision",
+                    subtitle = "Only show, or hide, Dolby Vision streams",
+                    valueLabel = when (debridDvFilter) {
+                        "only" -> "Only DV"; "exclude" -> "Exclude DV"; else -> "Any"
+                    },
+                    onClick = { dvPickerOpen = true }
+                )
+            }
+            item(key = "debridHdr") {
+                DebridPrefSelectRow(
+                    title = "HDR",
+                    subtitle = "Only show, or hide, HDR streams",
+                    valueLabel = when (debridHdrFilter) {
+                        "only" -> "Only HDR"; "exclude" -> "Exclude HDR"; else -> "Any"
+                    },
+                    onClick = { hdrPickerOpen = true }
+                )
+            }
+            item(key = "debridCodec") {
+                DebridPrefSelectRow(
+                    title = "Codec",
+                    subtitle = "Only show streams in this codec",
+                    valueLabel = when (debridCodecFilter) {
+                        "h264" -> "H.264"; "hevc" -> "HEVC"; "av1" -> "AV1"; else -> "Any"
+                    },
+                    onClick = { codecPickerOpen = true }
+                )
+            }
+            item(key = "debridPreferredTags") {
+                DebridPrefTextRow(
+                    title = "Preferred tags",
+                    subtitle = "Comma-separated — matching streams sort first",
+                    value = debridPreferredTags,
+                    placeholder = "e.g. remux, atmos",
+                    onChange = {
+                        debridPreferredTags = it
+                        settings.debridPreferredTags = parseDebridTags(it)
+                    }
+                )
+            }
+            item(key = "debridRequiredTags") {
+                DebridPrefTextRow(
+                    title = "Required tags",
+                    subtitle = "Comma-separated — a stream must contain all of them",
+                    value = debridRequiredTags,
+                    placeholder = "e.g. bluray, dts",
+                    onChange = {
+                        debridRequiredTags = it
+                        settings.debridRequiredTags = parseDebridTags(it)
+                    }
+                )
+            }
+            item(key = "debridExcludedTags") {
+                DebridPrefTextRow(
+                    title = "Excluded tags",
+                    subtitle = "Comma-separated — matching streams are hidden",
+                    value = debridExcludedTags,
+                    placeholder = "e.g. cam, hdcam",
+                    onChange = {
+                        debridExcludedTags = it
+                        settings.debridExcludedTags = parseDebridTags(it)
+                    }
+                )
+            }
+            item(key = "debridNameTemplate") {
+                Column {
+                    DebridPrefTextRow(
+                        title = "Debrid row name template",
+                        subtitle = "Renames debrid-resolved rows. Keys: {resolution} {codec} {hdr} {audio} {source} {size} {service} {title} {name}. Blank = keep the addon name.",
+                        value = debridNameTemplate,
+                        placeholder = "e.g. {resolution} {service} Instant",
+                        onChange = {
+                            debridNameTemplate = it
+                            settings.debridNameTemplate = it
+                        }
+                    )
+                    val preview = remember(debridNameTemplate) {
+                        debridTemplatePreview(debridNameTemplate)
+                    }
+                    Text(
+                        preview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            item(key = "debridDescriptionTemplate") {
+                Column {
+                    DebridPrefTextRow(
+                        title = "Debrid row description template",
+                        subtitle = "Adds a line under debrid-resolved rows. Same keys as the name template. Blank = no extra line.",
+                        value = debridDescriptionTemplate,
+                        placeholder = "e.g. {codec} · {audio} · {size}",
+                        onChange = {
+                            debridDescriptionTemplate = it
+                            settings.debridDescriptionTemplate = it
+                        }
+                    )
+                    val preview = remember(debridDescriptionTemplate) {
+                        debridTemplatePreview(debridDescriptionTemplate)
+                    }
+                    Text(
+                        preview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            item(key = "debridPrefsReset") {
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    onClick = {
+                        debridMinQuality = "any"; settings.debridMinQuality = "any"
+                        debridDvFilter = "any"; settings.debridDvFilter = "any"
+                        debridHdrFilter = "any"; settings.debridHdrFilter = "any"
+                        debridCodecFilter = "any"; settings.debridCodecFilter = "any"
+                        debridPreferredTags = ""; settings.debridPreferredTags = emptySet()
+                        debridRequiredTags = ""; settings.debridRequiredTags = emptySet()
+                        debridExcludedTags = ""; settings.debridExcludedTags = emptySet()
+                        debridNameTemplate = ""; settings.debridNameTemplate = ""
+                        debridDescriptionTemplate = ""; settings.debridDescriptionTemplate = ""
+                    }
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Reset debrid stream preferences",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = LocalPalette.current.accent,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -405,4 +650,98 @@ private fun SingleSelectDialog(
             }
         }
     )
+}
+
+/** Select row for the Step 44 debrid stream prefs (same GlassCard shape as the autoplay rows). */
+@Composable
+private fun DebridPrefSelectRow(
+    title: String,
+    subtitle: String,
+    valueLabel: String,
+    onClick: () -> Unit,
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+        onClick = onClick
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+            Text(
+                valueLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalPalette.current.accent
+            )
+        }
+    }
+}
+
+/** Free-text row for the Step 44 tag lists and templates; saves on every change. */
+@Composable
+private fun DebridPrefTextRow(
+    title: String,
+    subtitle: String,
+    value: String,
+    placeholder: String,
+    onChange: (String) -> Unit,
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = value,
+                onValueChange = onChange,
+                placeholder = { Text(placeholder, color = TextSecondary) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+private fun parseDebridTags(text: String): Set<String> =
+    text.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+
+/** Live preview of a template against a sample debrid-resolved stream. */
+private fun debridTemplatePreview(template: String): String {
+    if (template.isBlank()) return "Preview: default naming (addon name)."
+    val sample = StreamItem(
+        url = "https://example.com/file.mkv",
+        title = "Movie 2024 1080p BluRay x265 DTS",
+        name = "Movie 2024 1080p BluRay",
+        sourceName = "⚡ TorBox · Example",
+    )
+    val rendered = formatDebridStreamText(template, sample, SmartStreamQuality.cached(sample))
+    return if (rendered.isBlank()) "Preview: (empty — template produced nothing)"
+    else "Preview: $rendered"
 }
