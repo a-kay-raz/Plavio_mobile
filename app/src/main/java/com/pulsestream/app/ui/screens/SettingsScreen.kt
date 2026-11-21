@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
@@ -121,7 +123,9 @@ import com.pulsestream.app.data.update.UpdateInfo
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.components.UpdatePrompt
+import coil.imageLoader
 import com.pulsestream.app.ui.components.GlowBackground
+import com.pulsestream.app.ui.screens.player.PlaybackCache
 import com.pulsestream.app.ui.theme.AppTheme
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.AccentTheme
@@ -163,6 +167,9 @@ fun SettingsScreen(
 
     var telemetryEnabled by remember { mutableStateOf(com.pulsestream.app.data.AppStats.enabled(context)) }
     var sentryEnabled by remember { mutableStateOf(repository.settings.sentryEnabled) }
+    // Step 70: which cache was cleared most recently ("playback" / "images" / "").
+    var clearedCache by remember { mutableStateOf("") }
+    val cacheScope = rememberCoroutineScope()
     var episodeNotifs by remember { mutableStateOf(settings.episodeNotifications) }
     var testNotifSent by remember { mutableStateOf(false) }
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -508,6 +515,35 @@ fun SettingsScreen(
                     sentryEnabled = it
                 },
                 compact = true
+            )
+        },
+        SettingsEntry(sectionAdvanced, "Clear playback cache",
+            "clear cache playback video buffer storage") {
+            SettingsClearRow(
+                icon = Icons.Filled.Storage,
+                title = "Clear playback cache",
+                subtitle = "Deletes video segments held in the playback cache.",
+                cleared = clearedCache == "playback",
+                onClear = {
+                    PlaybackCache.clear(context)
+                    clearedCache = "playback"
+                }
+            )
+        },
+        SettingsEntry(sectionAdvanced, "Clear image cache",
+            "clear cache images posters thumbnails") {
+            SettingsClearRow(
+                icon = Icons.Filled.Image,
+                title = "Clear image cache",
+                subtitle = "Deletes cached posters and thumbnails; they reload on demand.",
+                cleared = clearedCache == "images",
+                onClear = {
+                    cacheScope.launch {
+                        context.imageLoader.diskCache?.clear()
+                        context.imageLoader.memoryCache?.clear()
+                        clearedCache = "images"
+                    }
+                }
             )
         },
 
@@ -981,6 +1017,60 @@ fun SettingsToggleRow(
                 onCheckedChange = onCheckedChange,
                 colors = settingsSwitchColors()
             )
+        }
+    }
+}
+
+/** Step 70: action row for one-shot actions (cache clears): icon + title /
+ * subtitle + a Clear button that turns into "Cleared" after it runs. */
+@Composable
+private fun SettingsClearRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    cleared: Boolean,
+    onClear: () -> Unit
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 3.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = title,
+                tint = LocalPalette.current.accent,
+                modifier = Modifier.size(21.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            if (cleared) {
+                Text(
+                    "Cleared",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalPalette.current.accent
+                )
+            } else {
+                TextButton(onClick = onClear) { Text("Clear") }
+            }
         }
     }
 }

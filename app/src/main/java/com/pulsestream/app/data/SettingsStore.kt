@@ -846,6 +846,36 @@ class SettingsStore(
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
 
+    /** Step 70: custom accent hex ("#RRGGBB", empty = use the preset accent). */
+    var customAccentHex: String
+        get() = prefs.getString(KEY_CUSTOM_ACCENT_HEX, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CUSTOM_ACCENT_HEX, value).apply()
+
+    /** Step 70: launcher icon variant ("default" | "black" | "white"). */
+    var appIcon: String
+        get() = prefs.getString(KEY_APP_ICON, "default") ?: "default"
+        set(value) = prefs.edit().putString(KEY_APP_ICON, value).apply()
+
+    /** Step 70: navigation dock style ("adaptive" | "compact"). */
+    var dockStyle: String
+        get() = prefs.getString(KEY_DOCK_STYLE, "adaptive") ?: "adaptive"
+        set(value) = prefs.edit().putString(KEY_DOCK_STYLE, value).apply()
+
+    /** Step 70: poster corner radius, dp (0..24). */
+    var posterCornerRadiusDp: Int
+        get() = prefInt(KEY_POSTER_CORNER_RADIUS_DP, 12).coerceIn(0, 24)
+        set(value) = prefs.edit().putInt(KEY_POSTER_CORNER_RADIUS_DP, value.coerceIn(0, 24)).apply()
+
+    /** Step 70: poster card width, dp (112/128/144). */
+    var posterCardWidthDp: Int
+        get() = prefInt(KEY_POSTER_CARD_WIDTH_DP, 128).coerceIn(112, 144)
+        set(value) = prefs.edit().putInt(KEY_POSTER_CARD_WIDTH_DP, value.coerceIn(112, 144)).apply()
+
+    /** Step 70: hide the title label under poster cards. */
+    var posterHideLabels: Boolean
+        get() = prefs.getBoolean(KEY_POSTER_HIDE_LABELS, false)
+        set(value) = prefs.edit().putBoolean(KEY_POSTER_HIDE_LABELS, value).apply()
+
     /** Step 68: show the parental-guide overlay when playback starts. */
     var showParentalGuide: Boolean
         get() = prefs.getBoolean(KEY_SHOW_PARENTAL_GUIDE, true)
@@ -2019,6 +2049,12 @@ class SettingsStore(
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_AUDIO_DELAY_MS = "audio_delay_ms"
         private const val KEY_DOWNMIX_ENABLED = "downmix_enabled"
+        private const val KEY_CUSTOM_ACCENT_HEX = "custom_accent_hex"
+        private const val KEY_APP_ICON = "app_icon"
+        private const val KEY_DOCK_STYLE = "dock_style"
+        private const val KEY_POSTER_CORNER_RADIUS_DP = "poster_corner_radius_dp"
+        private const val KEY_POSTER_CARD_WIDTH_DP = "poster_card_width_dp"
+        private const val KEY_POSTER_HIDE_LABELS = "poster_hide_labels"
         private const val KEY_SHOW_PARENTAL_GUIDE = "show_parental_guide"
         private const val KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER = "forward_subtitles_to_external_player"
         private const val KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER = "send_skip_segments_to_external_player"

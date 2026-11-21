@@ -47,4 +47,23 @@ object PlaybackCache {
         val mb = 1024L * 1024L
         return (context.cacheDir.usableSpace / 5L).coerceIn(256L * mb, 10_240L * mb)
     }
+
+    /**
+     * Step 70: drop the whole playback cache (Settings → Advanced →
+     * "Clear playback cache"). Releases the live instance first, then
+     * deletes the cache directory; [get] recreates it on next use.
+     */
+    @Synchronized
+    fun clear(context: Context) {
+        try {
+            instance?.release()
+        } catch (_: Exception) {
+        }
+        instance = null
+        maxBytes = 0
+        try {
+            File(context.cacheDir, "playback").deleteRecursively()
+        } catch (_: Exception) {
+        }
+    }
 }

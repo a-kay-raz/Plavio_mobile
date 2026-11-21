@@ -106,6 +106,7 @@ import com.pulsestream.app.data.db.CollectionFolder
 import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
+import com.pulsestream.app.ui.components.LocalPosterStyle
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.ui.components.AddToListSheet
@@ -1146,18 +1147,19 @@ private fun NextUpCard(
         episode.airDate == today -> "Aired today"
         else -> "Aired ${episode.airDate.format(dateFormat)}"
     }
+    val posterStyle = LocalPosterStyle.current
     Column(
         modifier = Modifier
-            .width(128.dp)
-            .tvFocusRing(RoundedCornerShape(12.dp))
+            .width(posterStyle.cardWidth)
+            .tvFocusRing(RoundedCornerShape(posterStyle.cornerRadius))
             .clickable(onClick = onClick)
             .focusable()
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
-                .liquidGlass(RoundedCornerShape(12.dp))
+                .height(posterStyle.cardHeight)
+                .liquidGlass(RoundedCornerShape(posterStyle.cornerRadius))
         ) {
             SafePosterImage(
                 model = tmdbSizedImage(episode.poster, "w342"),
@@ -1215,18 +1217,19 @@ private fun ReleaseRadarCard(
     item: com.pulsestream.app.data.ReleaseRadarItem,
     onClick: () -> Unit
 ) {
+    val posterStyle = LocalPosterStyle.current
     Column(
         modifier = Modifier
-            .width(128.dp)
-            .tvFocusRing(RoundedCornerShape(12.dp))
+            .width(posterStyle.cardWidth)
+            .tvFocusRing(RoundedCornerShape(posterStyle.cornerRadius))
             .clickable(onClick = onClick)
             .focusable()
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
-                .liquidGlass(RoundedCornerShape(12.dp))
+                .height(posterStyle.cardHeight)
+                .liquidGlass(RoundedCornerShape(posterStyle.cornerRadius))
         ) {
             SafePosterImage(
                 model = tmdbSizedImage(item.imageUrl, "w342"),
