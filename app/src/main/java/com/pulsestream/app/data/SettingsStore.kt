@@ -260,6 +260,10 @@ val SKIP_SECONDS_OPTIONS: List<Int> = listOf(5, 10, 15, 30)
 private fun normalizeSkipSeconds(seconds: Int?): Int =
     seconds?.takeIf { it in SKIP_SECONDS_OPTIONS } ?: 10
 
+private fun normalizeResizeMode(mode: Int): Int =
+    mode.takeIf { it in ASPECT_MODES.map { m -> m.first } }
+        ?: AspectRatioFrameLayout.RESIZE_MODE_FIT
+
 fun diskCacheName(mb: Int): String =
     DISK_CACHE_OPTIONS.find { it.first == mb }?.second
         ?: if (mb <= 0) "Off" else "$mb MB"
@@ -456,6 +460,11 @@ class SettingsStore(context: Context) {
     var swipeToSeekEnabled: Boolean
         get() = prefs.getBoolean(KEY_SWIPE_TO_SEEK_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_SWIPE_TO_SEEK_ENABLED, value).apply()
+
+    /** Resize mode (Nuvio resizeMode): Fit/Fill/Zoom, persisted so it survives restarts. Stored as the raw AspectRatioFrameLayout constant. */
+    var resizeMode: Int
+        get() = normalizeResizeMode(prefInt(KEY_RESIZE_MODE, AspectRatioFrameLayout.RESIZE_MODE_FIT))
+        set(value) = prefs.edit().putInt(KEY_RESIZE_MODE, normalizeResizeMode(value)).apply()
 
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
@@ -1033,6 +1042,7 @@ class SettingsStore(context: Context) {
         private const val KEY_SKIP_FORWARD_SECONDS = "skip_forward_seconds"
         private const val KEY_TOUCH_GESTURES_ENABLED = "touch_gestures_enabled"
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
+        private const val KEY_RESIZE_MODE = "resize_mode"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"
