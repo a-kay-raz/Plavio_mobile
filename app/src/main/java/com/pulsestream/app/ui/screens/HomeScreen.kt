@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -235,7 +236,65 @@ fun HomeScreen(
         }
     }
     val watching by repository.continueWatching.collectAsState(initial = emptyList())
+    val settings = repository.settings
+    // Continue Watching prefs (Nuvio H7/H8): sort + split, applied to the
+    // raw resume list; the card style + click action are read at the section.
+    val sortedWatching = remember(
+        watching, settings.continueWatchingSortMode, settings.watchedThresholdPercent
+    ) {
+        applyContinueWatchingSort(
+            watching, settings.continueWatchingSortMode, settings.watchedThresholdPercent
+        )
+    }
+    val (mainWatching, upcomingWatching) = remember(sortedWatching) {
+        splitContinueWatchingUpcoming(sortedWatching)
+    }
+    // Resume prompt on launch (Nuvio showResumePromptOnLaunch): once per
+    // app launch, offer the latest title. `remember` (not saveable) keeps
+    // it to one show per process — coming back from the player doesn't
+    // re-prompt.
+    var resumePromptShown by remember { mutableStateOf(false) }
+    var resumePromptOpen by remember { mutableStateOf(false) }
+    val promptItem = sortedWatching.firstOrNull()
+    LaunchedEffect(promptItem) {
+        if (promptItem != null && settings.continueWatchingResumePrompt && !resumePromptShown) {
+            resumePromptShown = true
+            resumePromptOpen = true
+        }
+    }
     val scope = rememberCoroutineScope()
+
+    /** Shared by the CW card tap and the resume prompt: resume the saved position. */
+    fun resumeItem(item: PlaybackState) {
+        repository.pendingPlayback = PlaybackRequest(
+            streamUrl = item.streamUrl,
+            title = item.title,
+            poster = item.poster,
+            videoId = item.videoId,
+            imdbId = item.imdbId,
+            season = item.season,
+            episode = item.episode,
+            isMovie = item.season == 0 && item.episode == 0,
+            type = if (item.season == 0 && item.episode == 0) "movie" else "series"
+        )
+        onResumePlayback()
+    }
+
+    /** Details for a resume card: PlavioMeta is the preferred meta addon. */
+    fun openItemDetails(item: PlaybackState) {
+        val isMovie = item.season == 0 && item.episode == 0
+        onOpenDetail(
+            "com.plavio.catalogs",
+            if (isMovie) "movie" else "series",
+            item.videoId.substringBefore(":")
+        )
+    }
+
+    /** CW tap (Nuvio ContinueWatchingClickAction): stream, or details when set. */
+    fun onWatchingClick(item: PlaybackState) {
+        if (settings.continueWatchingClickAction == "details") openItemDetails(item)
+        else resumeItem(item)
+    }
     // Long-press context menu target: (addonId, meta) for the pressed poster.
     var contextMenuTarget by remember { mutableStateOf<Pair<String, MetaPreview>?>(null) }
     // Add-to-list sheet target: (addonId, meta).
@@ -397,7 +456,7 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        if (watching.isNotEmpty()) {
+                        if (settings.continueWatchingVisible && mainWatching.isNotEmpty()) {
                             // Explicit key: this section appears/disappears as the
                             // Flow emits, so an index-based default key would
                             // reshuffle every row below it on each emission.
@@ -416,29 +475,54 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     itemsIndexed(
-                                        watching,
+                                        mainWatching,
                                         key = { index, item -> "${item.key}_$index" }
                                     ) { _, item ->
                                         ContinueWatchingCard(
                                             item,
+                                            style = settings.continueWatchingStyle,
                                             onRemove = {
                                                 scope.launch {
                                                     repository.deleteSavedPosition(item.key)
                                                 }
                                             }
                                         ) {
-                                            repository.pendingPlayback = PlaybackRequest(
-                                                streamUrl = item.streamUrl,
-                                                title = item.title,
-                                                poster = item.poster,
-                                                videoId = item.videoId,
-                                                imdbId = item.imdbId,
-                                                season = item.season,
-                                                episode = item.episode,
-                                                isMovie = item.season == 0 && item.episode == 0,
-                                                type = if (item.season == 0 && item.episode == 0) "movie" else "series"
-                                            )
-                                            onResumePlayback()
+                                            onWatchingClick(item)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                              }
+                            }
+                        }
+                        // Split-upcoming second section (Nuvio splitUpcomingItems):
+                        // empty in Plavio today — Continue Watching is resume
+                        // positions only, with no release dates — but renders
+                        // when entries exist.
+                        if (settings.continueWatchingVisible && upcomingWatching.isNotEmpty()) {
+                            item(key = "continue_watching_upcoming") {
+                              Column(
+                                Modifier.background(LocalPalette.current.background)
+                              ) {
+                                SectionTitle("Coming up")
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    itemsIndexed(
+                                        upcomingWatching,
+                                        key = { index, item -> "up_${item.key}_$index" }
+                                    ) { _, item ->
+                                        ContinueWatchingCard(
+                                            item,
+                                            style = settings.continueWatchingStyle,
+                                            onRemove = {
+                                                scope.launch {
+                                                    repository.deleteSavedPosition(item.key)
+                                                }
+                                            }
+                                        ) {
+                                            onWatchingClick(item)
                                         }
                                     }
                                 }
@@ -632,6 +716,38 @@ fun HomeScreen(
             name = meta.name,
             poster = meta.poster,
             onDismiss = { addToListTarget = null }
+        )
+    }
+
+    // Resume prompt on launch (Nuvio showResumePromptOnLaunch): the latest
+    // title, offered once when the app opens.
+    if (resumePromptOpen && promptItem != null) {
+        val remainingMs = promptItem.durationMs - promptItem.positionMs
+        AlertDialog(
+            onDismissRequest = { resumePromptOpen = false },
+            title = { Text("Continue watching?", color = TextPrimary) },
+            text = {
+                Column {
+                    Text(promptItem.title, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (remainingMs > 60_000) "${formatRemaining(remainingMs)} left"
+                        else "Tap Resume to pick up where you left off",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { resumePromptOpen = false; resumeItem(promptItem) }) {
+                    Text("Resume", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { resumePromptOpen = false }) {
+                    Text("Dismiss", color = TextSecondary)
+                }
+            }
         )
     }
 }
@@ -830,14 +946,51 @@ private fun HeroCarousel(
 }
 
 @Composable
+/**
+ * Continue Watching order (Nuvio `applyStreamingStyleSort`, adapted to
+ * Plavio's data): default = most recently watched first (the stored order);
+ * streaming-style = unfinished first by recency, finished last. Finished
+ * means at the watched threshold (Step 2).
+ */
+internal fun applyContinueWatchingSort(
+    items: List<PlaybackState>,
+    mode: String,
+    watchedThresholdPercent: Int,
+): List<PlaybackState> {
+    if (mode != "streaming") return items
+    val (unfinished, finished) = items.partition { item ->
+        item.durationMs <= 0 ||
+            item.positionMs * 100L < item.durationMs * watchedThresholdPercent
+    }
+    return unfinished + finished
+}
+
+/**
+ * Splits unaired next-up items out of the main list (Nuvio
+ * `splitUpcomingItems`). Always empty in Plavio today: Continue Watching
+ * is resume positions only — PlaybackState carries no release date and
+ * there are no next-up entries — so the main list passes through whole.
+ */
+internal fun splitContinueWatchingUpcoming(
+    items: List<PlaybackState>,
+): Pair<List<PlaybackState>, List<PlaybackState>> = items to emptyList()
+
 private fun ContinueWatchingCard(
     item: PlaybackState,
+    style: String = "card",
     onRemove: () -> Unit,
     onClick: () -> Unit
 ) {
+    // Card style (Nuvio ContinueWatchingSectionStyle): card = current wide
+    // thumbnail, wide = larger thumbnail, poster = tall poster card.
+    val (cardWidth, thumbHeight) = when (style) {
+        "wide" -> 280.dp to 140.dp
+        "poster" -> 128.dp to 192.dp
+        else -> 200.dp to 112.dp
+    }
     Column(
         modifier = Modifier
-            .width(200.dp)
+            .width(cardWidth)
             .tvFocusRing(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .focusable()
@@ -845,7 +998,7 @@ private fun ContinueWatchingCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(112.dp)
+                .height(thumbHeight)
                 .liquidGlass(RoundedCornerShape(14.dp))
         ) {
             SafePosterImage(

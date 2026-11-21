@@ -147,6 +147,7 @@ import com.pulsestream.app.ui.screens.SettingsScreen
 import com.pulsestream.app.ui.screens.AccountScreen
 import com.pulsestream.app.ui.screens.AddonsScreen
 import com.pulsestream.app.ui.screens.CatalogScreen
+import com.pulsestream.app.ui.screens.ContinueWatchingSettingsScreen
 import com.pulsestream.app.ui.screens.DetailScreen
 import com.pulsestream.app.ui.screens.FeedbackScreen
 import com.pulsestream.app.ui.screens.DownloadsScreen
@@ -1390,12 +1391,19 @@ private fun PulseNavGraph(
                 onBack = { navController.popBackStack() }
             )
         }
+        composable(Routes.CONTINUE_WATCHING_SETTINGS) {
+            ContinueWatchingSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 repository = repository,
                 onThemeChanged = onThemeChanged,
                 onGoToAddons = { navController.navigate(Routes.ADDONS) },
                 onGoToHomeCatalogs = { navController.navigate(Routes.HOME_CATALOGS) },
+                onGoToContinueWatching = { navController.navigate(Routes.CONTINUE_WATCHING_SETTINGS) },
                 onGoToPlayback = { navController.navigate(Routes.PLAYBACK_SETTINGS) },
                 onGoToSubtitles = { navController.navigate(Routes.SUBTITLE_SETTINGS) },
                 onGoToAppearance = { navController.navigate(Routes.APPEARANCE_SETTINGS) },

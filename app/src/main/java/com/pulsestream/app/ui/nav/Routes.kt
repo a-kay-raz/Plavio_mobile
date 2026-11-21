@@ -16,6 +16,7 @@ object Routes {
     const val LIST_DETAIL = "list_detail/{listId}"
     const val ADDONS = "addons"
     const val HOME_CATALOGS = "home_catalogs"
+    const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"
     const val ACCOUNT = "account"
     const val BACKUP = "backup"
     const val PLAYBACK_SETTINGS = "playback_settings"
