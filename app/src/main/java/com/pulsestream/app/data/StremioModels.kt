@@ -26,6 +26,8 @@ data class AddonManifest(
     val resources: List<String>,
     /** True when the manifest's behaviorHints mark it as configurable (has a /configure page). */
     val configurable: Boolean = false,
+    /** True when behaviorHints.configurationRequired is set: the addon must be configured before use. Also shows the Configure action. */
+    val configurationRequired: Boolean = false,
     /** Manifest logo URL — shown as the addon icon in the Addons tab. */
     val logo: String? = null
 ) {
@@ -35,6 +37,14 @@ data class AddonManifest(
     val hasSubtitles: Boolean get() = resources.contains("subtitles")
     val isFullAddon: Boolean get() = hasCatalog && hasMeta && hasStream
 }
+
+/**
+ * Nuvio isTrackingAddon: a manifest exposing a "player" or "library"
+ * resource receives the user's watch activity + library, so installing it
+ * needs explicit consent (TrackingAddonConsentDialog).
+ */
+val AddonManifest.isTrackingAddon: Boolean
+    get() = resources.contains("player") || resources.contains("library")
 
 data class MetaPreview(
     val id: String,

@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CustomListItem::class,
         WatchedRecord::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -205,5 +205,14 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
 val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS watched (`key` TEXT NOT NULL, watchedAt INTEGER NOT NULL, PRIMARY KEY(`key`))")
+    }
+}
+
+/** v12 → v13: `configurationRequired` flag on addons (behaviorHints.configurationRequired) so the Configure action also shows for addons that must be configured. */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE addons ADD COLUMN configurationRequired INTEGER NOT NULL DEFAULT 0"
+        )
     }
 }

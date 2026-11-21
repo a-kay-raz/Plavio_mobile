@@ -74,7 +74,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.pulsestream.app.data.AddonShare
+import com.pulsestream.app.data.AddonManifest
 import com.pulsestream.app.data.AddonRefreshOutcome
+import com.pulsestream.app.data.isTrackingAddon
 import com.pulsestream.app.data.SharedAddon
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.StremioApi
@@ -102,6 +104,9 @@ sealed interface AddUiState {
 /** One-shot result of a manual addon refresh, shown under the addon row. */
 data class RefreshNote(val message: String, val isError: Boolean)
 
+/** An install held for tracking consent (Nuvio TrackingConsentRequired). */
+data class PendingTrackingInstall(val inputUrl: String, val manifest: AddonManifest)
+
 class AddonsViewModel(private val repo: StreamRepository) : ViewModel() {
     var addState by mutableStateOf<AddUiState>(AddUiState.Idle)
         private set
@@ -114,17 +119,61 @@ class AddonsViewModel(private val repo: StreamRepository) : ViewModel() {
     var refreshNotes by mutableStateOf(mapOf<String, RefreshNote>())
         private set
 
+    /** Tracking-addon install waiting on the user's explicit consent. */
+    var pendingTrackingConsent by mutableStateOf<PendingTrackingInstall?>(null)
+        private set
+
+    /** onDone of the add that is waiting on tracking consent. */
+    private var pendingTrackingOnDone: (() -> Unit)? = null
+
     fun addAddon(url: String, onDone: () -> Unit) {
         viewModelScope.launch {
             addState = AddUiState.Adding
-            val result = repo.addAddonFromUrl(url)
-            result.onSuccess {
+            val manifestResult = repo.fetchAddonManifest(url)
+            val manifest = manifestResult.getOrNull()
+            if (manifest == null) {
+                addState = AddUiState.Error(
+                    manifestResult.exceptionOrNull()?.message ?: "Couldn't add this addon"
+                )
+                return@launch
+            }
+            if (manifest.isTrackingAddon) {
+                // Nuvio: a "player"/"library" addon gets watch activity +
+                // library, so warn before installing; the user agrees first.
+                pendingTrackingConsent = PendingTrackingInstall(url, manifest)
+                pendingTrackingOnDone = onDone
+                addState = AddUiState.Idle
+                return@launch
+            }
+            installFetchedAddon(url, manifest, onDone)
+        }
+    }
+
+    /** Install after the user accepted the tracking warning. */
+    fun installWithTrackingConsent() {
+        val pending = pendingTrackingConsent ?: return
+        pendingTrackingConsent = null
+        val onDone = pendingTrackingOnDone
+        pendingTrackingOnDone = null
+        viewModelScope.launch { installFetchedAddon(pending.inputUrl, pending.manifest) { onDone?.invoke() } }
+    }
+
+    /** Dismiss the tracking warning without installing. */
+    fun dismissTrackingConsent() {
+        pendingTrackingConsent = null
+        pendingTrackingOnDone = null
+        addState = AddUiState.Idle
+    }
+
+    private suspend fun installFetchedAddon(url: String, manifest: AddonManifest, onDone: () -> Unit) {
+        addState = AddUiState.Adding
+        repo.installAddonManifest(url, manifest)
+            .onSuccess {
                 addState = AddUiState.Idle
                 onDone()
             }.onFailure {
                 addState = AddUiState.Error(it.message ?: "Couldn't add this addon")
             }
-        }
     }
 
     fun reset() { addState = AddUiState.Idle }
@@ -630,6 +679,15 @@ fun AddonsScreen(
             onImport = { code, onResult -> vm.importBundle(code, onResult) }
         )
     }
+
+    val pendingTracking = vm.pendingTrackingConsent
+    if (pendingTracking != null) {
+        TrackingAddonConsentDialog(
+            manifest = pendingTracking.manifest,
+            onInstall = { vm.installWithTrackingConsent() },
+            onDismiss = { vm.dismissTrackingConsent() }
+        )
+    }
 }
 
 @Composable
@@ -886,16 +944,15 @@ private fun AddonCard(
                         tint = if (addon.starred) Color(0xFFFBBF24) else TextSecondary
                     )
                 }
-                if (addon.configurable) {
+                if (addon.configurable || addon.configurationRequired) {
                     val ctx = androidx.compose.ui.platform.LocalContext.current
                     IconButton(
                         onClick = {
-                            val base = addon.baseUrl.trimEnd('/')
                             runCatching {
                                 ctx.startActivity(
                                     android.content.Intent(
                                         android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse("$base/configure")
+                                        android.net.Uri.parse(addon.baseUrl.toConfigureUrl())
                                     )
                                 )
                             }
@@ -1117,6 +1174,80 @@ private fun PreinstalledPill() {
 }
 
 @Composable
+/**
+ * Nuvio's toConfigureUrl: strip any query (a normalized base URL can keep
+ * one — "$base/configure" would put the path after the query and break),
+ * then /manifest.json -> /configure.
+ */
+private fun String.toConfigureUrl(): String {
+    val base = substringBefore("?").trimEnd('/')
+    return if (base.endsWith("/manifest.json")) {
+        base.removeSuffix("/manifest.json") + "/configure"
+    } else {
+        "$base/configure"
+    }
+}
+
+/**
+ * Tracking-addon consent (Nuvio TrackingAddonConsentDialog): a
+ * "player"/"library" addon receives the user's watch activity + library,
+ * so installing it needs an explicit opt-in — Install stays disabled
+ * until the checkbox is ticked.
+ */
+@Composable
+private fun TrackingAddonConsentDialog(
+    manifest: AddonManifest,
+    onInstall: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var accepted by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.panel,
+        title = { Text("Tracking addon", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "${manifest.name} is a tracking addon. Plavio will send it your activity: what you play, pause and stop with the playback position, what you add to or remove from your library, and what you mark as watched or unwatched. This data leaves Plavio and is handled by the addon's developer and the service it connects to.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { accepted = !accepted }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Checkbox(
+                        checked = accepted,
+                        onCheckedChange = null,
+                        colors = androidx.compose.material3.CheckboxDefaults.colors(
+                            checkedColor = LocalPalette.current.accent
+                        )
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "I agree to share my watch activity and library with this addon",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onInstall, enabled = accepted) {
+                Text("Install", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+        }
+    )
+}
+
 private fun AddAddonDialog(
     state: AddUiState,
     initialUrl: String = "",
