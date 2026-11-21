@@ -792,11 +792,14 @@ private fun DetailContent(
     var anilistAverage by remember { mutableStateOf<Int?>(null) }
     // Step 53: WeTrakr rating (1–10) when it is the ratings source.
     var wetrakrRating by remember { mutableStateOf<Int?>(null) }
+    // Step 54: MDBList rating (1–10, the user's own) when it is the source.
+    var mdblistRating by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(meta.id, settings.trackingRatingsSource) {
         omdbRatings = null
         traktTitleRatings = null
         anilistAverage = null
         wetrakrRating = null
+        mdblistRating = null
         val key = settings.omdbApiKey
         val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
         if (!key.isNullOrBlank() && imdbId != null) {
@@ -828,6 +831,15 @@ private fun DetailContent(
                     wetrakrRating = ratings[lookupId]
                 }
             }
+            com.pulsestream.app.data.tracking.TrackingRatingsSource.MDBLIST -> {
+                val lookupId = imdbId ?: meta.id.takeIf { it.startsWith("tmdb:") }
+                if (lookupId != null) {
+                    val ratings = runCatching {
+                        com.pulsestream.app.data.mdblist.MdbListApi.getRatings(settings)
+                    }.getOrNull().orEmpty()
+                    mdblistRating = ratings[lookupId]
+                }
+            }
             else -> {
                 if (imdbId != null) {
                     traktTitleRatings = runCatching {
@@ -839,7 +851,7 @@ private fun DetailContent(
     }
     // Provider scores: OMDb's matrix when loaded, else the meta's IMDb value,
     // plus the picked service's community average when it has one.
-    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings, anilistAverage, wetrakrRating) {
+    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings, anilistAverage, wetrakrRating, mdblistRating) {
         val base = if (!omdbRatings.isNullOrEmpty()) omdbRatings!!
             else meta.imdbRating?.takeIf { it.isNotBlank() }
                 ?.let { listOf(OmdbRating("Internet Movie Database", it)) } ?: emptyList()
@@ -847,6 +859,8 @@ private fun DetailContent(
             anilistAverage?.let { OmdbRating("AniList", "%.1f/10".format(it / 10.0)) }
         } else if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.WETRAKR) {
             wetrakrRating?.let { OmdbRating("WeTrakr", "%.1f/10".format(it.toDouble())) }
+        } else if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.MDBLIST) {
+            mdblistRating?.let { OmdbRating("MDBList", "%.1f/10".format(it.toDouble())) }
         } else {
             traktTitleRatings?.let { OmdbRating("Trakt", "%.1f/10".format(it.rating)) }
         }

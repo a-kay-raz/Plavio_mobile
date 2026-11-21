@@ -55,6 +55,7 @@ import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.data.db.CustomList
 import com.pulsestream.app.data.TmdbClient
 import com.pulsestream.app.data.anilist.AniListApi
+import com.pulsestream.app.data.mdblist.MdbListApi
 import com.pulsestream.app.data.publicmetadb.PublicMetaDbApi
 import com.pulsestream.app.data.simkl.SimklApi
 import com.pulsestream.app.data.tracking.libraryProviders
@@ -117,15 +118,23 @@ fun LibraryScreen(
     // Step 53: WeTrakr + PublicMetaDB join the same picker system.
     val wetrakrLinked = !settings.wetrakrAccessToken.isNullOrBlank()
     val publicMetaDbLinked = !settings.publicMetaDbApiKey.isNullOrBlank()
+    // Step 54: MDBList joins the same picker system.
+    val mdblistLinked = !settings.mdblistAccessToken.isNullOrBlank()
     val librarySource = settings.trackingLibrarySource
     val progressSource = settings.trackingProgressSource
 
-    var loading by remember { mutableStateOf(traktLinked || simklLinked || anilistLinked || wetrakrLinked || publicMetaDbLinked) }
+    var loading by remember { mutableStateOf(traktLinked || simklLinked || anilistLinked || wetrakrLinked || publicMetaDbLinked || mdblistLinked) }
     var upNext by remember { mutableStateOf<List<UpNextCard>>(emptyList()) }
     var traktWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var simklWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var anilistWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var wetrakrWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
+    /** MDBList lists (Step 54): (list name, first 20 posters). */
+    var mdblistLists by remember {
+        mutableStateOf<List<Pair<String, List<MetaPreview>>>>(emptyList())
+    }
+    /** MDBList watchlist for the Saved tab. */
+    var mdblistWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     /** PublicMetaDB lists (Step 53): (list name, first 20 posters). */
     var pmdbLists by remember {
         mutableStateOf<List<Pair<String, List<MetaPreview>>>>(emptyList())
@@ -155,8 +164,8 @@ fun LibraryScreen(
         settings.librarySyncedKeys.map { it.substringAfter('|') }.toSet()
     }
 
-    LaunchedEffect(traktLinked, simklLinked, anilistLinked, wetrakrLinked, publicMetaDbLinked, librarySource, progressSource) {
-        if (!traktLinked && !simklLinked && !anilistLinked && !wetrakrLinked && !publicMetaDbLinked) {
+    LaunchedEffect(traktLinked, simklLinked, anilistLinked, wetrakrLinked, publicMetaDbLinked, mdblistLinked, librarySource, progressSource) {
+        if (!traktLinked && !simklLinked && !anilistLinked && !wetrakrLinked && !publicMetaDbLinked && !mdblistLinked) {
             loading = false
             return@LaunchedEffect
         }
@@ -171,6 +180,8 @@ fun LibraryScreen(
             wetrakrWatchlist = emptyList()
             pmdbLists = emptyList()
             pmdbWatchlist = emptyList()
+            mdblistLists = emptyList()
+            mdblistWatchlist = emptyList()
             upNext = emptyList()
             loading = false
             return@LaunchedEffect
@@ -184,6 +195,8 @@ fun LibraryScreen(
         wetrakrWatchlist = emptyList()
         pmdbLists = emptyList()
         pmdbWatchlist = emptyList()
+        mdblistLists = emptyList()
+        mdblistWatchlist = emptyList()
         traktLists = emptyList()
         upNext = emptyList()
         val traktApi = TraktApi()
@@ -451,6 +464,51 @@ fun LibraryScreen(
                 }
             }
         }
+        // Step 54: MDBList — watchlist + personal lists + watched
+        // episodes (latest watched episode per show -> next episode card).
+        if ("mdblist" in libraryProviders || "mdblist" in progressProviders) {
+            if ("mdblist" in libraryProviders) {
+                mdblistWatchlist = previews(
+                    runCatching { MdbListApi.getWatchlist(settings) }.getOrNull().orEmpty()
+                        .take(20).map { entry -> entry.type to (entry.contentId to (entry.title ?: "")) }
+                )
+                val lists = runCatching { MdbListApi.getLists(settings) }.getOrNull().orEmpty()
+                mdblistLists = coroutineScope {
+                    lists.take(5).map { list ->
+                        async {
+                            val items = runCatching {
+                                MdbListApi.getListItems(settings, list.id)
+                            }.getOrNull().orEmpty()
+                            list.name to previews(
+                                items.take(20).map { it.type to (it.contentId to (it.title ?: "")) }
+                            )
+                        }
+                    }.awaitAll()
+                }.filter { (_, items) -> items.isNotEmpty() }
+            }
+            if ("mdblist" in progressProviders) {
+                val episodes = runCatching { MdbListApi.getWatchedEpisodes(settings) }.getOrNull().orEmpty()
+                val knownIds = cards.map { it.imdbId }.toSet()
+                val latestByShow = episodes.groupBy { it.showContentId }
+                    .mapValues { (_, eps) -> eps.maxBy { it.watchedAtMs } }
+                    .filter { (id, _) -> id !in knownIds }
+                for ((showId, ep) in latestByShow) {
+                    val meta = metaFor("series", showId)
+                    val nextNumber = ep.number + 1
+                    cards += UpNextCard(
+                        imdbId = showId,
+                        showTitle = meta?.name ?: ep.showTitle ?: "Series",
+                        service = "MDBList",
+                        nextLabel = "S${ep.season} E$nextNumber",
+                        metaLine = "Watched S${ep.season} E${ep.number} · on MDBList",
+                        progress = null,
+                        poster = meta?.poster,
+                        still = null,
+                        lastWatchedMs = ep.watchedAtMs
+                    )
+                }
+            }
+        }
         upNext = cards.sortedByDescending { it.lastWatchedMs }.take(10)
         loading = false
     }
@@ -520,6 +578,7 @@ fun LibraryScreen(
                     anilistWatchlist = anilistWatchlist,
                     wetrakrWatchlist = wetrakrWatchlist,
                     pmdbWatchlist = pmdbWatchlist,
+                    mdblistWatchlist = mdblistWatchlist,
                     watchedKeys = watchedKeys,
                     settings = settings,
                     onOpenDetail = onOpenDetail
@@ -557,6 +616,7 @@ fun LibraryScreen(
                     anilistWatchlist = anilistWatchlist,
                     wetrakrWatchlist = wetrakrWatchlist,
                     pmdbWatchlist = pmdbWatchlist,
+                    mdblistWatchlist = mdblistWatchlist,
                     onOpenDetail = onOpenDetail
                 )
             }
@@ -574,7 +634,7 @@ fun LibraryScreen(
             }
         }
 
-        if (loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() && anilistWatchlist.isEmpty() && wetrakrWatchlist.isEmpty() && pmdbWatchlist.isEmpty()) {
+        if (loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() && anilistWatchlist.isEmpty() && wetrakrWatchlist.isEmpty() && pmdbWatchlist.isEmpty() && mdblistWatchlist.isEmpty()) {
             item(key = "lib_loading") {
                 Box(
                     Modifier.fillMaxWidth().padding(vertical = 36.dp),
@@ -625,6 +685,18 @@ fun LibraryScreen(
             if (items.isNotEmpty()) {
                 item(key = "pmdb_$index") {
                     FeedRow(name, "PUBLICMETADB", Color(0xFF00BFA5), items, onOpenDetail)
+                }
+            }
+        }
+        if (mdblistWatchlist.isNotEmpty()) {
+            item(key = "mdblist_wl") {
+                FeedRow("Watchlist", "MDBLIST", Color(0xFF2196F3), mdblistWatchlist, onOpenDetail)
+            }
+        }
+        mdblistLists.forEachIndexed { index, (name, items) ->
+            if (items.isNotEmpty()) {
+                item(key = "mdblist_$index") {
+                    FeedRow(name, "MDBLIST", Color(0xFF2196F3), items, onOpenDetail)
                 }
             }
         }
@@ -745,12 +817,13 @@ fun LibraryScreen(
 
         if (!loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() &&
             anilistWatchlist.isEmpty() && wetrakrWatchlist.isEmpty() && pmdbWatchlist.isEmpty() &&
-            traktLists.isEmpty() && pmdbLists.isEmpty() &&
+            mdblistWatchlist.isEmpty() && traktLists.isEmpty() && pmdbLists.isEmpty() &&
+            mdblistLists.isEmpty() &&
             myWatchlist.isEmpty() && myLists.isEmpty()
         ) {
             item(key = "lib_empty") {
                 Text(
-                    if (traktLinked || simklLinked || anilistLinked || wetrakrLinked || publicMetaDbLinked) {
+                    if (traktLinked || simklLinked || anilistLinked || wetrakrLinked || publicMetaDbLinked || mdblistLinked) {
                         "Nothing here yet — your watchlists and progress will show up once there is something to show."
                     } else {
                         "Nothing here yet — add something to your watchlist, or connect Trakt/Simkl above."
@@ -797,13 +870,14 @@ private fun LibraryCalendarTab(
     anilistWatchlist: List<MetaPreview> = emptyList(),
     wetrakrWatchlist: List<MetaPreview> = emptyList(),
     pmdbWatchlist: List<MetaPreview> = emptyList(),
+    mdblistWatchlist: List<MetaPreview> = emptyList(),
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
 ) {
     val palette = LocalPalette.current
     var days by remember { mutableStateOf<List<com.pulsestream.app.data.ReleaseDay>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var refreshTick by remember { mutableStateOf(0) }
-    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist) {
+    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist, mdblistWatchlist) {
         (
             myWatchlist.filter { it.type == "series" }.map { it.metaId } +
                 allListItems.filter { it.type == "series" }.map { it.metaId } +
@@ -811,7 +885,8 @@ private fun LibraryCalendarTab(
                 simklWatchlist.filter { it.type == "series" }.map { it.id } +
                 anilistWatchlist.filter { it.type == "series" }.map { it.id } +
                 wetrakrWatchlist.filter { it.type == "series" }.map { it.id } +
-                pmdbWatchlist.filter { it.type == "series" }.map { it.id }
+                pmdbWatchlist.filter { it.type == "series" }.map { it.id } +
+                mdblistWatchlist.filter { it.type == "series" }.map { it.id }
             ).distinct()
     }
     LaunchedEffect(refreshTick) {

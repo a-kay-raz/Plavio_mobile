@@ -440,6 +440,10 @@ fun IntegrationsScreen(
                 PublicMetaDbSection(settings = settings)
             }
 
+            item(key = "mdblist") {
+                MdbListSection(settings = settings)
+            }
+
             item(key = "library_sync") {
                 LibrarySyncRow(repository = repository)
             }
