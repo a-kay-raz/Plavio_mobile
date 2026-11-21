@@ -208,6 +208,10 @@ import com.pulsestream.app.data.AUDIO_DELAY_MAX_MS
 import com.pulsestream.app.data.AUDIO_DELAY_MIN_MS
 import com.pulsestream.app.data.AUDIO_DELAY_STEP_MS
 import com.pulsestream.app.data.AudioDelayMediaSourceFactory
+import com.pulsestream.app.data.ParentalGuideRepository
+import com.pulsestream.app.data.ParentalWarning
+import com.pulsestream.app.data.buildParentalWarnings
+import com.pulsestream.app.data.extractParentalGuideImdbId
 import com.pulsestream.app.data.BingeGroupCache
 import com.pulsestream.app.data.CachedStreamLink
 import com.pulsestream.app.data.FilenameEpisodeMatcher
@@ -605,6 +609,10 @@ fun PlayerScreen(
         settings.maintainOriginalAudioOnDownmix = keep
         downmixConfig.maintainOriginal = keep
     }
+
+    // Step 68: parental guide warnings for the current title.
+    var parentalWarnings by remember { mutableStateOf(emptyList<ParentalWarning>()) }
+    var parentalGuideVisible by remember { mutableStateOf(false) }
 
     fun playbackMediaSourceFactory(req: PlaybackRequest): MediaSource.Factory {
         val playbackHeaders = PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv)
@@ -1822,6 +1830,23 @@ fun PlayerScreen(
         val wantDefault = pendingDefaultSubUrl
         pendingDefaultSubUrl = null
         attachResolvedSubtitles(resolvedSubs, wantDefault)
+    }
+
+    // Step 68: parental guide — fetch once playback starts; the overlay
+    // shows itself for ~5s and fades out. A new title clears the old
+    // warnings first so they never linger on the wrong video.
+    LaunchedEffect(currentRequest.videoId, hasStartedPlayback) {
+        parentalGuideVisible = false
+        parentalWarnings = emptyList()
+        if (!settings.showParentalGuide || !hasStartedPlayback) return@LaunchedEffect
+        val imdb = extractParentalGuideImdbId(
+            currentRequest.imdbId ?: currentRequest.metaId
+        ) ?: return@LaunchedEffect
+        val guide = ParentalGuideRepository.getParentalGuide(imdb) ?: return@LaunchedEffect
+        val warnings = buildParentalWarnings(guide)
+        if (warnings.isEmpty() || disposed.get()) return@LaunchedEffect
+        parentalWarnings = warnings
+        parentalGuideVisible = true
     }
 
     /**
@@ -3463,6 +3488,16 @@ fun PlayerScreen(
         // the system draws its own PiP controls. Only the PlayerView surface
         // stays composed, so playback continues uninterrupted.
         if (inPip) return@Box
+
+        // Step 68: parental guide overlay (top-left, below the header).
+        // Shows itself for ~5s once playback starts, then fades out.
+        if (parentalGuideVisible && parentalWarnings.isNotEmpty()) {
+            ParentalGuideOverlay(
+                warnings = parentalWarnings,
+                isVisible = parentalGuideVisible,
+                onAnimationComplete = { parentalGuideVisible = false }
+            )
+        }
 
         // Startup presentation (owner's pick 2026-10-24 — "Backdrop
         // + orbit"): while the current request has not played yet, the

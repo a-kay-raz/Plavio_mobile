@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
@@ -115,6 +116,8 @@ fun PlaybackSettingsScreen(
     var preferBingeGroup by remember { mutableStateOf(settings.autoplayPreferBingeGroup) }
     // Step 64: background audio (opt-in, VOD only).
     var backgroundAudio by remember { mutableStateOf(settings.backgroundAudioEnabled) }
+    // Step 68: parental guide overlay (default on).
+    var showParentalGuide by remember { mutableStateOf(settings.showParentalGuide) }
     var keepScreenOn by remember { mutableStateOf(settings.keepScreenOn) }
     var showSkip by remember { mutableStateOf(settings.showSkipButton) }
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
@@ -254,6 +257,18 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 backgroundAudio = it
                                 settings.backgroundAudioEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Shield,
+                            title = "Parental guide",
+                            subtitle = "Show content guidance (sex, violence, language…) briefly when playback starts",
+                            checked = showParentalGuide,
+                            onCheckedChange = {
+                                showParentalGuide = it
+                                settings.showParentalGuide = it
                             }
                         )
                     },
