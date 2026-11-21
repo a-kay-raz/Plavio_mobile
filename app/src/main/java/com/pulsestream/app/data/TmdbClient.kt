@@ -22,17 +22,32 @@ object TmdbClient {
         cast.isNotEmpty() && cast.all { it.photo != null && it.id > 0 }
 
     /**
+     * Validate a candidate TMDB key without saving it: a /configuration
+     * call answers 200 for a good key and 401 for a bad one. Any failure
+     * (bad key, offline) is false — the dialog says "couldn't verify".
+     */
+    suspend fun validateApiKey(apiKey: String): Boolean = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext false
+        try {
+            BoundedHttp.get("$BASE/configuration?api_key=$apiKey", headers = mapOf("Accept" to "application/json"))
+            true
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { false }
+    }
+
+    /**
      * Enrich cast members with TMDB photos and IDs.
      * Takes a Stremio/IMDb ID (resolved via /find) or a TMDB-native "tmdb:" id (used directly).
      * Only enriches members that lack photo or have id=0.
+     * The key comes from SettingsStore (Settings > Integrations) — callers never pass it.
      */
     suspend fun enrichCast(
-        apiKey: String,
+        settings: SettingsStore,
         stremioId: String,
         mediaType: String, // "movie" or "series"
         cast: List<CastMember>
     ): List<CastMember> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext cast
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext cast
         // Only enrich if needed
         if (isFullyEnrichedCast(cast)) return@withContext cast
         
@@ -99,10 +114,11 @@ object TmdbClient {
      * Returns PersonDetail with movies/series lists.
      */
     suspend fun getPerson(
-        apiKey: String,
+        settings: SettingsStore,
         personId: Int
     ): PersonDetail? = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank() || personId <= 0) return@withContext null
+        if (personId <= 0) return@withContext null
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext null
         try {
             // Person details
             val personUrl = "$BASE/person/$personId?api_key=$apiKey"
@@ -168,9 +184,10 @@ object TmdbClient {
      * real popularity instead of relying on IMDb rating alone. Returns an
      * empty list on any failure — callers treat that as "no enrichment".
      */
-    suspend fun searchWithPopularity(apiKey: String, query: String): List<TmdbSearchHit> =
+    suspend fun searchWithPopularity(settings: SettingsStore, query: String): List<TmdbSearchHit> =
         withContext(Dispatchers.IO) {
-            if (apiKey.isBlank() || query.trim().length < 2) return@withContext emptyList()
+            if (query.trim().length < 2) return@withContext emptyList()
+            val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
             try {
                 val encoded = java.net.URLEncoder.encode(query.trim(), "UTF-8")
                 val url = "$BASE/search/multi?api_key=$apiKey&query=$encoded&page=1&include_adult=false"
@@ -209,8 +226,8 @@ object TmdbClient {
      * "tmdb:<mediaType>:<id>" shape [search] produces, which the
      * detail-target resolver already understands. Empty on any failure.
      */
-    suspend fun trending(apiKey: String, limit: Int = 10): List<MetaPreview> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext emptyList()
+    suspend fun trending(settings: SettingsStore, limit: Int = 10): List<MetaPreview> = withContext(Dispatchers.IO) {
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
         try {
             val url = "$BASE/trending/all/week?api_key=$apiKey&language=en-US&page=1"
             val response = BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
@@ -245,8 +262,9 @@ object TmdbClient {
         catch (e: Exception) { emptyList() }
     }
 
-    suspend fun search(apiKey: String, query: String): List<MetaPreview> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank() || query.trim().length < 2) return@withContext emptyList()
+    suspend fun search(settings: SettingsStore, query: String): List<MetaPreview> = withContext(Dispatchers.IO) {
+        if (query.trim().length < 2) return@withContext emptyList()
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
         try {
             val encoded = java.net.URLEncoder.encode(query.trim(), "UTF-8")
             val url = "$BASE/search/multi?api_key=$apiKey&query=$encoded&page=1&include_adult=false"

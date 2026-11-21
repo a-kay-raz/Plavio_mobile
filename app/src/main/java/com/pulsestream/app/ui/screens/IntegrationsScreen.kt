@@ -17,8 +17,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -47,7 +49,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.pulsestream.app.data.OmdbClient
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.TmdbClient
 import kotlinx.coroutines.launch
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
@@ -180,6 +184,101 @@ fun IntegrationsScreen(
                         enabled = false,
                         onSave = { settings.realDebridApiKey = it; rdTick++ },
                         onDismiss = { showRdDialog = false }
+                    )
+                }
+            }
+
+            item(key = "metadata_header") {
+                Text(
+                    "Metadata",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
+                )
+            }
+
+            item(key = "metadata_group") {
+                var showTmdbDialog by remember { mutableStateOf(false) }
+                var tmdbTick by remember { mutableIntStateOf(0) }
+                val tmdbConfigured = remember(tmdbTick) { !settings.tmdbApiKey.isNullOrBlank() }
+                var showOmdbDialog by remember { mutableStateOf(false) }
+                var omdbTick by remember { mutableIntStateOf(0) }
+                val omdbConfigured = remember(omdbTick) { !settings.omdbApiKey.isNullOrBlank() }
+                SettingsGroup(
+                    {
+                        SettingsStaticRow(
+                            icon = Icons.Filled.Movie,
+                            title = "TMDB",
+                            subtitle = if (tmdbConfigured) "API key saved" else "Add your API key for richer metadata and ratings",
+                            trailing = {
+                                if (tmdbConfigured) {
+                                    Text(
+                                        "Saved",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = LocalPalette.current.accent
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = "Configure TMDB",
+                                        tint = TextSecondary
+                                    )
+                                }
+                            },
+                            onClick = { showTmdbDialog = true }
+                        )
+                    },
+                    {
+                        SettingsStaticRow(
+                            icon = Icons.Filled.Star,
+                            title = "OMDb",
+                            subtitle = if (omdbConfigured) "API key saved" else "Add your API key for IMDb ratings",
+                            trailing = {
+                                if (omdbConfigured) {
+                                    Text(
+                                        "Saved",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = LocalPalette.current.accent
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = "Configure OMDb",
+                                        tint = TextSecondary
+                                    )
+                                }
+                            },
+                            onClick = { showOmdbDialog = true }
+                        )
+                    }
+                )
+                if (showTmdbDialog) {
+                    ApiKeyDialog(
+                        title = "TMDB API Key",
+                        keyLinkText = "Get your API key at themoviedb.org/settings/api",
+                        keyLinkUrl = "https://www.themoviedb.org/settings/api",
+                        currentKey = settings.tmdbApiKey,
+                        enabled = true,
+                        helpText = "Paste your TMDB API key and tap Save. The key is checked before saving — an invalid key won't save. To remove it, clear the field and save.",
+                        validate = { TmdbClient.validateApiKey(it) },
+                        onSave = { settings.tmdbApiKey = it; tmdbTick++ },
+                        onDismiss = { showTmdbDialog = false }
+                    )
+                }
+                if (showOmdbDialog) {
+                    ApiKeyDialog(
+                        title = "OMDb API Key",
+                        keyLinkText = "Get your API key at omdbapi.com/apikey.aspx",
+                        keyLinkUrl = "https://www.omdbapi.com/apikey.aspx",
+                        currentKey = settings.omdbApiKey,
+                        enabled = true,
+                        helpText = "Paste your OMDb API key and tap Save. The key is checked before saving — an invalid key won't save. To remove it, clear the field and save.",
+                        validate = { OmdbClient.validateApiKey(it) },
+                        onSave = { settings.omdbApiKey = it; omdbTick++ },
+                        onDismiss = { showOmdbDialog = false }
                     )
                 }
             }
@@ -393,12 +492,17 @@ private fun ApiKeyDialog(
     enabled: Boolean,
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
-    helpText: String? = null
+    helpText: String? = null,
+    /** When set, the key is verified (network call) before saving; a bad key shows an error instead of saving. Blank clears the key without verifying. */
+    validate: (suspend (String) -> Boolean)? = null
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var keyInput by remember { mutableStateOf(currentKey ?: "") }
     var showKey by remember { mutableStateOf(false) }
     var saveFailed by remember { mutableStateOf(false) }
+    var validating by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -407,7 +511,7 @@ private fun ApiKeyDialog(
             Column {
                 OutlinedTextField(
                     value = keyInput,
-                    onValueChange = { keyInput = it; saveFailed = false },
+                    onValueChange = { keyInput = it; saveFailed = false; validationError = null },
                     label = { Text("API key") },
                     singleLine = true,
                     enabled = enabled,
@@ -454,6 +558,13 @@ private fun ApiKeyDialog(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+                if (validationError != null) {
+                    Text(
+                        validationError!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 if (!enabled) {
                     Text(
                         "Currently under testing — coming soon.",
@@ -466,17 +577,38 @@ private fun ApiKeyDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    try {
-                        onSave(keyInput.trim())
-                        onDismiss()
-                    } catch (_: Exception) {
-                        // Never expose the key or a storage exception in UI/logs.
-                        saveFailed = true
+                    val trimmed = keyInput.trim()
+                    val validator = validate
+                    if (trimmed.isBlank() || validator == null) {
+                        try {
+                            onSave(trimmed)
+                            onDismiss()
+                        } catch (_: Exception) {
+                            // Never expose the key or a storage exception in UI/logs.
+                            saveFailed = true
+                        }
+                    } else {
+                        scope.launch {
+                            validating = true
+                            validationError = null
+                            val ok = try { validator(trimmed) } catch (_: Exception) { false }
+                            validating = false
+                            if (ok) {
+                                try {
+                                    onSave(trimmed)
+                                    onDismiss()
+                                } catch (_: Exception) {
+                                    saveFailed = true
+                                }
+                            } else {
+                                validationError = "Couldn't verify that key — check it and try again."
+                            }
+                        }
                     }
                 },
-                enabled = enabled
+                enabled = enabled && !validating
             ) {
-                Text("Save", color = LocalPalette.current.accent)
+                Text(if (validating) "Checking…" else "Save", color = LocalPalette.current.accent)
             }
         },
         dismissButton = {
