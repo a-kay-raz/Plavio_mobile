@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Delete
@@ -147,6 +148,7 @@ fun SettingsScreen(
     var telemetryEnabled by remember { mutableStateOf(com.pulsestream.app.data.AppStats.enabled(context)) }
     var sentryEnabled by remember { mutableStateOf(repository.settings.sentryEnabled) }
     var episodeNotifs by remember { mutableStateOf(settings.episodeNotifications) }
+    var testNotifSent by remember { mutableStateOf(false) }
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     // ---- Sample F (v0.12.4): searchable compact root screen ----
@@ -306,6 +308,31 @@ fun SettingsScreen(
                         ) {
                             notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                         }
+                    }
+                },
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Send test notification",
+            "notifications test notification episode alerts") {
+            // Re-read on every recomposition so a grant made elsewhere is picked up.
+            val notificationsOn = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+                (android.os.Build.VERSION.SDK_INT < 33 ||
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+            SettingsNavRow(
+                icon = Icons.Filled.NotificationImportant,
+                title = "Send test notification",
+                subtitle = when {
+                    testNotifSent -> "Test notification sent — check your notification shade."
+                    !notificationsOn -> "Notifications are off — enable them in system settings first."
+                    else -> "Post a test alert to check episode notifications work."
+                },
+                onClick = {
+                    if (notificationsOn) {
+                        com.pulsestream.app.data.notifications.EpisodeNotifications.postTest(context)
+                        testNotifSent = true
                     }
                 },
                 compact = true
