@@ -86,6 +86,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pulsestream.app.data.CatalogRow
 import com.pulsestream.app.data.MetaPreview
+import com.pulsestream.app.data.NextUpEpisode
 import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.StoredHomeRowPrefs
 import com.pulsestream.app.data.StreamRepository
@@ -111,6 +112,8 @@ import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 /**
  * Dock → Home scroll-to-top signal (v0.12.4): the bottom dock's Home tab
@@ -248,6 +251,13 @@ fun HomeScreen(
     }
     val (mainWatching, upcomingWatching) = remember(sortedWatching) {
         splitContinueWatchingUpcoming(sortedWatching)
+    }
+    // Step 49: Next Up — the episode after the latest watched one per
+    // series (shared enrichment with the Library calendar).
+    val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
+    var nextUp by remember { mutableStateOf<List<com.pulsestream.app.data.NextUpEpisode>>(emptyList()) }
+    LaunchedEffect(watchedKeys) {
+        nextUp = com.pulsestream.app.data.NextUpResolver.resolveNextUp(repository, watchedKeys)
     }
     // Resume prompt on launch (Nuvio showResumePromptOnLaunch): once per
     // app launch, offer the latest title. `remember` (not saveable) keeps
@@ -523,6 +533,31 @@ fun HomeScreen(
                                             }
                                         ) {
                                             onWatchingClick(item)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                              }
+                            }
+                        }
+                        // Step 49: Next Up — one card per series, the
+                        // episode right after the latest watched one.
+                        if (nextUp.isNotEmpty()) {
+                            item(key = "next_up") {
+                              Column(
+                                Modifier.background(LocalPalette.current.background)
+                              ) {
+                                SectionTitle("Next Up")
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(
+                                        nextUp,
+                                        key = { "${it.showId}_${it.season}_${it.episode}" }
+                                    ) { episode ->
+                                        NextUpCard(episode) {
+                                            onOpenDetail("", "series", episode.showId)
                                         }
                                     }
                                 }
@@ -974,6 +1009,83 @@ internal fun applyContinueWatchingSort(
 internal fun splitContinueWatchingUpcoming(
     items: List<PlaybackState>,
 ): Pair<List<PlaybackState>, List<PlaybackState>> = items to emptyList()
+
+/**
+ * Step 49: Next Up card — the show poster with the next episode's
+ * "S1 · E4" pill, the episode title, and its air date. Tap opens the
+ * series detail.
+ */
+@Composable
+private fun NextUpCard(
+    episode: NextUpEpisode,
+    onClick: () -> Unit
+) {
+    val today = LocalDate.now()
+    val dateFormat = remember { DateTimeFormatter.ofPattern("MMM d") }
+    val airLabel = when {
+        episode.airDate == null -> "Air date unknown"
+        episode.airDate.isAfter(today) -> "Airs ${episode.airDate.format(dateFormat)}"
+        episode.airDate == today -> "Aired today"
+        else -> "Aired ${episode.airDate.format(dateFormat)}"
+    }
+    Column(
+        modifier = Modifier
+            .width(128.dp)
+            .tvFocusRing(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .focusable()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .liquidGlass(RoundedCornerShape(12.dp))
+        ) {
+            SafePosterImage(
+                model = tmdbSizedImage(episode.poster, "w342"),
+                contentDescription = episode.showName,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .background(Color(0xFF040A12).copy(alpha = 0.72f), RoundedCornerShape(50))
+                    .padding(horizontal = 7.dp, vertical = 2.5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    episode.episodeLabel,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp, fontWeight = FontWeight.Bold
+                    ),
+                    color = Color.White
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            episode.showName,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            episode.episodeTitle?.takeIf { it.isNotBlank() } ?: episode.episodeLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            airLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (episode.hasAired(today)) TextSecondary else LocalPalette.current.accent
+        )
+    }
+}
 
 private fun ContinueWatchingCard(
     item: PlaybackState,
