@@ -12,6 +12,7 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -41,6 +42,7 @@ import com.pulsestream.app.ui.theme.TextSecondary
  * The picker lives with the caller (one session per Detail visit / player
  * request) so re-opens keep the no-repeat history.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EpisodeShuffleSheet(
     showName: String,

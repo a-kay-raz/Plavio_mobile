@@ -136,8 +136,8 @@ suspend fun fetchM3uEpgUrls(playlistUrl: String): List<String> {
                 .header("Accept", "application/vnd.apple.mpegurl, text/plain, */*")
                 .build()
             PlaybackHttp.client(playlistUrl).newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@runCatching emptyList<String>()
-                val source = response.body?.source() ?: return@runCatching emptyList<String>()
+                if (!response.isSuccessful) return@use null
+                val source = response.body?.source() ?: return@use null
                 val out = ByteArrayOutputStream()
                 val buffer = ByteArray(8 * 1024)
                 var total = 0
@@ -149,7 +149,7 @@ suspend fun fetchM3uEpgUrls(playlistUrl: String): List<String> {
                 }
                 out.toString(Charsets.UTF_8.name())
             }
-        }
+        } ?: return@runCatching emptyList<String>()
         parseM3uEpgUrls(header)
     }.onFailure { error ->
         Log.w(TAG, "Failed to read M3U header for EPG auto-detect", error)

@@ -5,6 +5,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
@@ -73,12 +74,22 @@ class PlavioAudioRenderersFactory(
     init {
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
         setMediaCodecSelector(NoHardwareDolbySelector())
+    }
+
+    // Media3 1.4.1 has no DefaultRenderersFactory.setAudioSink — the sink is
+    // built by the protected buildAudioSink(), so the downmix processor is
+    // attached there (same DefaultAudioSink settings as the stock build).
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean
+    ): AudioSink? {
+        val builder = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
         if (downmixConfig != null) {
-            setAudioSink(
-                DefaultAudioSink.Builder(context)
-                    .setAudioProcessors(arrayOf(DownmixAudioProcessor(downmixConfig)))
-                    .build()
-            )
+            builder.setAudioProcessors(arrayOf(DownmixAudioProcessor(downmixConfig)))
         }
+        return builder.build()
     }
 }

@@ -95,7 +95,7 @@ internal fun PlayerSourcesContent(
             .map { (key, list) ->
                 Triple(
                     key,
-                    list.first().sourceName?.takeIf { it.isNotBlank() } ?: list.first().addonKey(),
+                    list.first().sourceName?.takeIf { it.isNotBlank() } ?: pinnedStreamSourceKey(list.first()),
                     list.size
                 )
             }

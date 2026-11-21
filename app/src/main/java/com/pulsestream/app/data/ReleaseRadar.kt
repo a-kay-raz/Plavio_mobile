@@ -5,6 +5,7 @@ import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import com.pulsestream.app.data.db.WatchlistItem
 
 /**
  * Step 69 — Release Radar ("New from your library" row on Home).

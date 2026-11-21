@@ -431,7 +431,6 @@ object StreamBadgeMatcher {
             stream.filePath,
             stream.name,
             stream.title,
-            stream.description,
             stream.bingeGroup,
             stream.sourceName,
         )

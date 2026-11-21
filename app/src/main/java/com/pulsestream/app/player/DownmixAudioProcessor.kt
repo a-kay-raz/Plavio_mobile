@@ -51,7 +51,7 @@ class DownmixAudioProcessor(
 ) : AudioProcessor {
 
     private var inputAudioFormat: AudioFormat = AudioFormat.NOT_SET
-    private var outputAudioFormat: AudioFormat = AudioFormat.NOT_SET
+    private var outputFormat: AudioFormat = AudioFormat.NOT_SET
     private var outputBuffer: ByteBuffer = AudioProcessor.EMPTY_BUFFER
     private var inputEnded: Boolean = false
 
@@ -64,21 +64,15 @@ class DownmixAudioProcessor(
     private var bytesPerSample: Int = 0
     private var pending: ByteArray = ByteArray(0)
 
-    override val isActive: Boolean
-        get() = outputAudioFormat != AudioFormat.NOT_SET
+    override fun isActive(): Boolean = outputFormat != AudioFormat.NOT_SET
 
-    override val isEnded: Boolean
-        get() = inputEnded && outputBuffer.remaining() == 0
+    override fun isEnded(): Boolean = inputEnded && outputBuffer.remaining() == 0
 
-    override val output: ByteBuffer
-        get() {
-            val buffer = outputBuffer
-            outputBuffer = AudioProcessor.EMPTY_BUFFER
-            return buffer
-        }
-
-    override val outputAudioFormat: AudioFormat
-        get() = outputAudioFormat
+    override fun getOutput(): ByteBuffer {
+        val buffer = outputBuffer
+        outputBuffer = AudioProcessor.EMPTY_BUFFER
+        return buffer
+    }
 
     override fun configure(inputAudioFormat: AudioFormat): AudioFormat {
         this.inputAudioFormat = inputAudioFormat
@@ -94,12 +88,12 @@ class DownmixAudioProcessor(
         outChannels = if (mixActive) config.targetChannels else channels
         bytesPerSample = if (encoding == C.ENCODING_PCM_FLOAT) 4 else 2
         pending = ByteArray(0)
-        outputAudioFormat = if (mixActive) {
+        outputFormat = if (mixActive) {
             AudioFormat(encoding, outChannels, inputAudioFormat.sampleRate)
         } else {
             inputAudioFormat
         }
-        return outputAudioFormat
+        return outputFormat
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -224,7 +218,7 @@ class DownmixAudioProcessor(
     override fun reset() {
         flush()
         inputAudioFormat = AudioFormat.NOT_SET
-        outputAudioFormat = AudioFormat.NOT_SET
+        outputFormat = AudioFormat.NOT_SET
         mixActive = false
         inChannels = 0
         outChannels = 0

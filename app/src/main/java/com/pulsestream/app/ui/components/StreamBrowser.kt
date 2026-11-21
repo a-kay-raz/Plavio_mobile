@@ -1,5 +1,7 @@
 package com.pulsestream.app.ui.components
 
+@file:OptIn(ExperimentalLayoutApi::class)
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
