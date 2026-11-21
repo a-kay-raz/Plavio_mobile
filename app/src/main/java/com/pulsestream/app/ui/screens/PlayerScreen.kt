@@ -3057,47 +3057,56 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         PlayerHeaderButton(
-                            Icons.Filled.ExitToApp, "Open in external player"
-                        ) {
-                            val ctx = activity ?: return@PlayerHeaderButton
-                            // Protected links warn once (owner's order
-                            // 2026-10-26) instead of the old hard block;
-                            // normal links open at once.
-                            if (ExternalPlayer.needsWarning(ctx, req)) {
-                                externalWarningHide = false
-                                externalWarningReq = req
-                            } else {
-                                ExternalPlayer.play(ctx, req)
+                            icon = Icons.Filled.ExitToApp,
+                            label = "Open in external player",
+                            onClick = {
+                                val ctx = activity ?: return@PlayerHeaderButton
+                                // Protected links warn once (owner's order
+                                // 2026-10-26) instead of the old hard block;
+                                // normal links open at once.
+                                if (ExternalPlayer.needsWarning(ctx, req)) {
+                                    externalWarningHide = false
+                                    externalWarningReq = req
+                                } else {
+                                    ExternalPlayer.play(ctx, req)
+                                }
                             }
-                        }
+                        )
                         if (settings.pipEnabled) {
                             PlayerHeaderButton(
-                                Icons.Filled.PictureInPicture, "Picture in picture"
-                            ) { enterPip() }
+                                icon = Icons.Filled.PictureInPicture,
+                                label = "Picture in picture",
+                                onClick = { enterPip() }
+                            )
                         }
                         PlayerHeaderButton(
-                            if (isPortrait) Icons.Filled.StayCurrentLandscape
+                            icon = if (isPortrait) Icons.Filled.StayCurrentLandscape
                             else Icons.Filled.StayCurrentPortrait,
-                            "Rotate"
-                        ) {
-                            isPortrait = !isPortrait
-                            activity?.requestedOrientation = if (isPortrait)
-                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                            else
-                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                        }
+                            label = "Rotate",
+                            onClick = {
+                                isPortrait = !isPortrait
+                                activity?.requestedOrientation = if (isPortrait)
+                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                else
+                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            }
+                        )
                         PlayerHeaderButton(
-                            Icons.Filled.LockOpen, "Lock controls"
-                        ) {
-                            locked = true
-                            showControls = false
-                            lockedOverlayVisible = true
-                            pokeIndicator(PlayerIndicator.Message("Controls locked"))
-                        }
+                            icon = Icons.Filled.LockOpen,
+                            label = "Lock controls",
+                            onClick = {
+                                locked = true
+                                showControls = false
+                                lockedOverlayVisible = true
+                                pokeIndicator(PlayerIndicator.Message("Controls locked"))
+                            }
+                        )
                         PlayerHeaderButton(
-                            Icons.Filled.ArrowBack, "Back",
-                            modifier = Modifier.then(act("back") { onBack() })
-                        ) { onBack() }
+                            icon = Icons.Filled.ArrowBack,
+                            label = "Back",
+                            modifier = Modifier.then(act("back") { onBack() }),
+                            onClick = { onBack() }
+                        )
                     }
                 }
 
