@@ -21,6 +21,7 @@ object Routes {
     const val MEDIA_SERVERS = "media_servers"
     const val SERVER_LIBRARY = "server_library/{serverId}/{libraryId}"
     const val PROFILES = "profiles"
+    const val DETAIL_SECTIONS = "detail_sections"
     const val ADDONS = "addons"
     const val HOME_CATALOGS = "home_catalogs"
     const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"

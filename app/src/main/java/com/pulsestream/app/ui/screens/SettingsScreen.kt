@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -151,7 +152,8 @@ fun SettingsScreen(
     onGoToCollections: () -> Unit = {},
     onGoToTracking: () -> Unit = {},
     onGoToMediaServers: () -> Unit = {},
-    onGoToProfiles: () -> Unit = {}
+    onGoToProfiles: () -> Unit = {},
+    onGoToDetailSections: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -340,6 +342,17 @@ fun SettingsScreen(
                 title = "Profiles",
                 subtitle = "Switch profiles, each with its own library",
                 onClick = onGoToProfiles,
+                compact = true
+            )
+        },
+        // Step 57: detail sections — reorder/hide the detail page's sections.
+        SettingsEntry(sectionGeneral, "Detail sections",
+            "detail sections reorder hide tabs episodes cast production") {
+            SettingsNavRow(
+                icon = Icons.Filled.Tune,
+                title = "Detail sections",
+                subtitle = "Reorder and hide the detail page's sections",
+                onClick = onGoToDetailSections,
                 compact = true
             )
         },
