@@ -1181,6 +1181,29 @@ class SettingsStore(context: Context) {
         get() = prefs.getLong(KEY_MDBLIST_TOKEN_EXPIRES_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_MDBLIST_TOKEN_EXPIRES_AT, value).apply()
 
+    // ---- Media servers (Step 55) ----
+
+    /**
+     * Stored server connections (JSON array, encrypted secret — it holds
+     * access tokens). Read via [getMediaServers], written via
+     * [saveMediaServers].
+     */
+    fun getMediaServers(): List<com.pulsestream.app.data.servers.MediaServer> =
+        com.pulsestream.app.data.servers.decodeServers(getSecret(KEY_MEDIA_SERVERS))
+
+    fun saveMediaServers(servers: List<com.pulsestream.app.data.servers.MediaServer>) {
+        if (servers.isEmpty()) putSecret(KEY_MEDIA_SERVERS, null)
+        else putSecret(KEY_MEDIA_SERVERS, com.pulsestream.app.data.servers.encodeServers(servers))
+    }
+
+    /** Stable per-install device id for server auth headers. */
+    var mediaServerDeviceId: String
+        get() = prefs.getString(KEY_MEDIA_SERVER_DEVICE_ID, null)
+            ?: java.util.UUID.randomUUID().toString().also {
+                prefs.edit().putString(KEY_MEDIA_SERVER_DEVICE_ID, it).apply()
+            }
+        set(value) = prefs.edit().putString(KEY_MEDIA_SERVER_DEVICE_ID, value).apply()
+
     // ---- Unified tracking sources (Step 52, Nuvio tracking/TrackingSources) ----
 
     /**
@@ -1817,6 +1840,7 @@ class SettingsStore(context: Context) {
             "wetrakr_access_token", "wetrakr_refresh_token",
             "publicmetadb_api_key",
             "mdblist_access_token", "mdblist_refresh_token",
+            "media_servers",
             "tmdb_api_key", "omdb_api_key",
             "xtream_password", "stalker_password"
         )
@@ -1961,6 +1985,8 @@ class SettingsStore(context: Context) {
         private const val KEY_MDBLIST_ACCESS_TOKEN = "mdblist_access_token"
         private const val KEY_MDBLIST_REFRESH_TOKEN = "mdblist_refresh_token"
         private const val KEY_MDBLIST_TOKEN_EXPIRES_AT = "mdblist_token_expires_at"
+        private const val KEY_MEDIA_SERVERS = "media_servers"
+        private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
         private const val KEY_TRACKING_RATINGS_SOURCE = "tracking_ratings_source"

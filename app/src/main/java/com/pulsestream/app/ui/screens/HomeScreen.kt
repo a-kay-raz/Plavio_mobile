@@ -89,6 +89,12 @@ import com.pulsestream.app.data.CatalogRow
 import com.pulsestream.app.data.CollectionRepository
 import com.pulsestream.app.data.CollectionSourceResolver
 import com.pulsestream.app.data.MetaPreview
+import com.pulsestream.app.data.servers.MediaServer
+import com.pulsestream.app.data.servers.MediaServerOps
+import com.pulsestream.app.data.servers.ServerItem
+import com.pulsestream.app.data.servers.ServerLibrary
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.pulsestream.app.data.NextUpEpisode
 import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.StoredHomeRowPrefs
@@ -220,6 +226,8 @@ fun HomeScreen(
     onGoToLists: () -> Unit,
     onOpenCatalog: (row: CatalogRow) -> Unit,
     onOpenCollectionFolder: (folderId: String) -> Unit = {},
+    onPlayServerItem: (PlaybackRequest) -> Unit = {},
+    onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit = {},
     onGoToDownloads: () -> Unit = {},
     onGoToLive: () -> Unit = {},
 ) {
@@ -287,6 +295,13 @@ fun HomeScreen(
             }
         }
         collectionHeroTitles = titles.distinctBy { "${it.type}|${it.id}" }
+    }
+    // Step 55: linked media servers — reloaded every time Home enters
+    // composition (returning from the Media Servers page re-reads the
+    // encrypted store, so a just-added server shows at once).
+    var mediaServers by remember { mutableStateOf<List<MediaServer>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        mediaServers = withContext(Dispatchers.IO) { settings.getMediaServers() }
     }
     // Resume prompt on launch (Nuvio showResumePromptOnLaunch): once per
     // app launch, offer the latest title. `remember` (not saveable) keeps
@@ -666,6 +681,17 @@ fun HomeScreen(
                                     collectionRepository = collectionRepository,
                                     repository = repository,
                                     onOpenFolder = onOpenCollectionFolder
+                                )
+                            }
+                        }
+                        // Step 55: media server rows — one row per library
+                        // of each linked server, first 20 titles.
+                        mediaServers.forEach { server ->
+                            item(key = "server_${server.id}") {
+                                ServerHomeSection(
+                                    server = server,
+                                    onPlayServerItem = onPlayServerItem,
+                                    onOpenServerLibrary = onOpenServerLibrary
                                 )
                             }
                         }
@@ -1499,6 +1525,84 @@ private fun CollectionHomeSection(
             }
         }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/**
+ * Step 55: one media server's libraries as Home rows (Nuvio
+ * HomeCollectionRowSection shape). Libraries + first 20 titles load
+ * once per server; a movie tap plays directly, a series tap opens
+ * the library screen, and a Silo movie tap opens the library screen
+ * too (Silo has no direct-play URL yet).
+ */
+@Composable
+private fun ServerHomeSection(
+    server: MediaServer,
+    onPlayServerItem: (PlaybackRequest) -> Unit,
+    onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit,
+) {
+    var libraries by remember { mutableStateOf<List<ServerLibrary>>(emptyList()) }
+    var itemsByLibrary by remember { mutableStateOf<Map<String, List<ServerItem>>>(emptyMap()) }
+    LaunchedEffect(server.id) {
+        val libs = withContext(Dispatchers.IO) {
+            runCatching { MediaServerOps.getLibraries(server) }.getOrNull()
+        }.orEmpty()
+        libraries = libs
+        val loaded = mutableMapOf<String, List<ServerItem>>()
+        for (library in libs) {
+            loaded[library.id] = withContext(Dispatchers.IO) {
+                runCatching { MediaServerOps.getLibraryItems(server, library) }.getOrNull()
+            }.orEmpty().take(20)
+        }
+        itemsByLibrary = loaded
+    }
+    if (libraries.isEmpty()) return
+    Column(Modifier.background(LocalPalette.current.background)) {
+        libraries.forEach { library ->
+            val items = itemsByLibrary[library.id].orEmpty()
+            if (items.isEmpty()) return@forEach
+            SectionTitle("${server.name} · ${library.name}")
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(items, key = { it.contentId }) { item ->
+                    PosterCard(
+                        meta = MetaPreview(
+                            id = "server:${server.id}:${item.contentId}",
+                            type = if (item.type == "series") "series" else "movie",
+                            name = item.title,
+                            poster = item.posterUrl,
+                            releaseInfo = item.year?.toString()
+                        ),
+                        onClick = {
+                            when (item.type) {
+                                "series" -> onOpenServerLibrary(server.id, library.id)
+                                else -> {
+                                    val url = MediaServerOps.streamUrl(server, item)
+                                    if (url == null) {
+                                        onOpenServerLibrary(server.id, library.id)
+                                    } else {
+                                        onPlayServerItem(
+                                            PlaybackRequest(
+                                                streamUrl = url,
+                                                title = item.title,
+                                                poster = item.posterUrl,
+                                                videoId = "server:${server.id}:${item.contentId}",
+                                                imdbId = item.imdbId,
+                                                isMovie = true,
+                                                sourceName = server.name
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
     }
 }
 

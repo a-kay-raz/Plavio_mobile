@@ -1323,6 +1323,10 @@ private fun PulseNavGraph(
                 onOpenCollectionFolder = { folderId ->
                     navController.navigate(Routes.collectionFolder(folderId))
                 },
+                onPlayServerItem = { req -> playRequest(req) },
+                onOpenServerLibrary = { serverId, libraryId ->
+                    navController.navigate(Routes.serverLibrary(serverId, libraryId))
+                },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onGoToLive = { navController.navigate(Routes.LIVE) },
             )
@@ -1460,7 +1464,32 @@ private fun PulseNavGraph(
                 onGoToIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
-                onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) }
+                onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) },
+                onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) }
+            )
+        }
+        composable(Routes.MEDIA_SERVERS) {
+            MediaServersScreen(
+                settings = repository.settings,
+                onBack = { navController.popBackStack() },
+                onOpenLibrary = { serverId, libraryId ->
+                    navController.navigate(Routes.serverLibrary(serverId, libraryId))
+                }
+            )
+        }
+        composable(
+            Routes.SERVER_LIBRARY,
+            arguments = listOf(
+                navArgument("serverId") { type = NavType.StringType },
+                navArgument("libraryId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            ServerLibraryScreen(
+                settings = repository.settings,
+                serverId = entry.arguments!!.getString("serverId")!!,
+                libraryId = entry.arguments!!.getString("libraryId")!!,
+                onBack = { navController.popBackStack() },
+                onPlay = { req -> playRequest(req) }
             )
         }
         composable(Routes.TRACKING_SETTINGS) {

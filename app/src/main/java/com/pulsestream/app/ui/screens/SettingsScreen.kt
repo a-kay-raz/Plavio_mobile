@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationImportant
@@ -148,7 +149,8 @@ fun SettingsScreen(
     onGoToIntegrations: () -> Unit = {},
     onGoToDownloads: () -> Unit = {},
     onGoToCollections: () -> Unit = {},
-    onGoToTracking: () -> Unit = {}
+    onGoToTracking: () -> Unit = {},
+    onGoToMediaServers: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -314,6 +316,18 @@ fun SettingsScreen(
                 title = "Collections",
                 subtitle = "Folders of catalogs, TMDB lists and Trakt lists",
                 onClick = onGoToCollections,
+                compact = true
+            )
+        },
+        // Step 55: media servers (Jellyfin/Emby/Plex/Silo) — sign in
+        // once, libraries show as rows on Home.
+        SettingsEntry(sectionGeneral, "Media Servers",
+            "media servers jellyfin emby plex silo self hosted libraries") {
+            SettingsNavRow(
+                icon = Icons.Filled.Dns,
+                title = "Media Servers",
+                subtitle = "Your Jellyfin, Emby, Plex or Silo libraries",
+                onClick = onGoToMediaServers,
                 compact = true
             )
         },
