@@ -184,7 +184,10 @@ internal fun LegacySeekBar(
     isTv: Boolean = false,
     chapterFractions: List<Float> = emptyList(),
     onSeekDelta: ((Long) -> Unit)? = null,
-    onFocusChanged: ((Boolean) -> Unit)? = null
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    // Step 59: scrub position while dragging (null on release) — the
+    // seek-preview bubble follows it.
+    onScrub: ((Long?) -> Unit)? = null
 ) {
     var dragFrac by remember { mutableStateOf<Float?>(null) }
     val frac = (dragFrac ?: if (durationMs > 0) positionMs.toFloat() / durationMs else 0f)
@@ -208,10 +211,16 @@ internal fun LegacySeekBar(
     } else Modifier
     Slider(
         value = frac,
-        onValueChange = { if (enabled) dragFrac = it },
+        onValueChange = {
+            if (enabled) {
+                dragFrac = it
+                onScrub?.invoke((it * durationMs).toLong())
+            }
+        },
         onValueChangeFinished = {
             dragFrac?.let { onSeek((it * durationMs).toLong()) }
             dragFrac = null
+            onScrub?.invoke(null)
         },
         valueRange = 0f..1f,
         enabled = enabled && durationMs > 0,

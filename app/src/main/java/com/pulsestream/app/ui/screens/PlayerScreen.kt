@@ -719,6 +719,21 @@ fun PlayerScreen(
     }
     val latestPlayer = rememberUpdatedState(player)
     val latestRequest = rememberUpdatedState(currentRequest)
+
+    // Step 59: seek-preview thumbnails — a second player that grabs
+    // frames while the main player keeps playing. Keyed by stream URL
+    // so a source switch rebuilds it; the grabber sends the same
+    // scoped headers as playback.
+    val seekPreviewHeaders = remember(currentRequest.streamUrl) {
+        PlaybackHeaders.buildPlaybackHeaders(currentRequest.headers, isTv)
+    }
+    val seekPreviewController = rememberSeekPreviewController(
+        activity = activity,
+        url = currentRequest.streamUrl,
+        headers = seekPreviewHeaders,
+        mimeType = PlaybackHeaders.inferMimeType(currentRequest.streamUrl)
+    )
+    var scrubPositionMs by remember { mutableStateOf<Long?>(null) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
 
     // PiP RemoteAction: the floating window's play/pause button toggles the
@@ -1252,6 +1267,13 @@ fun PlayerScreen(
     }
 
     fun startSeekPreview() {
+        // Step 59: warms the seek-preview cache around the current
+        // position so the first scrub shows a frame at once.
+        seekPreviewController?.warmUp(player.currentPosition, player.duration)
+    }
+
+    LaunchedEffect(hasStartedPlayback) {
+        if (hasStartedPlayback) startSeekPreview()
     }
 
     fun applyAudioSelection(opt: TrackOption?) {
@@ -2587,6 +2609,8 @@ fun PlayerScreen(
             if (c.isPlaying) hasStartedPlayback = true
             isBuffering = c.playbackState == Player.STATE_BUFFERING ||
                 c.playbackState == Player.STATE_IDLE
+            // Step 59: the seek-preview prefetch pauses while buffering.
+            seekPreviewController?.playbackBuffering = isBuffering
             loadingStep = when {
                 switchingMedia -> "Opening source…"
                 c.playbackState == Player.STATE_IDLE -> "Opening source…"
@@ -4098,17 +4122,30 @@ fun PlayerScreen(
                                 )
                             }
                         }
-                        LegacySeekBar(
-                            positionMs = positionMs,
-                            durationMs = durationMs,
-                            bufferedMs = bufferedMs,
-                            chapterFractions = chapters.chapterMarkFractions(durationMs),
-                            onSeek = { player.seekTo(it) },
-                            modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
-                            isTv = isTv,
-                            onSeekDelta = { seekByWithFeedback(it) },
-                            onFocusChanged = { seekbarFocused = it }
-                        )
+                        // Step 59: the seek-preview bubble floats above
+                        // the bar while scrubbing; the bar itself is
+                        // unchanged (22dp tall, same offset).
+                        Box(Modifier.fillMaxWidth()) {
+                            SeekPreviewOverlay(
+                                controller = seekPreviewController,
+                                active = scrubPositionMs != null,
+                                positionMs = scrubPositionMs ?: positionMs,
+                                durationMs = durationMs,
+                                modifier = Modifier.fillMaxWidth().height(22.dp)
+                            )
+                            LegacySeekBar(
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                bufferedMs = bufferedMs,
+                                chapterFractions = chapters.chapterMarkFractions(durationMs),
+                                onSeek = { player.seekTo(it) },
+                                modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
+                                isTv = isTv,
+                                onSeekDelta = { seekByWithFeedback(it) },
+                                onFocusChanged = { seekbarFocused = it },
+                                onScrub = { scrubPositionMs = it }
+                            )
+                        }
                         // Time pills on the outer edges (lined up with the
                         // seek bar's ends), action pill in the middle.
                         Box(Modifier.fillMaxWidth()) {
