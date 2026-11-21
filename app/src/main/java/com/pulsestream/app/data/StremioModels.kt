@@ -115,7 +115,11 @@ data class MetaDetail(
     val status: String? = null,
     val certification: String? = null,
     val country: String? = null,
-    val network: String? = null
+    val network: String? = null,
+    /** Director names (PlavioMeta + Cinemeta serve `director`). */
+    val director: List<String> = emptyList(),
+    /** Writer names (Cinemeta serves `writer`; PlavioMeta serves none). */
+    val writer: List<String> = emptyList()
 )
 
 data class StreamItem(

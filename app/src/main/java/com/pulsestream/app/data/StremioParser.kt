@@ -179,7 +179,9 @@ object StremioParser {
             certification = meta.str("certification") ?: meta.str("contentRating")
                 ?: meta.str("mpaaRating"),
             country = meta.str("country") ?: meta.str("originCountry"),
-            network = meta.str("network") ?: meta.strList("networks").firstOrNull()
+            network = meta.str("network") ?: meta.strList("networks").firstOrNull(),
+            director = meta.strList("director"),
+            writer = meta.strList("writer")
         )
     }
 

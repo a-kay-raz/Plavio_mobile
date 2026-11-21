@@ -1046,6 +1046,54 @@ private fun DetailContent(
                 Spacer(Modifier.height(8.dp))
             }
         }
+        // Production (Nuvio DetailProductionSection): what the meta
+        // actually carries — Director (PlavioMeta + Cinemeta), Writer
+        // (Cinemeta only; PlavioMeta serves none), Network (series).
+        // Nuvio's version is TMDB production-company logo chips; the
+        // meta addons carry no companies, so no logos here.
+        val productionRows = listOfNotNull(
+            meta.director.takeIf { it.isNotEmpty() }?.let {
+                (if (it.size > 1) "Directors" else "Director") to it.joinToString(", ")
+            },
+            meta.writer.takeIf { it.isNotEmpty() }?.let {
+                (if (it.size > 1) "Writers" else "Writer") to it.joinToString(", ")
+            },
+            meta.network?.takeIf { it.isNotBlank() }?.let { "Network" to it }
+        )
+        if (productionRows.isNotEmpty()) {
+            item(key = "production") {
+                Text(
+                    "Production",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    productionRows.forEach { (label, value) ->
+                        Row {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextSecondary,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            Text(
+                                value,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
         // ("You May Like" rail removed, owner's pick 2026-10-24:
         // PlavioMeta's "More like this" rows below replace it —
         // they work for every user, not only TMDB-key holders.)
