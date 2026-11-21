@@ -13,7 +13,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Silo client (Nuvio servers/silo/*, scoped port): device-code
+ * Silo client (Nuvio servers/silo/, scoped port): device-code
  * sign-in, libraries, catalog items and watched marking. Silo's
  * negotiated playback session (installation handshake, sequenced
  * progress, HLS/direct delivery) is NOT ported — Silo titles browse

@@ -14,7 +14,7 @@ import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Step 56: local multi-profile, no server sync (Nuvio profiles/*,
+ * Step 56: local multi-profile, no server sync (Nuvio profiles/,
  * local half). A profile is a row in the global database plus its own
  * database file (library/progress) and its own settings file
  * (per-profile settings). Nuvio syncs profiles through Supabase RPCs;

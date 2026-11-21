@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Step 55: media servers (Nuvio servers/*, scoped port). One stored
+ * Step 55: media servers (Nuvio servers/, scoped port). One stored
  * connection per server; tokens live in the same encrypted blob as the
  * rest of the connection (SettingsStore secret "media_servers"), never
  * in plain prefs.
