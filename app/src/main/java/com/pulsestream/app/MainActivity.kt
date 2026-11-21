@@ -607,26 +607,12 @@ private fun DockItem(
             .clip(RoundedCornerShape(50))
             .then(
                 if (selected) {
-                    // Sample C (owner's pick 2026-10-26): the settled
-                    // pill, steady from the first touch. The accent
-                    // tint is PRE-BLENDED over the capsule's own
-                    // backing into opaque stops — the old translucent
-                    // gradient picked up whatever (blurred) content
-                    // sat behind the glass, so the pill flashed
-                    // whitish over bright screens at tap time, then
-                    // settled black-grey on dark ones. Same tones as
-                    // today on a dark page (measured from his
-                    // screenshot: capsule #181818, pill mid #393939),
-                    // now one colour from the first frame.
-                    val pillBase =
-                        if (palette.light) Color(0xFFF7F3EC) else Color(0xFF181818)
+                    // Nuvio-style selected pill: flat accent at low
+                    // opacity (Nuvio Opacity.selected = 0.15f), no
+                    // gradient — the pre-blended Sample C gradient
+                    // flashed whitish over bright screens.
                     Modifier.background(
-                        Brush.verticalGradient(
-                            listOf(
-                                lerp(pillBase, palette.accent, 0.32f),
-                                lerp(pillBase, palette.accent, 0.12f)
-                            )
-                        ),
+                        palette.accent.copy(alpha = 0.15f),
                         RoundedCornerShape(50)
                     )
                 } else {
@@ -647,7 +633,7 @@ private fun DockItem(
         Icon(
             tab.icon,
             contentDescription = tab.label,
-            tint = if (selected) palette.accentText
+            tint = if (selected) (if (palette.light) palette.accentText else palette.accent)
                 else if (palette.light) palette.textPrimary.copy(alpha = 0.72f)
                 else Color.White.copy(alpha = 0.9f),
             modifier = Modifier.size(22.dp)
@@ -675,7 +661,7 @@ private fun DockItem(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = with(LocalDensity.current) { labelSizeDp.dp.toSp() }
                 ),
-                color = if (selected) palette.accentText
+                color = if (selected) (if (palette.light) palette.accentText else palette.accent)
                     else if (palette.light) palette.textPrimary.copy(alpha = 0.72f)
                     else Color.White.copy(alpha = 0.9f),
                 maxLines = 1,
