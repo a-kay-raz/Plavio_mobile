@@ -322,6 +322,10 @@ val BUFFER_START_OPTIONS_MS: List<Int> = listOf(1_000, 1_500, 2_500, 5_000, 10_0
 val BUFFER_REBUFFER_OPTIONS_MS: List<Int> = listOf(1_000, 2_500, 5_000, 10_000, 15_000, 30_000)
 val BUFFER_BACK_OPTIONS_S: List<Int> = listOf(0, 5, 10, 30, 60)
 
+/** Failover options (Step 40): how many sources to try, and how long a source gets to start. */
+val FALLBACK_MAX_SOURCES_OPTIONS: List<Int> = listOf(1, 2, 3, 4, 5, 8, 10)
+val FALLBACK_STARTUP_TIMEOUT_OPTIONS_S: List<Int> = listOf(5, 10, 15, 20, 25, 30, 45)
+
 /** Disk cache size options in MB (0 = off). */
 val DISK_CACHE_OPTIONS: List<Pair<Int, String>> = listOf(
     0 to "Off",
@@ -529,6 +533,25 @@ class SettingsStore(context: Context) {
     var diskCacheAutoSize: Boolean
         get() = prefs.getBoolean(KEY_DISK_CACHE_AUTO_SIZE, true)
         set(value) = prefs.edit().putBoolean(KEY_DISK_CACHE_AUTO_SIZE, value).apply()
+
+    /**
+     * Max sources failover tries before giving up (Step 40, Nuvio
+     * streamAutoPlayFallbackMaxSources, default 3). Applies to the generic
+     * error + VOD-stall paths; mobile Live keeps its own policy cap.
+     */
+    var fallbackMaxSources: Int
+        get() = prefInt(KEY_FALLBACK_MAX_SOURCES, 3).coerceIn(1, 10)
+        set(value) = prefs.edit().putInt(KEY_FALLBACK_MAX_SOURCES, value.coerceIn(1, 10)).apply()
+
+    /**
+     * How long a source gets to start before failover tries the next one
+     * (Step 40, Nuvio streamAutoPlayFallbackStartupTimeoutSeconds,
+     * default 15s, range 5–45s). Applies to the VOD + Live startup
+     * watchdogs; mid-play rebuffer timeouts are unchanged.
+     */
+    var fallbackStartupTimeoutSeconds: Int
+        get() = prefInt(KEY_FALLBACK_STARTUP_TIMEOUT_S, 15).coerceIn(5, 45)
+        set(value) = prefs.edit().putInt(KEY_FALLBACK_STARTUP_TIMEOUT_S, value.coerceIn(5, 45)).apply()
 
     /**
      * On-disk playback cache size in MB (0 = off). Caches progressive
@@ -1413,6 +1436,8 @@ class SettingsStore(context: Context) {
         private const val KEY_BUFFER_REBUFFER_MS = "buffer_rebuffer_ms"
         private const val KEY_BUFFER_BACK_BUFFER_MS = "buffer_back_buffer_ms"
         private const val KEY_DISK_CACHE_AUTO_SIZE = "disk_cache_auto_size"
+        private const val KEY_FALLBACK_MAX_SOURCES = "fallback_max_sources"
+        private const val KEY_FALLBACK_STARTUP_TIMEOUT_S = "fallback_startup_timeout_seconds"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"

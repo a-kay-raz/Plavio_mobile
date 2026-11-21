@@ -355,8 +355,14 @@ fun PlayerScreen(
     var playerError by remember { mutableStateOf<String?>(null) }
     /** Last ExoPlayer error code, so effects can tell a dead link from a stall. */
     var lastPlayerErrorCode by remember { mutableStateOf(0) }
-    /** Auto-failover count; generic playback caps at 3, mobile Live uses its policy cap. */
+    /** Auto-failover count; generic playback caps at the fallback setting, mobile Live uses its policy cap. */
     var autoFailoverCount by remember { mutableStateOf(0) }
+    /**
+     * Stream URL the VOD stall watchdog already resumed once (Step 40,
+     * Nuvio PlaybackReopenSession: one reopen per source). Reset when
+     * playback resumes playing.
+     */
+    var vodStallResumeAttemptedFor by remember { mutableStateOf<String?>(null) }
     /** Bounded recovery budget for streams that play and later stall, per channel session. */
     var liveRebufferRecoveries by remember { mutableIntStateOf(0) }
     /** Invalidates callbacks from listeners attached to released/replaced players. */
@@ -407,7 +413,7 @@ fun PlayerScreen(
                     errorCode = error.errorCode,
                     attemptsSoFar = autoFailoverCount
                 )
-                if ((isSourceError && autoFailoverCount < 3) || mobileLiveFallback) {
+                if ((isSourceError && autoFailoverCount < settings.fallbackMaxSources) || mobileLiveFallback) {
                     autoFailoverCount++
                     if (initialRequest.isLive && !isTv) {
                         com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_attempt", 0)
@@ -428,7 +434,12 @@ fun PlayerScreen(
                 // Keeps the PiP window's play/pause RemoteAction icon in sync.
                 (activity as? MainActivity)?.updatePipActions(isPlaying)
                 // Reset auto-failover counter on successful playback
-                if (isPlaying) autoFailoverCount = 0
+                if (isPlaying) {
+                    autoFailoverCount = 0
+                    // Step 40: a source that plays again earns a fresh
+                    // stall-resume attempt (Nuvio PlaybackReopenSession.onReady).
+                    vodStallResumeAttemptedFor = null
+                }
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -2024,7 +2035,7 @@ fun PlayerScreen(
     // Wire the auto-failover path now that the helpers exist.
     failoverToNextSource = { attempt ->
         val maxAttempts = if (currentRequest.isLive && !isTv)
-            com.pulsestream.app.data.LivePlaybackPolicy.MAX_MOBILE_LIVE_FAILOVERS else 3
+            com.pulsestream.app.data.LivePlaybackPolicy.MAX_MOBILE_LIVE_FAILOVERS else settings.fallbackMaxSources
         pokeIndicator(PlayerIndicator.Message("Trying next source… ($attempt/$maxAttempts)"))
         nextSource(automaticLiveFallback = currentRequest.isLive && !isTv)
     }
@@ -2061,7 +2072,9 @@ fun PlayerScreen(
                     playWhenReady = watchedPlayer.playWhenReady,
                     hasEverPlayed = hasEverPlayed,
                     isBuffering = buffering,
-                    elapsedMs = elapsedMs
+                    elapsedMs = elapsedMs,
+                    // Step 40: configurable startup timeout (default 15s).
+                    timeoutMs = settings.fallbackStartupTimeoutSeconds * 1000L
                 )) {
                 val maxAttempts = com.pulsestream.app.data.LivePlaybackPolicy.MAX_MOBILE_LIVE_FAILOVERS
                 if (autoFailoverCount < maxAttempts) {
@@ -2125,7 +2138,9 @@ fun PlayerScreen(
     // source that never starts, or freezes mid-play with no position
     // progress — hosts that ignore byte-range requests behave exactly like
     // this — fails over to the next source instead of spinning forever.
-    // Bounded by the same generic failover cap as playback errors (3).
+    // Bounded by the generic failover cap (Settings > Playback > Source
+    // failover); a mid-play stall first retries the same source once
+    // (Step 40, Nuvio PlaybackStallResume).
     LaunchedEffect(player, currentRequest, isTv) {
         if (currentRequest.isLive) return@LaunchedEffect
         val watchedPlayer = player
@@ -2160,9 +2175,20 @@ fun PlayerScreen(
                     hasEverPlayed = hasPlayed,
                     isBuffering = buffering,
                     positionProgressed = progressed,
-                    elapsedMs = elapsedMs
+                    elapsedMs = elapsedMs,
+                    // Step 40: configurable startup timeout (default 15s);
+                    // the mid-play rebuffer timeout stays 30s.
+                    startupTimeoutMs = settings.fallbackStartupTimeoutSeconds * 1000L
                 )) {
-                if (autoFailoverCount < 3) {
+                if (hasPlayed && vodStallResumeAttemptedFor != currentRequest.streamUrl) {
+                    // Step 40 (Nuvio PlaybackStallResume): a source that
+                    // played and then stalled gets one reopen at its current
+                    // position before we switch to the next source.
+                    vodStallResumeAttemptedFor = currentRequest.streamUrl
+                    com.pulsestream.app.data.SourceDiagnostics.record("VOD playback", "stall_resume", elapsedMs)
+                    pokeIndicator(PlayerIndicator.Message("Stream stalled — retrying this source…"))
+                    retryCurrentStream()
+                } else if (autoFailoverCount < settings.fallbackMaxSources) {
                     autoFailoverCount++
                     com.pulsestream.app.data.SourceDiagnostics.record("VOD playback", "stall_timeout", elapsedMs)
                     failoverToNextSource?.invoke(autoFailoverCount)
