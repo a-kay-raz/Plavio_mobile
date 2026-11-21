@@ -530,6 +530,21 @@ class SettingsStore(context: Context) {
         get() = prefInt(KEY_REUSE_LAST_LINK_CACHE_HOURS, 24).coerceIn(1, 168)
         set(value) = prefs.edit().putInt(KEY_REUSE_LAST_LINK_CACHE_HOURS, value.coerceIn(1, 168)).apply()
 
+    /** Hero trailer autoplay (Nuvio heroTrailerPlayback, MetaScreenSettingsRepository): default OFF — the first trailer autoplays muted in the detail hero once resolved. */
+    var heroTrailerPlayback: Boolean
+        get() = prefs.getBoolean(KEY_HERO_TRAILER_PLAYBACK, false)
+        set(value) = prefs.edit().putBoolean(KEY_HERO_TRAILER_PLAYBACK, value).apply()
+
+    /** Hero trailer start delay, seconds (Nuvio heroTrailerStartDelaySeconds): 0–10, default 0. */
+    var heroTrailerStartDelaySeconds: Int
+        get() = prefInt(KEY_HERO_TRAILER_START_DELAY_SECONDS, 0).coerceIn(0, 10)
+        set(value) = prefs.edit().putInt(KEY_HERO_TRAILER_START_DELAY_SECONDS, value.coerceIn(0, 10)).apply()
+
+    /** Hero trailer starts with sound (Nuvio heroTrailerStartUnmuted): default false — trailers start muted. */
+    var heroTrailerStartUnmuted: Boolean
+        get() = prefs.getBoolean(KEY_HERO_TRAILER_START_UNMUTED, false)
+        set(value) = prefs.edit().putBoolean(KEY_HERO_TRAILER_START_UNMUTED, value).apply()
+
     /** Continue Watching section visible on Home (Nuvio CW isVisible). */
     var continueWatchingVisible: Boolean
         get() = prefs.getBoolean(KEY_CW_VISIBLE, true)
@@ -1163,6 +1178,9 @@ class SettingsStore(context: Context) {
         private const val KEY_NEXT_EPISODE_THRESHOLD_MINUTES = "next_episode_threshold_minutes"
         private const val KEY_REUSE_LAST_LINK_ENABLED = "reuse_last_link_enabled"
         private const val KEY_REUSE_LAST_LINK_CACHE_HOURS = "reuse_last_link_cache_hours"
+        private const val KEY_HERO_TRAILER_PLAYBACK = "hero_trailer_playback"
+        private const val KEY_HERO_TRAILER_START_DELAY_SECONDS = "hero_trailer_start_delay_seconds"
+        private const val KEY_HERO_TRAILER_START_UNMUTED = "hero_trailer_start_unmuted"
         private const val KEY_CW_VISIBLE = "continue_watching_visible"
         private const val KEY_CW_STYLE = "continue_watching_style"
         private const val KEY_CW_SORT_MODE = "continue_watching_sort_mode"

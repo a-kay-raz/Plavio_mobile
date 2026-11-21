@@ -1,6 +1,8 @@
 package com.pulsestream.app.ui.screens
 
+import android.view.ViewGroup
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,6 +65,8 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -81,6 +85,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
@@ -98,10 +103,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.SpanStyle
@@ -115,6 +123,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -166,6 +181,7 @@ import com.pulsestream.app.ui.tv.tvFocusRing
 import com.pulsestream.app.ui.tv.tvSheetFocus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -695,6 +711,42 @@ private fun DetailContent(
     val userRatings = remember(context) { UserRatings(context) }
     var userStars by remember(meta.id) { mutableStateOf(userRatings.getRating(meta.id)) }
     var ratingsSheetOpen by remember { mutableStateOf(false) }
+    // Hero trailer autoplay (Nuvio D2): the first trailer autoplays muted in
+    // the hero once resolved, fading in over the backdrop. Plavio's
+    // TrailerStream carries only title + ytId, so there is no official/type
+    // metadata to rank by — the first trailer is the candidate.
+    val heroTrailer = meta.trailerStreams.firstOrNull()
+    var heroTrailerUrl by remember(meta.id) { mutableStateOf<String?>(null) }
+    var heroTrailerAudioUrl by remember(meta.id) { mutableStateOf<String?>(null) }
+    var heroTrailerReady by remember(meta.id) { mutableStateOf(false) }
+    var heroTrailerFinished by remember(meta.id) { mutableStateOf(false) }
+    var heroMuted by remember(meta.id) { mutableStateOf(!settings.heroTrailerStartUnmuted) }
+    LaunchedEffect(meta.id, heroTrailer?.ytId, settings.heroTrailerPlayback, settings.heroTrailerStartDelaySeconds) {
+        heroTrailerUrl = null
+        heroTrailerAudioUrl = null
+        heroTrailerReady = false
+        heroTrailerFinished = false
+        val ytId = heroTrailer?.ytId ?: return@LaunchedEffect
+        if (!settings.heroTrailerPlayback) return@LaunchedEffect
+        val resolved = async {
+            runCatching {
+                withTimeoutOrNull(30_000) { TrailerResolver.resolvePlayback(ytId) }
+            }.getOrNull()
+        }
+        val delaySeconds = settings.heroTrailerStartDelaySeconds
+        if (delaySeconds > 0) delay(delaySeconds * 1000L)
+        val playback = resolved.await()
+        if (playback == null) {
+            heroTrailerFinished = true
+        } else {
+            heroTrailerUrl = playback.videoUrl
+            heroTrailerAudioUrl = playback.audioUrl
+        }
+    }
+    // Stop the hero trailer when the user starts real playback.
+    LaunchedEffect(vm.autoPlayEvent) {
+        if (vm.autoPlayEvent != null) heroTrailerFinished = true
+    }
     var omdbRatings by remember { mutableStateOf<List<OmdbRating>?>(null) }
     LaunchedEffect(meta.id) {
         omdbRatings = null
@@ -756,6 +808,7 @@ private fun DetailContent(
             val heroHeight = (LocalConfiguration.current.screenHeightDp * 0.51f).dp
             val heroArt = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster
             val hasBackdrop = !meta.background.isNullOrBlank()
+            val trailerUrl = heroTrailerUrl
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -767,6 +820,27 @@ private fun DetailContent(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
+                // Hero trailer (Nuvio D2): once resolved, the trailer plays
+                // over the backdrop and fades in when ready; the fade below
+                // stays on top so the title text keeps reading.
+                if (trailerUrl != null && !heroTrailerFinished) {
+                    val trailerAlpha by animateFloatAsState(
+                        targetValue = if (heroTrailerReady) 1f else 0f,
+                        label = "heroTrailerAlpha"
+                    )
+                    Box(
+                        Modifier.fillMaxSize().graphicsLayer { alpha = trailerAlpha }
+                    ) {
+                        HeroTrailerPlayer(
+                            videoUrl = trailerUrl,
+                            audioUrl = heroTrailerAudioUrl,
+                            muted = heroMuted,
+                            onReady = { heroTrailerReady = true },
+                            onEnded = { heroTrailerFinished = true },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
                 // The fade: clear until ~40%, then cinematic navy, so
                 // the overlaid text reads in both theme modes.
                 Box(
@@ -803,6 +877,21 @@ private fun DetailContent(
                         )
                     }
                     Spacer(Modifier.width(8.dp))
+                    // Hero trailer mute toggle: only while the trailer is
+                    // playing in the hero.
+                    if (trailerUrl != null && !heroTrailerFinished && heroTrailerReady) {
+                        IconButton(
+                            onClick = { heroMuted = !heroMuted },
+                            modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                        ) {
+                            Icon(
+                                if (heroMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                                contentDescription = if (heroMuted) "Unmute trailer" else "Mute trailer",
+                                tint = Color.White
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
                     IconButton(
                         onClick = { showAddToList = true },
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
@@ -1032,6 +1121,7 @@ private fun DetailContent(
                                                 TrailerResolver.resolvePlayback(trailer.ytId)
                                             }
                                             if (playback != null) {
+                                                heroTrailerFinished = true
                                                 onPlayTrailer(
                                                     PlaybackRequest(
                                                         streamUrl = playback.videoUrl,
@@ -2072,6 +2162,72 @@ private data class PlaybackIds(
  * "tt1234567:1:2". Everything downstream (IntroDB, subtitle search) wants
  * the bare IMDb id plus season/episode.
  */
+/**
+ * Hero trailer player (Nuvio `HeroTrailerPlayerSurface`): a bare ExoPlayer
+ * with no controls, FIT so the trailer fills the hero box. Video-only
+ * YouTube qualities are merged with their separate audio track, the same
+ * merge the full player applies via `PlaybackRequest.mergeAudioUrl`.
+ */
+@Composable
+private fun HeroTrailerPlayer(
+    videoUrl: String,
+    audioUrl: String?,
+    muted: Boolean,
+    onReady: () -> Unit,
+    onEnded: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val player = remember(videoUrl, audioUrl) {
+        ExoPlayer.Builder(context).build().apply {
+            val factory = DefaultMediaSourceFactory(context)
+            val videoItem = MediaItem.fromUri(videoUrl)
+            val source = if (audioUrl != null) {
+                MergingMediaSource(
+                    factory.createMediaSource(videoItem),
+                    factory.createMediaSource(MediaItem.fromUri(audioUrl))
+                )
+            } else {
+                factory.createMediaSource(videoItem)
+            }
+            setMediaSource(source)
+            repeatMode = Player.REPEAT_MODE_OFF
+            volume = if (muted) 0f else 1f
+            playWhenReady = true
+            prepare()
+        }
+    }
+    LaunchedEffect(muted) { player.volume = if (muted) 0f else 1f }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) onReady()
+                if (state == Player.STATE_ENDED) onEnded()
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).also { pv ->
+                pv.player = player
+                pv.useController = false
+                pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                pv.layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        },
+        update = { pv -> pv.player = player },
+        modifier = modifier
+    )
+}
+
 /**
  * Ratings row (Nuvio `DetailRatingsRow`): IMDb / Rotten Tomatoes /
  * Metacritic scores in one line, plus your stars when rated. Always

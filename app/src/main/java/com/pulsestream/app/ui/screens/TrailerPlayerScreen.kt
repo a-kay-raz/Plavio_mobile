@@ -4,6 +4,8 @@ package com.pulsestream.app.ui.screens
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
+import android.view.TextureView
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -46,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,8 +71,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.pulsestream.app.data.LetterboxTracker
 import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.TrailerLetterbox
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
@@ -344,22 +349,60 @@ fun TrailerPlayerScreen(
 }
 
 @Composable
+/**
+ * Trailer video surface. Letterbox detection (Nuvio trailer/LetterboxDetector):
+ * the surface is a TextureView so frames can be sampled; once four stable
+ * samples agree on a bar height, the surface zooms in to crop the baked-in
+ * black bars out.
+ */
+@Composable
 private fun TrailerVideoView(player: ExoPlayer, modifier: Modifier = Modifier) {
+    var textureView by remember { mutableStateOf<TextureView?>(null) }
+    var zoom by remember { mutableFloatStateOf(1f) }
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).also { pv ->
                 pv.player = player
                 pv.useController = false
                 pv.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                pv.setVideoSurfaceType(PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
                 pv.layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             }
         },
-        update = { pv -> pv.player = player },
+        update = { pv ->
+            pv.player = player
+            textureView = pv.videoSurfaceView as? TextureView
+        },
         modifier = modifier
     )
+    // Letterbox sampling: every 400ms while playing, past the first 20% of
+    // the trailer, downscale the current frame and measure its bars.
+    LaunchedEffect(player, textureView) {
+        val tv = textureView ?: return@LaunchedEffect
+        zoom = 1f
+        val tracker = LetterboxTracker()
+        while (true) {
+            delay(TrailerLetterbox.SAMPLE_INTERVAL_MS)
+            val duration = player.duration
+            if (!player.isPlaying || !TrailerLetterbox.isSampleWindowOver(player.currentPosition, duration)) continue
+            val frame = runCatching { tv.bitmap }.getOrNull() ?: continue
+            val scaled = Bitmap.createScaledBitmap(
+                frame, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT, true
+            )
+            if (scaled != frame) frame.recycle()
+            val pixels = IntArray(TrailerLetterbox.SAMPLE_WIDTH * TrailerLetterbox.SAMPLE_HEIGHT)
+            scaled.getPixels(pixels, 0, TrailerLetterbox.SAMPLE_WIDTH, 0, 0, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT)
+            scaled.recycle()
+            val bar = TrailerLetterbox.detectBar(pixels, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT) ?: continue
+            tracker.onSample(bar)?.let { zoom = it }
+        }
+    }
+    LaunchedEffect(zoom) {
+        textureView?.let { it.scaleX = zoom; it.scaleY = zoom }
+    }
 }
 
 /**
