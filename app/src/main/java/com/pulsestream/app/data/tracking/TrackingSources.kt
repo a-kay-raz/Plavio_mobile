@@ -15,7 +15,9 @@ enum class TrackingLibrarySource(val stored: String, val label: String) {
     LOCAL("local", "Local only"),
     TRAKT("trakt", "Trakt"),
     SIMKL("simkl", "Simkl"),
-    ANILIST("anilist", "AniList");
+    ANILIST("anilist", "AniList"),
+    WETRAKR("wetrakr", "WeTrakr"),
+    PUBLICMETADB("publicmetadb", "PublicMetaDB");
 
     companion object {
         fun fromStored(value: String?): TrackingLibrarySource =
@@ -28,7 +30,9 @@ enum class TrackingProgressSource(val stored: String, val label: String) {
     LOCAL("local", "Local only"),
     TRAKT("trakt", "Trakt"),
     SIMKL("simkl", "Simkl"),
-    ANILIST("anilist", "AniList");
+    ANILIST("anilist", "AniList"),
+    WETRAKR("wetrakr", "WeTrakr"),
+    PUBLICMETADB("publicmetadb", "PublicMetaDB");
 
     companion object {
         fun fromStored(value: String?): TrackingProgressSource =
@@ -36,10 +40,14 @@ enum class TrackingProgressSource(val stored: String, val label: String) {
     }
 }
 
-/** Simkl has no ratings API in Plavio, so the ratings picker is Trakt / AniList only. */
+/**
+ * Simkl and PublicMetaDB have no ratings API in Plavio, so the ratings
+ * picker is Trakt / AniList / WeTrakr only.
+ */
 enum class TrackingRatingsSource(val stored: String, val label: String) {
     TRAKT("trakt", "Trakt"),
-    ANILIST("anilist", "AniList");
+    ANILIST("anilist", "AniList"),
+    WETRAKR("wetrakr", "WeTrakr");
 
     companion object {
         fun fromStored(value: String?): TrackingRatingsSource =
@@ -53,6 +61,10 @@ fun SettingsStore.isSimklLinked(): Boolean = !simklToken.isNullOrBlank()
 
 fun SettingsStore.isAnilistLinked(): Boolean = !anilistAccessToken.isNullOrBlank()
 
+fun SettingsStore.isWetrakrLinked(): Boolean = !wetrakrAccessToken.isNullOrBlank()
+
+fun SettingsStore.isPublicMetaDbLinked(): Boolean = !publicMetaDbApiKey.isNullOrBlank()
+
 /** Services feeding the Library for the current library-source setting. */
 fun SettingsStore.libraryProviders(): Set<String> {
     val linked = linkedProviders()
@@ -62,6 +74,8 @@ fun SettingsStore.libraryProviders(): Set<String> {
         TrackingLibrarySource.TRAKT -> if ("trakt" in linked) setOf("trakt") else linked
         TrackingLibrarySource.SIMKL -> if ("simkl" in linked) setOf("simkl") else linked
         TrackingLibrarySource.ANILIST -> if ("anilist" in linked) setOf("anilist") else linked
+        TrackingLibrarySource.WETRAKR -> if ("wetrakr" in linked) setOf("wetrakr") else linked
+        TrackingLibrarySource.PUBLICMETADB -> if ("publicmetadb" in linked) setOf("publicmetadb") else linked
     }
 }
 
@@ -74,19 +88,25 @@ fun SettingsStore.progressProviders(): Set<String> {
         TrackingProgressSource.TRAKT -> if ("trakt" in linked) setOf("trakt") else linked
         TrackingProgressSource.SIMKL -> if ("simkl" in linked) setOf("simkl") else linked
         TrackingProgressSource.ANILIST -> if ("anilist" in linked) setOf("anilist") else linked
+        TrackingProgressSource.WETRAKR -> if ("wetrakr" in linked) setOf("wetrakr") else linked
+        TrackingProgressSource.PUBLICMETADB -> if ("publicmetadb" in linked) setOf("publicmetadb") else linked
     }
 }
 
-/** Effective ratings source: AniList only when it is actually linked. */
+/** Effective ratings source: the pick only applies when it is actually linked. */
 fun SettingsStore.effectiveRatingsSource(): TrackingRatingsSource {
     val source = TrackingRatingsSource.fromStored(trackingRatingsSource)
-    return if (source == TrackingRatingsSource.ANILIST && !isAnilistLinked()) {
-        TrackingRatingsSource.TRAKT
-    } else source
+    return when (source) {
+        TrackingRatingsSource.ANILIST -> if (isAnilistLinked()) source else TrackingRatingsSource.TRAKT
+        TrackingRatingsSource.WETRAKR -> if (isWetrakrLinked()) source else TrackingRatingsSource.TRAKT
+        TrackingRatingsSource.TRAKT -> source
+    }
 }
 
 private fun SettingsStore.linkedProviders(): Set<String> = buildSet {
     if (isTraktLinked()) add("trakt")
     if (isSimklLinked()) add("simkl")
     if (isAnilistLinked()) add("anilist")
+    if (isWetrakrLinked()) add("wetrakr")
+    if (isPublicMetaDbLinked()) add("publicmetadb")
 }

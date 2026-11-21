@@ -426,4 +426,27 @@ object TmdbClient {
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { null }
     }
+
+    /**
+     * Step 53: TMDB id -> IMDb id (GET /movie|tv/{id} -> imdb_id). Used to
+     * resolve PublicMetaDB's TMDB-keyed entries to Plavio meta ids. Null
+     * when there is no TMDB key or the title has no IMDb id.
+     */
+    suspend fun getImdbId(
+        settings: SettingsStore,
+        mediaType: String,
+        tmdbId: Long
+    ): String? = withContext(Dispatchers.IO) {
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext null
+        try {
+            val segment = if (mediaType == "tv") "tv" else "movie"
+            val url = "$BASE/$segment/$tmdbId?api_key=<redacted>&language=en-US"
+            val root = json.parseToJsonElement(
+                BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
+            ).jsonObject
+            root["imdb_id"]?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.startsWith("tt") }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { null }
+    }
 }

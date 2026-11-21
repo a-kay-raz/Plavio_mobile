@@ -432,6 +432,14 @@ fun IntegrationsScreen(
                 AniListSection(settings = settings)
             }
 
+            item(key = "wetrakr") {
+                WeTrakrSection(settings = settings)
+            }
+
+            item(key = "publicmetadb") {
+                PublicMetaDbSection(settings = settings)
+            }
+
             item(key = "library_sync") {
                 LibrarySyncRow(repository = repository)
             }

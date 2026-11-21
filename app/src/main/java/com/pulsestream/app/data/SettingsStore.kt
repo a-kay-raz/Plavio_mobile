@@ -1116,6 +1116,46 @@ class SettingsStore(context: Context) {
             else prefs.edit().putString(KEY_ANILIST_VIEWER_NAME, value).apply()
         }
 
+    // ---- WeTrakr (Step 53) ----
+
+    /** WeTrakr OAuth client id the user created (needed for device-code auth). */
+    var wetrakrClientId: String?
+        get() = prefs.getString(KEY_WETRAKR_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value.isNullOrBlank()) prefs.edit().remove(KEY_WETRAKR_CLIENT_ID).apply()
+            else prefs.edit().putString(KEY_WETRAKR_CLIENT_ID, value.trim()).apply()
+        }
+
+    /** WeTrakr OAuth access token (null = not linked). Encrypted secret. */
+    var wetrakrAccessToken: String?
+        get() = getSecret(KEY_WETRAKR_ACCESS_TOKEN)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_WETRAKR_ACCESS_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** WeTrakr OAuth refresh token. Encrypted secret. */
+    var wetrakrRefreshToken: String?
+        get() = getSecret(KEY_WETRAKR_REFRESH_TOKEN)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_WETRAKR_REFRESH_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** Epoch ms when the WeTrakr access token expires (0 = unknown). */
+    var wetrakrTokenExpiresAtMs: Long
+        get() = prefs.getLong(KEY_WETRAKR_TOKEN_EXPIRES_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_WETRAKR_TOKEN_EXPIRES_AT, value).apply()
+
+    /** WeTrakr username for the linked account. */
+    var wetrakrUsername: String?
+        get() = prefs.getString(KEY_WETRAKR_USERNAME, null)
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_WETRAKR_USERNAME).apply()
+            else prefs.edit().putString(KEY_WETRAKR_USERNAME, value).apply()
+        }
+
+    // ---- PublicMetaDB (Step 53) ----
+
+    /** PublicMetaDB API key (null = not linked). Encrypted secret. */
+    var publicMetaDbApiKey: String?
+        get() = getSecret(KEY_PUBLICMETADB_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_PUBLICMETADB_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
     // ---- Unified tracking sources (Step 52, Nuvio tracking/TrackingSources) ----
 
     /**
@@ -1679,6 +1719,9 @@ class SettingsStore(context: Context) {
         traktRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_refresh_token"] = it }
         simklToken?.takeIf { it.isNotBlank() }?.let { keys["simkl_token"] = it }
         anilistAccessToken?.takeIf { it.isNotBlank() }?.let { keys["anilist_access_token"] = it }
+        wetrakrAccessToken?.takeIf { it.isNotBlank() }?.let { keys["wetrakr_access_token"] = it }
+        wetrakrRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["wetrakr_refresh_token"] = it }
+        publicMetaDbApiKey?.takeIf { it.isNotBlank() }?.let { keys["publicmetadb_api_key"] = it }
         return keys
     }
 
@@ -1696,6 +1739,9 @@ class SettingsStore(context: Context) {
         keys["trakt_refresh_token"]?.takeIf { it.isNotBlank() && traktRefreshToken.isNullOrBlank() }?.let { traktRefreshToken = it }
         keys["simkl_token"]?.takeIf { it.isNotBlank() && simklToken.isNullOrBlank() }?.let { simklToken = it }
         keys["anilist_access_token"]?.takeIf { it.isNotBlank() && anilistAccessToken.isNullOrBlank() }?.let { anilistAccessToken = it }
+        keys["wetrakr_access_token"]?.takeIf { it.isNotBlank() && wetrakrAccessToken.isNullOrBlank() }?.let { wetrakrAccessToken = it }
+        keys["wetrakr_refresh_token"]?.takeIf { it.isNotBlank() && wetrakrRefreshToken.isNullOrBlank() }?.let { wetrakrRefreshToken = it }
+        keys["publicmetadb_api_key"]?.takeIf { it.isNotBlank() && publicMetaDbApiKey.isNullOrBlank() }?.let { publicMetaDbApiKey = it }
     }
 
     /**
@@ -1739,6 +1785,8 @@ class SettingsStore(context: Context) {
             "simkl_token", "torbox_api_key", "realdebrid_api_key", "premiumize_api_key",
             "trakt_access_token", "trakt_refresh_token",
             "anilist_access_token",
+            "wetrakr_access_token", "wetrakr_refresh_token",
+            "publicmetadb_api_key",
             "tmdb_api_key", "omdb_api_key",
             "xtream_password", "stalker_password"
         )
@@ -1873,6 +1921,12 @@ class SettingsStore(context: Context) {
         private const val KEY_ANILIST_TOKEN = "anilist_access_token"
         private const val KEY_ANILIST_CLIENT_ID = "anilist_client_id"
         private const val KEY_ANILIST_VIEWER_NAME = "anilist_viewer_name"
+        private const val KEY_WETRAKR_CLIENT_ID = "wetrakr_client_id"
+        private const val KEY_WETRAKR_ACCESS_TOKEN = "wetrakr_access_token"
+        private const val KEY_WETRAKR_REFRESH_TOKEN = "wetrakr_refresh_token"
+        private const val KEY_WETRAKR_TOKEN_EXPIRES_AT = "wetrakr_token_expires_at"
+        private const val KEY_WETRAKR_USERNAME = "wetrakr_username"
+        private const val KEY_PUBLICMETADB_API_KEY = "publicmetadb_api_key"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
         private const val KEY_TRACKING_RATINGS_SOURCE = "tracking_ratings_source"
