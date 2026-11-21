@@ -1861,6 +1861,29 @@ class StreamRepository(
         return best.values.sortedByDescending { it.updatedAt }
     }
 
+    /** Manually mark one episode watched/unwatched (Step 24, Nuvio EpisodeWatchedActionSheet). */
+    suspend fun setEpisodeWatched(seriesId: String, season: Int, episode: Int, watched: Boolean) =
+        withContext(Dispatchers.IO) {
+            val key = WatchedMarks.episodeKey(seriesId, season, episode)
+            if (watched) db.watchedDao().upsert(WatchedRecord(key, System.currentTimeMillis()))
+            else db.watchedDao().deleteByKey(key)
+        }
+
+    /** Manually mark a whole season watched/unwatched. */
+    suspend fun setSeasonWatched(seriesId: String, season: Int, episodes: List<Video>, watched: Boolean) =
+        withContext(Dispatchers.IO) {
+            if (watched) {
+                val now = System.currentTimeMillis()
+                episodes.filter { it.season == season }.forEach { video ->
+                    db.watchedDao().upsert(
+                        WatchedRecord(WatchedMarks.episodeKey(seriesId, video.season, video.episode), now)
+                    )
+                }
+            } else {
+                db.watchedDao().deleteByPrefix("e|$seriesId|$season|")
+            }
+        }
+
     suspend fun savePlayback(
         title: String,
         poster: String?,

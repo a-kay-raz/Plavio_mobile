@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.res.painterResource
 import com.pulsestream.app.R
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -39,17 +40,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.PlaylistAddCheck
+import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -61,6 +72,9 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +89,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -91,6 +106,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
@@ -593,11 +609,41 @@ private fun DetailContent(
 ) {
     val isSeries = meta.type == "series" && meta.videos.isNotEmpty()
     val seasons = rememberSeasonList(meta)
+    val settings = repository.settings
+    // Episode browser (Nuvio DetailEpisodeNavigator): search, sort,
+    // Go-To, season view mode, blur-unwatched.
+    var episodeQuery by rememberSaveable { mutableStateOf("") }
+    var episodeSort by rememberSaveable { mutableStateOf("oldest") } // oldest | newest | airdate | unwatched
+    var seasonViewMode by remember { mutableStateOf(settings.seasonViewMode) }
+    var episodeActionVideo by remember { mutableStateOf<Video?>(null) }
+    var goToOpen by remember { mutableStateOf(false) }
+    var sortOpen by remember { mutableStateOf(false) }
+    val episodesRailState = rememberLazyListState()
+    val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
     // Hoisted out of the LazyColumn DSL: the filter+sort used to re-run
     // on every recomposition of the (stream-driven) content lambda.
-    val episodes = remember(meta.videos, vm.selectedSeason) {
-        meta.videos.filter { it.season == vm.selectedSeason }
-            .sortedWith(compareBy({ it.episode }, { it.title }))
+    val episodes = remember(meta.videos, vm.selectedSeason, episodeQuery, episodeSort, watchedKeys) {
+        val base = meta.videos.filter { it.season == vm.selectedSeason }
+        val filtered = if (episodeQuery.isBlank()) base else {
+            val q = episodeQuery.trim().lowercase().replace(" ", "")
+            base.filter { video ->
+                video.title.lowercase().contains(q) ||
+                    "e${video.episode}" == q || video.episode.toString() == q ||
+                    "s${video.season}e${video.episode}" == q
+            }
+        }
+        when (episodeSort) {
+            "newest" -> filtered.sortedWith(compareByDescending({ it.episode }, { it.title }))
+            "airdate" -> filtered.sortedByDescending { it.released.orEmpty() }
+            "unwatched" -> filtered.sortedWith(
+                compareBy(
+                    { com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, it.season, it.episode) in watchedKeys },
+                    { it.episode },
+                    { it.title }
+                )
+            )
+            else -> filtered.sortedWith(compareBy({ it.episode }, { it.title }))
+        }
     }
     // Shared scope and watchlist state for hero buttons and play section
     val scope = rememberCoroutineScope()
@@ -641,6 +687,7 @@ private fun DetailContent(
     val context = androidx.compose.ui.platform.LocalContext.current
     val browsingPrivacy = remember(context) { BrowsingPrivacy(context) }
     var hideEpisodeDetails by remember { mutableStateOf(browsingPrivacy.hideUnrevealedEpisodes()) }
+    var blurUnwatched by remember { mutableStateOf(browsingPrivacy.blurUnwatchedEpisodes()) }
     val episodeShowKey = "$addonId|${meta.type}|${meta.id}"
     var revealedEpisodeIds by remember(episodeShowKey) {
         mutableStateOf(browsingPrivacy.revealedEpisodes(episodeShowKey))
@@ -1146,11 +1193,74 @@ private fun DetailContent(
         }
         if (isSeries) {
             item(key = "seasons") {
-                Text("Seasons", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
+                    Text(
+                        "Seasons",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Season view mode (Nuvio SeasonViewMode): poster row
+                    // or compact text list, persisted.
+                    IconButton(onClick = {
+                        seasonViewMode = if (seasonViewMode == "text") "posters" else "text"
+                        settings.seasonViewMode = seasonViewMode
+                    }) {
+                        Icon(
+                            if (seasonViewMode == "text") Icons.Filled.GridView else Icons.Filled.List,
+                            contentDescription = if (seasonViewMode == "text") "Poster view" else "List view",
+                            tint = TextSecondary
+                        )
+                    }
+                }
+                if (seasonViewMode == "text") {
+                    Column(
+                        Modifier.padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        seasons.forEach { season ->
+                            val count = meta.videos.count { it.season == season }
+                            val watchedCount = meta.videos.count {
+                                it.season == season &&
+                                    com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, it.season, it.episode) in watchedKeys
+                            }
+                            val isSel = vm.selectedSeason == season
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isSel) LocalPalette.current.accent.copy(alpha = 0.15f)
+                                        else Color.White.copy(alpha = 0.06f)
+                                    )
+                                    .clickable { vm.selectSeason(season, meta) }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    if (season == 0) "Specials" else "Season $season",
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "$watchedCount/$count watched",
+                                    color = TextSecondary,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                     items(seasons, key = { it }) { season ->
                         val isSel = vm.selectedSeason == season
                         val palette = LocalPalette.current
@@ -1223,6 +1333,7 @@ private fun DetailContent(
                         }
                     }
                 }
+                }
             }
             item(key = "episodes_header") {
                 Row(
@@ -1243,6 +1354,20 @@ private fun DetailContent(
                             tint = if (vm.shuffleEpisodes) LocalPalette.current.accent else TextSecondary
                         )
                     }
+                    IconButton(onClick = { sortOpen = true }) {
+                        Icon(
+                            Icons.Filled.Sort,
+                            contentDescription = "Sort episodes",
+                            tint = TextSecondary
+                        )
+                    }
+                    IconButton(onClick = { goToOpen = true }) {
+                        Icon(
+                            Icons.Filled.NearMe,
+                            contentDescription = "Go to episode",
+                            tint = TextSecondary
+                        )
+                    }
                     if (!isTvDetail) {
                         FilterChip(
                             selected = hideEpisodeDetails,
@@ -1259,12 +1384,49 @@ private fun DetailContent(
                                 labelColor = TextSecondary
                             )
                         )
+                        Spacer(Modifier.width(8.dp))
+                        FilterChip(
+                            selected = blurUnwatched,
+                            onClick = {
+                                val enabled = !blurUnwatched
+                                blurUnwatched = enabled
+                                browsingPrivacy.setBlurUnwatchedEpisodes(enabled)
+                            },
+                            label = { Text("Blur unwatched") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+                                selectedLabelColor = TextPrimary,
+                                containerColor = Color.White.copy(alpha = 0.06f),
+                                labelColor = TextSecondary
+                            )
+                        )
                     }
                 }
             }
+            // Episode search (Nuvio DetailEpisodeNavigator): filters the
+            // rail by title or episode number ("12", "e12", "s1e2").
+            item(key = "episodes_search") {
+                OutlinedTextField(
+                    value = episodeQuery,
+                    onValueChange = { episodeQuery = it },
+                    label = { Text("Search episodes") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = TextSecondary) },
+                    trailingIcon = {
+                        if (episodeQuery.isNotEmpty()) {
+                            IconButton(onClick = { episodeQuery = "" }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear", tint = TextSecondary)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
             item(key = "episodes_rail") {
-                val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
                 LazyRow(
+                    state = episodesRailState,
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -1272,14 +1434,17 @@ private fun DetailContent(
                         val selected = vm.selectedVideo?.id == video.id
                         val episodeRevealed = video.id in revealedEpisodeIds
                         val hideDetails = BrowsingPrivacy.shouldHideEpisodeDetails(hideEpisodeDetails, episodeRevealed)
+                        val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
                         EpisodeCardA(
                             video = video,
                             selected = selected,
                             hideDetails = hideDetails,
-                            isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys,
+                            isWatched = isWatched,
                             spoilerMode = hideEpisodeDetails,
                             isTv = isTvDetail,
+                            blurThumbnail = blurUnwatched && !isWatched,
                             onClick = { vm.selectEpisode(video) },
+                            onLongClick = { episodeActionVideo = video },
                             onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                             onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
                         )
@@ -1442,11 +1607,203 @@ private fun DetailContent(
             onDismiss = { showAddToList = false }
         )
     }
+
+    // Episode watched action sheet (Nuvio EpisodeWatchedActionSheet):
+    // long-press an episode card. Mark watched/unwatched for the episode
+    // or the whole season. Rate arrives with Step 28 (per-title stars).
+    episodeActionVideo?.let { video ->
+        val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
+        ModalBottomSheet(
+            onDismissRequest = { episodeActionVideo = null },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = Color(0xFF14141F)
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+            ) {
+                Text(
+                    "S${video.season}E${video.episode} · ${video.title}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                EpisodeActionRow(
+                    label = if (isWatched) "Mark episode unwatched" else "Mark episode watched",
+                    icon = if (isWatched) Icons.Filled.CheckCircleOutline else Icons.Filled.CheckCircle,
+                    onClick = {
+                        episodeActionVideo = null
+                        scope.launch {
+                            repository.setEpisodeWatched(meta.id, video.season, video.episode, !isWatched)
+                        }
+                    }
+                )
+                EpisodeActionRow(
+                    label = "Mark season watched",
+                    icon = Icons.Filled.PlaylistAddCheck,
+                    onClick = {
+                        episodeActionVideo = null
+                        scope.launch {
+                            repository.setSeasonWatched(meta.id, video.season, meta.videos, true)
+                        }
+                    }
+                )
+                EpisodeActionRow(
+                    label = "Mark season unwatched",
+                    icon = Icons.Filled.PlaylistRemove,
+                    onClick = {
+                        episodeActionVideo = null
+                        scope.launch {
+                            repository.setSeasonWatched(meta.id, video.season, meta.videos, false)
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    // Go-To sheet (Nuvio DetailEpisodeNavigator): jump to a season +
+    // episode number, selecting it and scrolling the rail to it.
+    if (goToOpen) {
+        var goToSeason by remember { mutableStateOf(vm.selectedSeason ?: seasons.firstOrNull() ?: 1) }
+        var goToEpisodeText by remember { mutableStateOf("") }
+        ModalBottomSheet(
+            onDismissRequest = { goToOpen = false },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = Color(0xFF14141F)
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+            ) {
+                Text(
+                    "Go to episode",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    "Jump to a season and episode number.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    items(seasons, key = { it }) { season ->
+                        FilterChip(
+                            selected = goToSeason == season,
+                            onClick = { goToSeason = season },
+                            label = { Text(if (season == 0) "Specials" else "S$season") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+                                selectedLabelColor = TextPrimary,
+                                containerColor = Color.White.copy(alpha = 0.06f),
+                                labelColor = TextSecondary
+                            )
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = goToEpisodeText,
+                    onValueChange = { goToEpisodeText = it.filter { c -> c.isDigit() }.take(3) },
+                    label = { Text("Episode number") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        val epNum = goToEpisodeText.toIntOrNull() ?: return@Button
+                        val target = meta.videos.firstOrNull { it.season == goToSeason && it.episode == epNum }
+                            ?: return@Button
+                        goToOpen = false
+                        if (vm.selectedSeason != goToSeason) vm.selectSeason(goToSeason, meta)
+                        vm.selectEpisode(target)
+                        scope.launch {
+                            val index = episodes.indexOfFirst { it.id == target.id }
+                            if (index >= 0) episodesRailState.scrollToItem(index)
+                        }
+                    },
+                    enabled = goToEpisodeText.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Go") }
+            }
+        }
+    }
+
+    // Sort dialog (Nuvio EpisodeSortOrder): oldest/newest first,
+    // newest aired, unwatched first. Highest-rated is not offered —
+    // per-episode ratings don't exist in the meta.
+    if (sortOpen) {
+        AlertDialog(
+            onDismissRequest = { sortOpen = false },
+            title = { Text("Sort episodes", color = TextPrimary) },
+            text = {
+                Column {
+                    listOf(
+                        "oldest" to "Oldest first",
+                        "newest" to "Newest first",
+                        "airdate" to "Newest aired",
+                        "unwatched" to "Unwatched first"
+                    ).forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { episodeSort = value; sortOpen = false }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = episodeSort == value,
+                                onClick = { episodeSort = value; sortOpen = false },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(label, color = TextPrimary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { sortOpen = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun rememberSeasonList(meta: MetaDetail): List<Int> {
     return meta.videos.map { it.season }.distinct().sorted()
+}
+
+/** One row of the episode watched action sheet: icon + label, full-width tap. */
+@Composable
+private fun EpisodeActionRow(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(label, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2304,7 +2661,9 @@ private fun EpisodeCardA(
     isWatched: Boolean,
     spoilerMode: Boolean,
     isTv: Boolean,
+    blurThumbnail: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
     onHide: () -> Unit
 ) {
@@ -2318,11 +2677,17 @@ private fun EpisodeCardA(
                 if (selected) palette.accent else Color.White.copy(alpha = 0.10f),
                 RoundedCornerShape(18.dp)
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(Modifier.fillMaxWidth().height(132.dp)) {
             if (!hideDetails && video.thumbnail != null) {
-                SafePosterImage(video.thumbnail, null, Modifier.fillMaxSize())
+                SafePosterImage(
+                    video.thumbnail,
+                    null,
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (blurThumbnail) Modifier.blur(14.dp) else Modifier)
+                )
             } else {
                 Box(
                     Modifier.fillMaxSize().background(

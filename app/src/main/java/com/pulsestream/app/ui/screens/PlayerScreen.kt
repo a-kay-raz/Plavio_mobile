@@ -76,6 +76,7 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.LockOpen
@@ -909,6 +910,28 @@ fun PlayerScreen(
     // Sources + episodes sheets
     var sourcesOpen by remember { mutableStateOf(false) }
     var episodesOpen by remember { mutableStateOf(false) }
+    // Per-episode stream choice (Nuvio PlayerEpisodesPanel): the episode
+    // whose streams are being browsed in its own sheet.
+    var episodeStreamsVideo by remember { mutableStateOf<Video?>(null) }
+    var episodeStreams by remember { mutableStateOf<List<com.pulsestream.app.data.StreamItem>>(emptyList()) }
+    var episodeStreamsSubtitles by remember { mutableStateOf<List<Subtitle>>(emptyList()) }
+    var episodeStreamsLoading by remember { mutableStateOf(false) }
+    var episodeStreamsTick by remember { mutableStateOf(0) }
+
+    // Fetch the chosen episode's streams for its streams sheet.
+    LaunchedEffect(episodeStreamsVideo, episodeStreamsTick) {
+        val video = episodeStreamsVideo ?: return@LaunchedEffect
+        episodeStreamsLoading = true
+        episodeStreams = emptyList()
+        episodeStreamsSubtitles = emptyList()
+        val result = withTimeoutOrNull(20_000) {
+            repository.streamResultsFlow(currentRequest.type, video.id)
+                .firstOrNull { it.streams.any { stream -> com.pulsestream.app.data.isPlayableLiveStreamUrl(stream.url) } }
+        }
+        episodeStreams = result?.streams ?: emptyList()
+        episodeStreamsSubtitles = result?.subtitles ?: emptyList()
+        episodeStreamsLoading = false
+    }
     // Quality picker: null = Auto (best available quality), otherwise
     // the picked quality label. Resets per video.
     var qualityOpen by remember { mutableStateOf(false) }
@@ -2016,32 +2039,47 @@ fun PlayerScreen(
                 if (stream == null) {
                     pokeIndicator(PlayerIndicator.Message("No sources found for this episode"))
                 } else {
-                    val showName = currentRequest.seriesName ?: currentRequest.title
-                    availableStreams = playableStreams
-                    hiddenIncompatibleCount = hidden
-                    replaceStream(
-                        currentRequest.copy(
-                            streamUrl = stream.url,
-                            headers = stream.headers,
-                            mimeType = stream.mimeType,
-                            title = "$showName S${video.season}E${video.episode}",
-                            poster = video.thumbnail ?: currentRequest.poster,
-                            videoId = video.id,
-                            subtitles = result?.subtitles ?: emptyList(),
-                            season = video.season,
-                            episode = video.episode,
-                            episodeTitle = video.title,
-                            streamLabel = streamQualityLabel(stream),
-                            sourceName = stream.sourceName,
-                            streams = result?.streams ?: emptyList()
-                        ),
-                        startAtMs = 0L,
-                        autoplay = true
-                    )
+                    playEpisodeWithStream(video, stream, playableStreams, result?.subtitles ?: emptyList())
                 }
-                switchingMedia = false
             }
         }
+    }
+
+    /** Play [video] with a caller-picked [stream] (per-episode stream choice, Nuvio PlayerEpisodesPanel). */
+    fun playEpisodeWithStream(
+        video: Video,
+        stream: com.pulsestream.app.data.StreamItem,
+        playableStreams: List<com.pulsestream.app.data.StreamItem>,
+        subtitles: List<Subtitle>
+    ) {
+        // #9: never start episode work on disposed state (ghost audio).
+        if (disposed.get()) return
+        episodesOpen = false
+        episodeStreamsVideo = null
+        switchingMedia = true
+        val showName = currentRequest.seriesName ?: currentRequest.title
+        availableStreams = playableStreams
+        hiddenIncompatibleCount = 0
+        replaceStream(
+            currentRequest.copy(
+                streamUrl = stream.url,
+                headers = stream.headers,
+                mimeType = stream.mimeType,
+                title = "$showName S${video.season}E${video.episode}",
+                poster = video.thumbnail ?: currentRequest.poster,
+                videoId = video.id,
+                subtitles = subtitles,
+                season = video.season,
+                episode = video.episode,
+                episodeTitle = video.title,
+                streamLabel = streamQualityLabel(stream),
+                sourceName = stream.sourceName,
+                streams = playableStreams
+            ),
+            startAtMs = 0L,
+            autoplay = true
+        )
+        switchingMedia = false
     }
 
     // Auto-select a freshly added subtitle track once ExoPlayer exposes it.
@@ -4873,6 +4911,7 @@ fun PlayerScreen(
             val episodes = currentRequest.episodes
             val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
             var selSeason by remember(episodes) { mutableStateOf(currentRequest.season) }
+            val panelWatchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
             ModalBottomSheet(
                 onDismissRequest = { episodesOpen = false },
                 sheetState = rememberModalBottomSheetState(),
@@ -4919,6 +4958,7 @@ fun PlayerScreen(
                 ) {
                     items(eps, key = { it.id }) { video ->
                         val selected = video.id == currentRequest.videoId
+                        val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(currentRequest.metaId, video.season, video.episode) in panelWatchedKeys
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -4968,6 +5008,37 @@ fun PlayerScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                                val airDate = video.released?.takeIf { it.isNotBlank() }?.let { formatEpisodeAirDate(it) }
+                                if (airDate != null) {
+                                    Text(
+                                        airDate,
+                                        color = TextSecondary,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                            if (isWatched) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Watched",
+                                    tint = LocalPalette.current.accent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            // Per-episode stream choice (Nuvio
+                            // PlayerEpisodesPanel): opens this episode's
+                            // streams; picking one plays it.
+                            IconButton(
+                                onClick = { episodeStreamsVideo = video },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = "Streams for this episode",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                             if (selected) {
                                 Icon(Icons.Filled.PlayArrow, null, tint = LocalPalette.current.accent)
@@ -4979,7 +5050,44 @@ fun PlayerScreen(
                             }
             }
         }
+
+        // Per-episode stream choice (Nuvio PlayerEpisodesPanel): the ⋮
+        // button on an episode row opens this episode's streams; picking
+        // one plays that episode with that stream.
+        episodeStreamsVideo?.let { video ->
+            ModalBottomSheet(
+                onDismissRequest = { episodeStreamsVideo = null },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                dragHandle = null,
+                containerColor = Color(0xFF14141F)
+            ) {
+                com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
+                    title = "S${video.season}E${video.episode} · ${video.title}",
+                    streams = episodeStreams,
+                    selectedUrl = "",
+                    loading = episodeStreamsLoading,
+                    onPick = { stream ->
+                        playEpisodeWithStream(video, stream, episodeStreams, episodeStreamsSubtitles)
+                    },
+                    onDownload = { downloadStream = it },
+                    onRetry = { episodeStreamsTick++ },
+                    onClose = { episodeStreamsVideo = null },
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
+                    settings = repository.settings,
+                    poster = video.thumbnail ?: currentRequest.poster
+                )
+            }
+        }
     }
+}
+
+
+/** "2011-09-22" -> "Sep 22, 2011" for episode air dates; falls back to the raw value. */
+private fun formatEpisodeAirDate(iso: String): String {
+    val parsed = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(iso)
+    }.getOrNull() ?: return iso
+    return java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(parsed)
 }
 
 
