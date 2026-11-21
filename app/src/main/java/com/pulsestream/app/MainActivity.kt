@@ -130,6 +130,7 @@ import com.pulsestream.app.data.update.UpdateChecker
 import com.pulsestream.app.data.AddonShare
 import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.PlayerChoice
+import com.pulsestream.app.data.CollectionRepository
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.notifications.EpisodeNotifications
@@ -171,6 +172,9 @@ import com.pulsestream.app.ui.components.TrailerMiniController
 import com.pulsestream.app.ui.components.TrailerPlayerState
 import com.pulsestream.app.ui.screens.TrailerPlayerScreen
 import com.pulsestream.app.ui.screens.WatchlistScreen
+import com.pulsestream.app.ui.screens.CollectionEditorScreen
+import com.pulsestream.app.ui.screens.CollectionFolderScreen
+import com.pulsestream.app.ui.screens.CollectionsScreen
 import com.pulsestream.app.ui.screens.ListsScreen
 import com.pulsestream.app.ui.screens.ListDetailScreen
 import com.pulsestream.app.ui.screens.BackupScreen
@@ -699,6 +703,7 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
     val app = appContext as PulseApp
     val repository = remember { app.repository }
     val listsRepository = remember { CustomListsRepository(app.database) }
+    val collectionRepository = remember { CollectionRepository(app.database) }
     // Activity context for the "Ask every time" player chooser dialog.
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
 
@@ -1448,7 +1453,49 @@ private fun PulseNavGraph(
                 onGoToFeedback = { navController.navigate(Routes.FEEDBACK) },
                 onGoToAccount = { navController.navigate(Routes.ACCOUNT) },
                 onGoToIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
-                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) }
+                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
+                onGoToCollections = { navController.navigate(Routes.COLLECTIONS) }
+            )
+        }
+        composable(Routes.COLLECTIONS) {
+            CollectionsScreen(
+                collectionRepository = collectionRepository,
+                onBack = { navController.popBackStack() },
+                onOpenEditor = { collectionId ->
+                    navController.navigate(Routes.collectionEditor(collectionId))
+                }
+            )
+        }
+        composable(
+            Routes.COLLECTION_EDITOR,
+            arguments = listOf(
+                navArgument("collectionId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            CollectionEditorScreen(
+                collectionId = entry.arguments!!.getString("collectionId")!!,
+                collectionRepository = collectionRepository,
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenFolder = { folderId ->
+                    navController.navigate(Routes.collectionFolder(folderId))
+                }
+            )
+        }
+        composable(
+            Routes.COLLECTION_FOLDER,
+            arguments = listOf(
+                navArgument("folderId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            CollectionFolderScreen(
+                folderId = entry.arguments!!.getString("folderId")!!,
+                collectionRepository = collectionRepository,
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                }
             )
         }
         composable(Routes.INTEGRATIONS) {

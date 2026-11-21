@@ -288,4 +288,89 @@ object TmdbClient {
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { emptyList() }
     }
+
+    /**
+     * Step 50: shared parser for TMDB result-shaped arrays (search /
+     * trending shape). mediaTypeOverride fills in the type when the
+     * endpoint implies it (collection parts are movies; discover is
+     * per-endpoint). Ids are "tmdb:movie:123" like the other TMDB paths.
+     */
+    private fun parseTmdbItems(
+        items: kotlinx.serialization.json.JsonArray,
+        mediaTypeOverride: String?,
+        limit: Int,
+    ): List<MetaPreview> {
+        val out = mutableListOf<MetaPreview>()
+        for (el in items) {
+            val obj = el.jsonObject
+            val mediaType = mediaTypeOverride
+                ?: obj["media_type"]?.jsonPrimitive?.content ?: continue
+            if (mediaType != "movie" && mediaType != "tv") continue
+            val id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: continue
+            val title = obj["title"]?.jsonPrimitive?.content
+                ?: obj["name"]?.jsonPrimitive?.content ?: continue
+            val poster = obj["poster_path"]?.jsonPrimitive?.content
+            val posterUrl = if (poster != null) "https://image.tmdb.org/t/p/w342$poster" else null
+            val backdrop = obj["backdrop_path"]?.jsonPrimitive?.content
+            val backdropUrl = if (backdrop != null) "https://image.tmdb.org/t/p/w780$backdrop" else null
+            val dateStr = obj["release_date"]?.jsonPrimitive?.content
+                ?: obj["first_air_date"]?.jsonPrimitive?.content
+            val year = dateStr?.take(4)?.toIntOrNull()?.toString()
+            val type = if (mediaType == "movie") "movie" else "series"
+            out.add(
+                MetaPreview(
+                    id = "tmdb:$mediaType:$id", type = type, name = title,
+                    poster = posterUrl, background = backdropUrl, releaseInfo = year
+                )
+            )
+            if (out.size >= limit) break
+        }
+        return out
+    }
+
+    /** Step 50: GET /collection/{id} — the movies in a TMDB collection. */
+    suspend fun getCollection(settings: SettingsStore, collectionId: Int, limit: Int = 100): List<MetaPreview> = withContext(Dispatchers.IO) {
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
+        try {
+            val url = "$BASE/collection/$collectionId?api_key=$apiKey&language=en-US"
+            val response = BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
+            val root = json.parseToJsonElement(response).jsonObject
+            val parts = root["parts"]?.jsonArray ?: return@withContext emptyList()
+            parseTmdbItems(parts, mediaTypeOverride = "movie", limit = limit)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { emptyList() }
+    }
+
+    /** Step 50: GET /list/{id} — the items of a TMDB list (v3 lists). */
+    suspend fun getTmdbList(settings: SettingsStore, listId: Int, limit: Int = 100): List<MetaPreview> = withContext(Dispatchers.IO) {
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
+        try {
+            val url = "$BASE/list/$listId?api_key=$apiKey&language=en-US"
+            val response = BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
+            val root = json.parseToJsonElement(response).jsonObject
+            val items = root["items"]?.jsonArray ?: return@withContext emptyList()
+            parseTmdbItems(items, mediaTypeOverride = null, limit = limit)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { emptyList() }
+    }
+
+    /** Step 50: GET /discover/{movie|tv} — sorted TMDB browse (sortBy like "popularity.desc"). */
+    suspend fun discover(
+        settings: SettingsStore,
+        mediaType: String,
+        sortBy: String,
+        limit: Int = 100,
+    ): List<MetaPreview> = withContext(Dispatchers.IO) {
+        val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
+        val endpoint = if (mediaType == "tv") "tv" else "movie"
+        try {
+            val encodedSort = java.net.URLEncoder.encode(sortBy, "UTF-8")
+            val url = "$BASE/discover/$endpoint?api_key=$apiKey&sort_by=$encodedSort&language=en-US&page=1&include_adult=false"
+            val response = BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
+            val root = json.parseToJsonElement(response).jsonObject
+            val results = root["results"]?.jsonArray ?: return@withContext emptyList()
+            parseTmdbItems(results, mediaTypeOverride = endpoint, limit = limit)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { emptyList() }
+    }
 }

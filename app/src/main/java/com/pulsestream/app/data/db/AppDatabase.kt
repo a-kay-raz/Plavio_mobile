@@ -15,9 +15,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DownloadItem::class,
         CustomList::class,
         CustomListItem::class,
-        WatchedRecord::class
+        WatchedRecord::class,
+        Collection::class,
+        CollectionFolder::class,
+        CollectionSourceRow::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
     abstract fun customListDao(): CustomListDao
     abstract fun watchedDao(): WatchedDao
+    abstract fun collectionDao(): CollectionDao
 }
 
 /**
@@ -248,5 +252,51 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
         db.execSQL("ALTER TABLE custom_lists ADD COLUMN description TEXT NOT NULL DEFAULT ''")
         db.execSQL("ALTER TABLE custom_lists ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0")
         db.execSQL("UPDATE custom_lists SET sortOrder = -createdAt")
+    }
+}
+
+/** v17 → v18 (Step 50): collections — a collection holds folders, each folder holds sources (addon catalog / TMDB / Trakt) that resolve to titles. */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS collections (
+                id TEXT NOT NULL PRIMARY KEY,
+                title TEXT NOT NULL,
+                backdropUrl TEXT,
+                pinToTop INTEGER NOT NULL DEFAULT 0,
+                viewMode TEXT NOT NULL DEFAULT 'TABBED_GRID',
+                showAllTab INTEGER NOT NULL DEFAULT 1,
+                sortOrder INTEGER NOT NULL DEFAULT 0,
+                createdAt INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS collection_folders (
+                id TEXT NOT NULL PRIMARY KEY,
+                collectionId TEXT NOT NULL,
+                title TEXT NOT NULL,
+                coverImageUrl TEXT,
+                coverEmoji TEXT,
+                tileShape TEXT NOT NULL DEFAULT 'poster',
+                sortOrder INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS collection_sources (
+                id TEXT NOT NULL PRIMARY KEY,
+                folderId TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                addonId TEXT,
+                type TEXT,
+                catalogId TEXT,
+                genre TEXT,
+                tmdbSourceType TEXT,
+                tmdbId INTEGER,
+                mediaType TEXT,
+                sortBy TEXT,
+                sortHow TEXT,
+                sortOrder INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
     }
 }

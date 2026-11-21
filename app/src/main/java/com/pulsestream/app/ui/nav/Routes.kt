@@ -15,6 +15,9 @@ object Routes {
     const val WATCHLIST = "watchlist"
     const val LISTS = "lists"
     const val LIST_DETAIL = "list_detail/{listId}"
+    const val COLLECTIONS = "collections"
+    const val COLLECTION_EDITOR = "collection_editor/{collectionId}"
+    const val COLLECTION_FOLDER = "collection_folder/{folderId}"
     const val ADDONS = "addons"
     const val HOME_CATALOGS = "home_catalogs"
     const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"
@@ -58,6 +61,10 @@ object Routes {
 
     /** List ids are UUIDs (URL-safe), no encoding needed. */
     fun listDetail(listId: String): String = "list_detail/$listId"
+
+    /** Collection/folder ids are UUIDs (URL-safe), no encoding needed. */
+    fun collectionEditor(collectionId: String): String = "collection_editor/$collectionId"
+    fun collectionFolder(folderId: String): String = "collection_folder/$folderId"
 
     private fun enc(s: String): String =
         Base64.encodeToString(s.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
