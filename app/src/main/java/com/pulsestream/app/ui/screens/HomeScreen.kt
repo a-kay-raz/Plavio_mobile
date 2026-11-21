@@ -763,10 +763,24 @@ private fun HeroCarousel(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    // Hero meta line (Nuvio HomeHeroMetaRows, meta block
+                    // only): type • year • ★ rating (one decimal) • first
+                    // genre • language. Runtime and status are NOT in the
+                    // catalog data — they live only in the full meta, so
+                    // showing them here would cost one meta fetch per hero
+                    // title; the line shows what the catalog carries.
+                    val typeLabel = when (meta.type.trim().lowercase()) {
+                        "movie" -> "Movie"
+                        "series", "tv" -> "Series"
+                        else -> meta.type.replaceFirstChar { it.uppercase() }
+                    }
                     val info = listOfNotNull(
+                        typeLabel,
                         meta.releaseInfo?.take(4),
-                        meta.imdbRating?.let { "★ $it" },
-                        meta.genres.firstOrNull()
+                        meta.imdbRating?.toDoubleOrNull()?.takeIf { it > 0.0 }
+                            ?.let { "★ ${String.format(java.util.Locale.US, "%.1f", it)}" },
+                        meta.genres.firstOrNull(),
+                        meta.language?.trim()?.takeIf { it.isNotBlank() }?.uppercase()
                     ).joinToString("  •  ")
                     if (info.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))

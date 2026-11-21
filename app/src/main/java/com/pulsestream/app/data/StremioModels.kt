@@ -56,7 +56,9 @@ data class MetaPreview(
     val description: String? = null,
     val releaseInfo: String? = null,
     val imdbRating: String? = null,
-    val genres: List<String> = emptyList()
+    val genres: List<String> = emptyList(),
+    /** Original language code (catalog `originalLanguage`, e.g. "en") — shown on the hero meta line. */
+    val language: String? = null
 )
 
 data class Video(
