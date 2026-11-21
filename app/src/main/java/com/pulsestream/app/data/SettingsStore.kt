@@ -952,6 +952,20 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_SEASON_VIEW_MODE, "posters") ?: "posters"
         set(value) = prefs.edit().putString(KEY_SEASON_VIEW_MODE, value).apply()
 
+    // Step 47: Library Saved view (Nuvio LibraryDisplaySettings).
+    var librarySort: String
+        get() = prefs.getString(KEY_LIBRARY_SORT, "default") ?: "default"
+        set(value) = prefs.edit().putString(KEY_LIBRARY_SORT, value).apply()
+    var libraryLayout: String
+        get() = prefs.getString(KEY_LIBRARY_LAYOUT, "rows") ?: "rows"
+        set(value) = prefs.edit().putString(KEY_LIBRARY_LAYOUT, value).apply()
+    var libraryWatchedFilter: String
+        get() = prefs.getString(KEY_LIBRARY_WATCHED_FILTER, "all") ?: "all"
+        set(value) = prefs.edit().putString(KEY_LIBRARY_WATCHED_FILTER, value).apply()
+    var librarySection: String
+        get() = prefs.getString(KEY_LIBRARY_SECTION, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LIBRARY_SECTION, value).apply()
+
     /** Pinned stream sources (Nuvio PinnedStreamSourcesRepository): keys "addonId|sourceName". Pinned sources list first everywhere. */
     var pinnedStreamSources: Set<String>
         get() = prefs.getStringSet(KEY_PINNED_STREAM_SOURCES, emptySet())?.toSet() ?: emptySet()
@@ -1748,6 +1762,12 @@ class SettingsStore(context: Context) {
         private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
         private const val KEY_AUTO_SKIP_SEGMENT_TYPES = "auto_skip_segment_types"
         private const val KEY_SEASON_VIEW_MODE = "season_view_mode"
+        // Step 47: Library Saved view — sort / layout / watched filter /
+        // selected section ("" = all sections).
+        private const val KEY_LIBRARY_SORT = "library_sort"
+        private const val KEY_LIBRARY_LAYOUT = "library_layout"
+        private const val KEY_LIBRARY_WATCHED_FILTER = "library_watched_filter"
+        private const val KEY_LIBRARY_SECTION = "library_section"
         private const val KEY_PINNED_STREAM_SOURCES = "pinned_stream_sources"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         

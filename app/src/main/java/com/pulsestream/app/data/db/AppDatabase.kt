@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CustomListItem::class,
         WatchedRecord::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -231,5 +231,13 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE downloads ADD COLUMN subtitlesJson TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+/** v15 → v16 (Step 47): release year on watchlist + custom list items (Library Saved sort). Existing rows stay unknown (0). */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE watchlist ADD COLUMN year INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE custom_list_items ADD COLUMN year INTEGER NOT NULL DEFAULT 0")
     }
 }

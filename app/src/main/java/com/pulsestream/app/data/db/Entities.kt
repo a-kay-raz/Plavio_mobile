@@ -162,7 +162,9 @@ data class WatchlistItem(
     val metaId: String,
     val name: String,
     val poster: String?,
-    val addedAt: Long
+    val addedAt: Long,
+    // Step 47: release year (0 = unknown) for the Library Saved sort.
+    val year: Int = 0
 )
 
 @Dao
@@ -215,13 +217,19 @@ data class CustomListItem(
     val metaId: String,
     val name: String,
     val poster: String?,
-    val addedAt: Long
+    val addedAt: Long,
+    // Step 47: release year (0 = unknown) for the Library Saved sort.
+    val year: Int = 0
 )
 
 @Dao
 interface CustomListDao {
     @Query("SELECT * FROM custom_lists ORDER BY createdAt DESC")
     fun observeLists(): Flow<List<CustomList>>
+
+    // Step 47: all list items in one flow (the Saved view groups them).
+    @Query("SELECT * FROM custom_list_items ORDER BY addedAt DESC")
+    fun observeAllItems(): Flow<List<CustomListItem>>
 
     @Query("SELECT * FROM custom_lists ORDER BY createdAt DESC")
     suspend fun getLists(): List<CustomList>

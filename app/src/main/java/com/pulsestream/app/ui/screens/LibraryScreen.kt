@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,6 +115,9 @@ fun LibraryScreen(
 
     val myWatchlist by repository.watchlist.collectAsState(initial = emptyList())
     val myLists by listsRepository.lists.collectAsState(initial = emptyList())
+    // Step 47: all custom-list items + watched marks feed the Saved tab.
+    val allListItems by listsRepository.allItems.collectAsState(initial = emptyList())
+    val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
     val syncedIds = remember(settings.librarySyncedKeys) {
         settings.librarySyncedKeys.map { it.substringAfter('|') }.toSet()
     }
@@ -142,7 +147,9 @@ fun LibraryScreen(
                         MetaPreview(
                             id = imdb, type = type,
                             name = meta?.name ?: title,
-                            poster = meta?.poster
+                            poster = meta?.poster,
+                            // Step 47: release year for the Saved sort.
+                            releaseInfo = meta?.releaseInfo
                         )
                     }
                 }.awaitAll()
@@ -222,29 +229,63 @@ fun LibraryScreen(
         loading = false
     }
 
+    // Step 47: Saved tab (unified grid) vs Sections tab (the existing
+    // Up Next / watchlists / lists / downloads view). Sections stays the
+    // default so the current Library view does not move.
+    var libraryTab by rememberSaveable { mutableStateOf("sections") }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp)) {
+            Text(
+                "Library",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ServiceChip("Trakt", traktLinked, settings.traktUsername, Modifier.weight(1f), onConnect)
+                ServiceChip("Simkl", simklLinked, settings.simklUsername, Modifier.weight(1f), onConnect)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = libraryTab == "saved",
+                    onClick = { libraryTab = "saved" },
+                    label = { Text("Saved") }
+                )
+                FilterChip(
+                    selected = libraryTab == "sections",
+                    onClick = { libraryTab = "sections" },
+                    label = { Text("Sections") }
+                )
+            }
+        }
+
+        if (libraryTab == "saved") {
+            Box(Modifier.weight(1f)) {
+                LibrarySavedScreen(
+                    myWatchlist = myWatchlist,
+                    myLists = myLists,
+                    allListItems = allListItems,
+                    traktWatchlist = traktWatchlist,
+                    simklWatchlist = simklWatchlist,
+                    watchedKeys = watchedKeys,
+                    settings = settings,
+                    onOpenDetail = onOpenDetail
+                )
+            }
+            return@Column
+        }
+
+        Box(Modifier.weight(1f)) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 110.dp)
     ) {
-        item(key = "lib_header") {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp)) {
-                Text(
-                    "Library",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ServiceChip("Trakt", traktLinked, settings.traktUsername, Modifier.weight(1f), onConnect)
-                    ServiceChip("Simkl", simklLinked, settings.simklUsername, Modifier.weight(1f), onConnect)
-                }
-            }
-        }
-
         if (!traktLinked && !simklLinked) {
             item(key = "connect_card") {
                 ConnectCard(onConnect)
@@ -419,6 +460,8 @@ fun LibraryScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 28.dp)
                 )
             }
+        }
+    }
         }
     }
 }

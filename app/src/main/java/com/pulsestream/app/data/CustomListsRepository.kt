@@ -25,6 +25,9 @@ class CustomListsRepository(private val db: AppDatabase) {
     /** All lists, newest first. */
     val lists: Flow<List<CustomList>> = dao.observeLists()
 
+    // Step 47: all list items in one flow (the Saved view groups them).
+    val allItems: Flow<List<CustomListItem>> = dao.observeAllItems()
+
     fun observeItems(listId: String): Flow<List<CustomListItem>> =
         dao.observeItems(listId)
 
@@ -70,7 +73,9 @@ class CustomListsRepository(private val db: AppDatabase) {
         type: String,
         metaId: String,
         name: String,
-        poster: String?
+        poster: String?,
+        // Step 47: release year (0 = unknown) for the Library Saved sort.
+        year: Int = 0
     ) = withContext(Dispatchers.IO) {
         dao.addItem(
             CustomListItem(
@@ -81,7 +86,8 @@ class CustomListsRepository(private val db: AppDatabase) {
                 metaId = metaId,
                 name = name,
                 poster = poster,
-                addedAt = System.currentTimeMillis()
+                addedAt = System.currentTimeMillis(),
+                year = year
             )
         )
     }

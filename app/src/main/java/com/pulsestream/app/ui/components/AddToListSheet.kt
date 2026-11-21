@@ -54,6 +54,8 @@ fun AddToListSheet(
     metaId: String,
     name: String,
     poster: String?,
+    // Step 47: release year (0 = unknown) for the Library Saved sort.
+    year: Int = 0,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -106,7 +108,7 @@ fun AddToListSheet(
                             scope.launch {
                                 if (isNowIn) {
                                     listsRepository.addToList(
-                                        list.id, addonId, type, metaId, name, poster
+                                        list.id, addonId, type, metaId, name, poster, year
                                     )
                                 } else {
                                     listsRepository.removeFromList(list.id, itemKey)
@@ -133,7 +135,7 @@ fun AddToListSheet(
                             scope.launch {
                                 val id = listsRepository.createList(newName)
                                 listsRepository.addToList(
-                                    id, addonId, type, metaId, name, poster
+                                    id, addonId, type, metaId, name, poster, year
                                 )
                                 newName = ""
                                 creating = false
