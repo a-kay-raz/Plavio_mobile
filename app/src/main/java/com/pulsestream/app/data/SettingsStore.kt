@@ -1176,93 +1176,6 @@ class SettingsStore(
             else prefs.edit().putString(KEY_TRAKT_USERNAME, value).apply()
         }
 
-    // ---- AniList (Step 52) ----
-
-    /** AniList OAuth access token (null = not linked). Encrypted secret. */
-    var anilistAccessToken: String?
-        get() = getSecret(KEY_ANILIST_TOKEN)?.takeIf { it.isNotBlank() }
-        set(value) = putSecret(KEY_ANILIST_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
-
-    /** AniList OAuth client id the user created (needed for the authorize link). */
-    var anilistClientId: String?
-        get() = prefs.getString(KEY_ANILIST_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
-        set(value) {
-            if (value.isNullOrBlank()) prefs.edit().remove(KEY_ANILIST_CLIENT_ID).apply()
-            else prefs.edit().putString(KEY_ANILIST_CLIENT_ID, value.trim()).apply()
-        }
-
-    /** AniList display name for the linked account. */
-    var anilistViewerName: String?
-        get() = prefs.getString(KEY_ANILIST_VIEWER_NAME, null)
-        set(value) {
-            if (value == null) prefs.edit().remove(KEY_ANILIST_VIEWER_NAME).apply()
-            else prefs.edit().putString(KEY_ANILIST_VIEWER_NAME, value).apply()
-        }
-
-    // ---- WeTrakr (Step 53) ----
-
-    /** WeTrakr OAuth client id the user created (needed for device-code auth). */
-    var wetrakrClientId: String?
-        get() = prefs.getString(KEY_WETRAKR_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
-        set(value) {
-            if (value.isNullOrBlank()) prefs.edit().remove(KEY_WETRAKR_CLIENT_ID).apply()
-            else prefs.edit().putString(KEY_WETRAKR_CLIENT_ID, value.trim()).apply()
-        }
-
-    /** WeTrakr OAuth access token (null = not linked). Encrypted secret. */
-    var wetrakrAccessToken: String?
-        get() = getSecret(KEY_WETRAKR_ACCESS_TOKEN)?.takeIf { it.isNotBlank() }
-        set(value) = putSecret(KEY_WETRAKR_ACCESS_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
-
-    /** WeTrakr OAuth refresh token. Encrypted secret. */
-    var wetrakrRefreshToken: String?
-        get() = getSecret(KEY_WETRAKR_REFRESH_TOKEN)?.takeIf { it.isNotBlank() }
-        set(value) = putSecret(KEY_WETRAKR_REFRESH_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
-
-    /** Epoch ms when the WeTrakr access token expires (0 = unknown). */
-    var wetrakrTokenExpiresAtMs: Long
-        get() = prefs.getLong(KEY_WETRAKR_TOKEN_EXPIRES_AT, 0L)
-        set(value) = prefs.edit().putLong(KEY_WETRAKR_TOKEN_EXPIRES_AT, value).apply()
-
-    /** WeTrakr username for the linked account. */
-    var wetrakrUsername: String?
-        get() = prefs.getString(KEY_WETRAKR_USERNAME, null)
-        set(value) {
-            if (value == null) prefs.edit().remove(KEY_WETRAKR_USERNAME).apply()
-            else prefs.edit().putString(KEY_WETRAKR_USERNAME, value).apply()
-        }
-
-    // ---- PublicMetaDB (Step 53) ----
-
-    /** PublicMetaDB API key (null = not linked). Encrypted secret. */
-    var publicMetaDbApiKey: String?
-        get() = getSecret(KEY_PUBLICMETADB_API_KEY)?.takeIf { it.isNotBlank() }
-        set(value) = putSecret(KEY_PUBLICMETADB_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
-
-    // ---- MDBList (Step 54) ----
-
-    /** MDBList OAuth client id the user created (needed for device-code auth). */
-    var mdblistClientId: String?
-        get() = prefs.getString(KEY_MDBLIST_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
-        set(value) {
-            if (value.isNullOrBlank()) prefs.edit().remove(KEY_MDBLIST_CLIENT_ID).apply()
-            else prefs.edit().putString(KEY_MDBLIST_CLIENT_ID, value.trim()).apply()
-        }
-
-    /** MDBList OAuth access token (null = not linked). Encrypted secret. */
-    var mdblistAccessToken: String?
-        get() = getSecret(KEY_MDBLIST_ACCESS_TOKEN)?.takeIf { it.isNotBlank() }
-        set(value) = putSecret(KEY_MDBLIST_ACCESS_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
-
-    /** MDBList OAuth refresh token. Encrypted secret. */
-    var mdblistRefreshToken: String?
-        get() = getSecret(KEY_MDBLIST_REFRESH_TOKEN)?.takeIf { it.isNotBlank() }
-        set(value) = putSecret(KEY_MDBLIST_REFRESH_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
-
-    /** Epoch ms when the MDBList access token expires (0 = unknown). */
-    var mdblistTokenExpiresAtMs: Long
-        get() = prefs.getLong(KEY_MDBLIST_TOKEN_EXPIRES_AT, 0L)
-        set(value) = prefs.edit().putLong(KEY_MDBLIST_TOKEN_EXPIRES_AT, value).apply()
 
     // ---- Media servers (Step 55) ----
 
@@ -1352,7 +1265,7 @@ class SettingsStore(
     /**
      * Which services feed the Library (watchlists + lists): "all" (every
      * linked service, the pre-Step-52 behaviour), "local", "trakt",
-     * "simkl" or "anilist".
+     * "simkl".
      */
     var trackingLibrarySource: String
         get() = prefs.getString(KEY_TRACKING_LIBRARY_SOURCE, "all") ?: "all"
@@ -1362,11 +1275,6 @@ class SettingsStore(
     var trackingProgressSource: String
         get() = prefs.getString(KEY_TRACKING_PROGRESS_SOURCE, "all") ?: "all"
         set(value) = prefs.edit().putString(KEY_TRACKING_PROGRESS_SOURCE, value).apply()
-
-    /** Which service provides the community rating in the ratings sheet: "trakt" or "anilist". */
-    var trackingRatingsSource: String
-        get() = prefs.getString(KEY_TRACKING_RATINGS_SOURCE, "trakt") ?: "trakt"
-        set(value) = prefs.edit().putString(KEY_TRACKING_RATINGS_SOURCE, value).apply()
 
     // ---- Trakt/Simkl library sync ----
 
@@ -1917,12 +1825,6 @@ class SettingsStore(
         traktAccessToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_access_token"] = it }
         traktRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_refresh_token"] = it }
         simklToken?.takeIf { it.isNotBlank() }?.let { keys["simkl_token"] = it }
-        anilistAccessToken?.takeIf { it.isNotBlank() }?.let { keys["anilist_access_token"] = it }
-        wetrakrAccessToken?.takeIf { it.isNotBlank() }?.let { keys["wetrakr_access_token"] = it }
-        wetrakrRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["wetrakr_refresh_token"] = it }
-        publicMetaDbApiKey?.takeIf { it.isNotBlank() }?.let { keys["publicmetadb_api_key"] = it }
-        mdblistAccessToken?.takeIf { it.isNotBlank() }?.let { keys["mdblist_access_token"] = it }
-        mdblistRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["mdblist_refresh_token"] = it }
         return keys
     }
 
@@ -1939,12 +1841,6 @@ class SettingsStore(
         keys["trakt_access_token"]?.takeIf { it.isNotBlank() && traktAccessToken.isNullOrBlank() }?.let { traktAccessToken = it }
         keys["trakt_refresh_token"]?.takeIf { it.isNotBlank() && traktRefreshToken.isNullOrBlank() }?.let { traktRefreshToken = it }
         keys["simkl_token"]?.takeIf { it.isNotBlank() && simklToken.isNullOrBlank() }?.let { simklToken = it }
-        keys["anilist_access_token"]?.takeIf { it.isNotBlank() && anilistAccessToken.isNullOrBlank() }?.let { anilistAccessToken = it }
-        keys["wetrakr_access_token"]?.takeIf { it.isNotBlank() && wetrakrAccessToken.isNullOrBlank() }?.let { wetrakrAccessToken = it }
-        keys["wetrakr_refresh_token"]?.takeIf { it.isNotBlank() && wetrakrRefreshToken.isNullOrBlank() }?.let { wetrakrRefreshToken = it }
-        keys["publicmetadb_api_key"]?.takeIf { it.isNotBlank() && publicMetaDbApiKey.isNullOrBlank() }?.let { publicMetaDbApiKey = it }
-        keys["mdblist_access_token"]?.takeIf { it.isNotBlank() && mdblistAccessToken.isNullOrBlank() }?.let { mdblistAccessToken = it }
-        keys["mdblist_refresh_token"]?.takeIf { it.isNotBlank() && mdblistRefreshToken.isNullOrBlank() }?.let { mdblistRefreshToken = it }
     }
 
     /**
@@ -1994,10 +1890,6 @@ class SettingsStore(
         private val SECRET_KEYS = setOf(
             "simkl_token", "torbox_api_key", "realdebrid_api_key", "premiumize_api_key",
             "trakt_access_token", "trakt_refresh_token",
-            "anilist_access_token",
-            "wetrakr_access_token", "wetrakr_refresh_token",
-            "publicmetadb_api_key",
-            "mdblist_access_token", "mdblist_refresh_token",
             "media_servers",
             "tmdb_api_key", "omdb_api_key",
             "xtream_password", "stalker_password"
@@ -2144,19 +2036,6 @@ class SettingsStore(
         private const val KEY_TRAKT_REFRESH = "trakt_refresh_token"
         private const val KEY_TRAKT_EXPIRY = "trakt_token_expiry"
         private const val KEY_TRAKT_USERNAME = "trakt_username"
-        private const val KEY_ANILIST_TOKEN = "anilist_access_token"
-        private const val KEY_ANILIST_CLIENT_ID = "anilist_client_id"
-        private const val KEY_ANILIST_VIEWER_NAME = "anilist_viewer_name"
-        private const val KEY_WETRAKR_CLIENT_ID = "wetrakr_client_id"
-        private const val KEY_WETRAKR_ACCESS_TOKEN = "wetrakr_access_token"
-        private const val KEY_WETRAKR_REFRESH_TOKEN = "wetrakr_refresh_token"
-        private const val KEY_WETRAKR_TOKEN_EXPIRES_AT = "wetrakr_token_expires_at"
-        private const val KEY_WETRAKR_USERNAME = "wetrakr_username"
-        private const val KEY_PUBLICMETADB_API_KEY = "publicmetadb_api_key"
-        private const val KEY_MDBLIST_CLIENT_ID = "mdblist_client_id"
-        private const val KEY_MDBLIST_ACCESS_TOKEN = "mdblist_access_token"
-        private const val KEY_MDBLIST_REFRESH_TOKEN = "mdblist_refresh_token"
-        private const val KEY_MDBLIST_TOKEN_EXPIRES_AT = "mdblist_token_expires_at"
         private const val KEY_MEDIA_SERVERS = "media_servers"
         private const val KEY_DETAIL_SECTIONS = "detail_sections"
         private const val KEY_FAVORITE_PEOPLE = "favorite_people"
@@ -2178,7 +2057,6 @@ class SettingsStore(
         private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
-        private const val KEY_TRACKING_RATINGS_SOURCE = "tracking_ratings_source"
         private const val KEY_TORBOX_API_KEY = "torbox_api_key"
         private const val KEY_REALDEBRID_API_KEY = "realdebrid_api_key"
         private const val KEY_PREMIUMIZE_API_KEY = "premiumize_api_key"

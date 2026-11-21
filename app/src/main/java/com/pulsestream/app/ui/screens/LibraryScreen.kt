@@ -54,15 +54,10 @@ import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.db.DownloadItem
 import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.data.db.CustomList
-import com.pulsestream.app.data.TmdbClient
-import com.pulsestream.app.data.anilist.AniListApi
-import com.pulsestream.app.data.mdblist.MdbListApi
-import com.pulsestream.app.data.publicmetadb.PublicMetaDbApi
 import com.pulsestream.app.data.simkl.SimklApi
 import com.pulsestream.app.data.tracking.libraryProviders
 import com.pulsestream.app.data.tracking.progressProviders
 import com.pulsestream.app.data.trakt.TraktApi
-import com.pulsestream.app.data.wetrakr.WeTrakrApi
 import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.OrbitDots
@@ -116,35 +111,13 @@ fun LibraryScreen(
     val palette = LocalPalette.current
     val traktLinked = !settings.traktAccessToken.isNullOrBlank()
     val simklLinked = !settings.simklToken.isNullOrBlank()
-    // Step 52: AniList links in like Trakt/Simkl; the tracking-source
-    // pickers gate which of the three feed the Library / Up Next.
-    val anilistLinked = !settings.anilistAccessToken.isNullOrBlank()
-    // Step 53: WeTrakr + PublicMetaDB join the same picker system.
-    val wetrakrLinked = !settings.wetrakrAccessToken.isNullOrBlank()
-    val publicMetaDbLinked = !settings.publicMetaDbApiKey.isNullOrBlank()
-    // Step 54: MDBList joins the same picker system.
-    val mdblistLinked = !settings.mdblistAccessToken.isNullOrBlank()
     val librarySource = settings.trackingLibrarySource
     val progressSource = settings.trackingProgressSource
 
-    var loading by remember { mutableStateOf(traktLinked || simklLinked || anilistLinked || wetrakrLinked || publicMetaDbLinked || mdblistLinked) }
+    var loading by remember { mutableStateOf(traktLinked || simklLinked) }
     var upNext by remember { mutableStateOf<List<UpNextCard>>(emptyList()) }
     var traktWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var simklWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
-    var anilistWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
-    var wetrakrWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
-    /** MDBList lists (Step 54): (list name, first 20 posters). */
-    var mdblistLists by remember {
-        mutableStateOf<List<Pair<String, List<MetaPreview>>>>(emptyList())
-    }
-    /** MDBList watchlist for the Saved tab. */
-    var mdblistWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
-    /** PublicMetaDB lists (Step 53): (list name, first 20 posters). */
-    var pmdbLists by remember {
-        mutableStateOf<List<Pair<String, List<MetaPreview>>>>(emptyList())
-    }
-    /** PublicMetaDB merged watchlist for the Saved tab. */
-    var pmdbWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     /** Personal Trakt lists (Step 33): (list, first 20 posters). */
     var traktLists by remember {
         mutableStateOf<List<Pair<TraktApi.TraktList, List<MetaPreview>>>>(emptyList())
@@ -170,8 +143,8 @@ fun LibraryScreen(
         settings.librarySyncedKeys.map { it.substringAfter('|') }.toSet()
     }
 
-    LaunchedEffect(traktLinked, simklLinked, anilistLinked, wetrakrLinked, publicMetaDbLinked, mdblistLinked, librarySource, progressSource) {
-        if (!traktLinked && !simklLinked && !anilistLinked && !wetrakrLinked && !publicMetaDbLinked && !mdblistLinked) {
+    LaunchedEffect(traktLinked, simklLinked, librarySource, progressSource) {
+        if (!traktLinked && !simklLinked) {
             loading = false
             return@LaunchedEffect
         }
@@ -182,12 +155,6 @@ fun LibraryScreen(
         if (libraryProviders.isEmpty() && progressProviders.isEmpty()) {
             traktWatchlist = emptyList()
             simklWatchlist = emptyList()
-            anilistWatchlist = emptyList()
-            wetrakrWatchlist = emptyList()
-            pmdbLists = emptyList()
-            pmdbWatchlist = emptyList()
-            mdblistLists = emptyList()
-            mdblistWatchlist = emptyList()
             upNext = emptyList()
             loading = false
             return@LaunchedEffect
@@ -197,12 +164,6 @@ fun LibraryScreen(
         // leave its previous titles on screen.
         traktWatchlist = emptyList()
         simklWatchlist = emptyList()
-        anilistWatchlist = emptyList()
-        wetrakrWatchlist = emptyList()
-        pmdbLists = emptyList()
-        pmdbWatchlist = emptyList()
-        mdblistLists = emptyList()
-        mdblistWatchlist = emptyList()
         traktLists = emptyList()
         upNext = emptyList()
         val traktApi = TraktApi()
@@ -211,8 +172,6 @@ fun LibraryScreen(
             runCatching { TraktManager(settings).validAccessToken() }.getOrNull()
         } else null
         val simklToken = settings.simklToken?.takeIf { it.isNotBlank() }
-        val anilistToken = settings.anilistAccessToken?.takeIf { it.isNotBlank() }
-        val pmdbApiKey = settings.publicMetaDbApiKey?.takeIf { it.isNotBlank() }
 
         // Posters/stills by IMDb id, fetched a few at a time.
         suspend fun metaFor(type: String, imdb: String) =
@@ -309,212 +268,6 @@ fun LibraryScreen(
                 )
                 }
         }
-        // Step 52: AniList — list entries map to IMDb ids via ARM, then to
-        // posters like the other services. Only CURRENT entries feed Up Next.
-        if (anilistToken != null && ("anilist" in libraryProviders || "anilist" in progressProviders)) {
-            val entries = runCatching { AniListApi.getWatchlist(anilistToken) }.getOrNull().orEmpty()
-            // Resolve IMDb ids in parallel (ARM), keeping the entry order.
-            val withImdb = coroutineScope {
-                entries.map { entry ->
-                    async {
-                        val imdb = runCatching { AniListApi.imdbForAnilist(entry.mediaId) }.getOrNull()
-                        entry to imdb
-                    }
-                }.awaitAll()
-            }.filter { (_, imdb) -> imdb != null }
-            if ("anilist" in libraryProviders) {
-                anilistWatchlist = previews(
-                    withImdb.take(20).map { (entry, imdb) -> "series" to (imdb!! to entry.title) }
-                )
-            }
-            if ("anilist" in progressProviders) {
-                val knownIds = cards.map { it.imdbId }.toSet()
-                val current = withImdb.filter { (entry, imdb) ->
-                    entry.status == "CURRENT" && imdb != null && imdb !in knownIds
-                }
-                for ((entry, imdb) in current) {
-                    val meta = metaFor("series", imdb!!)
-                    val nextEpisode = entry.progress + 1
-                    val counts = if (entry.episodes != null) {
-                        "Watched ${entry.progress} of ${entry.episodes} episodes · on AniList"
-                    } else "Watched ${entry.progress} episodes · on AniList"
-                    cards += UpNextCard(
-                        imdbId = imdb,
-                        showTitle = meta?.name ?: entry.title,
-                        service = "AniList",
-                        nextLabel = "Episode $nextEpisode",
-                        metaLine = counts,
-                        progress = if (entry.episodes != null && entry.episodes > 0) {
-                            entry.progress.toFloat() / entry.episodes.toFloat()
-                        } else null,
-                        poster = meta?.poster ?: entry.poster,
-                        still = null,
-                        lastWatchedMs = entry.updatedAtMs
-                    )
-                }
-            }
-        }
-        // Step 53: WeTrakr — planning watchlist + watched episodes
-        // (latest watched episode per show -> next episode card).
-        if ("wetrakr" in libraryProviders || "wetrakr" in progressProviders) {
-            val entries = runCatching { WeTrakrApi.getWatchlist(settings) }.getOrNull().orEmpty()
-            if ("wetrakr" in libraryProviders) {
-                wetrakrWatchlist = previews(
-                    entries.take(20).map { entry -> entry.type to (entry.contentId to (entry.title ?: "")) }
-                )
-            }
-            if ("wetrakr" in progressProviders) {
-                val episodes = runCatching { WeTrakrApi.getWatchedEpisodes(settings) }.getOrNull().orEmpty()
-                val knownIds = cards.map { it.imdbId }.toSet()
-                val latestByShow = episodes.groupBy { it.showContentId }
-                    .mapValues { (_, eps) -> eps.maxBy { it.watchedAtMs } }
-                    .filter { (id, _) -> id !in knownIds }
-                for ((showId, ep) in latestByShow) {
-                    val meta = metaFor("series", showId)
-                    val nextNumber = ep.number + 1
-                    cards += UpNextCard(
-                        imdbId = showId,
-                        showTitle = meta?.name ?: ep.showTitle ?: "Series",
-                        service = "WeTrakr",
-                        nextLabel = "S${ep.season} E$nextNumber",
-                        metaLine = "Watched S${ep.season} E${ep.number} · on WeTrakr",
-                        progress = null,
-                        poster = meta?.poster,
-                        still = null,
-                        lastWatchedMs = ep.watchedAtMs
-                    )
-                }
-            }
-        }
-        // Step 53: PublicMetaDB — lists as FeedRows, watched episodes as
-        // Up Next cards, resume points as resume cards. Entries are
-        // TMDB-keyed; resolve to IMDb ids via the TMDB key when present,
-        // else pass "tmdb:<type>:<id>" through (Cinemeta resolves those).
-        if (pmdbApiKey != null && ("publicmetadb" in libraryProviders || "publicmetadb" in progressProviders)) {
-            suspend fun resolvePmdbId(mediaType: String, tmdbId: Long): String {
-                val imdb = runCatching {
-                    TmdbClient.getImdbId(settings, mediaType, tmdbId)
-                }.getOrNull()
-                val segment = if (mediaType == "tv") "series" else "movie"
-                return imdb ?: "tmdb:$segment:$tmdbId"
-            }
-            if ("publicmetadb" in libraryProviders) {
-                val lists = runCatching { PublicMetaDbApi.getLists(pmdbApiKey) }.getOrNull().orEmpty()
-                val resolvedLists = coroutineScope {
-                    lists.take(5).map { list ->
-                        async {
-                            val items = runCatching {
-                                PublicMetaDbApi.getListItems(pmdbApiKey, list.id)
-                            }.getOrNull().orEmpty()
-                            val resolved = coroutineScope {
-                                items.take(20).map { item ->
-                                    async {
-                                        val type = if (item.mediaType == "tv") "series" else "movie"
-                                        val id = resolvePmdbId(item.mediaType, item.tmdbId)
-                                        type to (id to (item.title ?: ""))
-                                    }
-                                }.awaitAll()
-                            }
-                            list.name to previews(resolved)
-                        }
-                    }.awaitAll()
-                }
-                pmdbLists = resolvedLists.filter { (_, items) -> items.isNotEmpty() }
-                pmdbWatchlist = resolvedLists.flatMap { (_, items) -> items }
-                    .distinctBy { it.id }.take(100)
-            }
-            if ("publicmetadb" in progressProviders) {
-                val knownIds = cards.map { it.imdbId }.toSet()
-                val watched = runCatching { PublicMetaDbApi.getWatched(pmdbApiKey) }.getOrNull().orEmpty()
-                val latestByShow = watched.filter { it.mediaType == "tv" && it.season != null && it.episode != null }
-                    .groupBy { it.tmdbId }
-                    .mapValues { (_, eps) -> eps.maxBy { (it.season ?: 0) * 1000 + (it.episode ?: 0) } }
-                for ((tmdbId, ep) in latestByShow) {
-                    val id = resolvePmdbId("tv", tmdbId)
-                    if (id in knownIds) continue
-                    val meta = metaFor("series", id)
-                    val nextNumber = (ep.episode ?: 0) + 1
-                    cards += UpNextCard(
-                        imdbId = id,
-                        showTitle = meta?.name ?: "Series",
-                        service = "PublicMetaDB",
-                        nextLabel = "S${ep.season} E$nextNumber",
-                        metaLine = "Watched S${ep.season} E${ep.episode} · on PublicMetaDB",
-                        progress = null,
-                        poster = meta?.poster,
-                        still = null,
-                        lastWatchedMs = 0L
-                    )
-                }
-                val resume = runCatching { PublicMetaDbApi.getResume(pmdbApiKey) }.getOrNull().orEmpty()
-                val knownAfterWatched = cards.map { it.imdbId }.toSet()
-                for (point in resume) {
-                    val id = resolvePmdbId(point.mediaType, point.tmdbId)
-                    if (id in knownAfterWatched) continue
-                    val type = if (point.mediaType == "tv") "series" else "movie"
-                    val meta = metaFor(type, id)
-                    val isEpisode = point.mediaType == "tv"
-                    cards += UpNextCard(
-                        imdbId = id,
-                        showTitle = meta?.name ?: if (isEpisode) "Series" else "Movie",
-                        service = "PublicMetaDB",
-                        nextLabel = if (isEpisode) "S${point.season} E${point.episode}" else "Resume",
-                        metaLine = if (isEpisode) {
-                            "Resume S${point.season} E${point.episode} · on PublicMetaDB"
-                        } else "Resume watching · on PublicMetaDB",
-                        progress = point.progress,
-                        poster = meta?.poster,
-                        still = null,
-                        lastWatchedMs = point.updatedAtMs
-                    )
-                }
-            }
-        }
-        // Step 54: MDBList — watchlist + personal lists + watched
-        // episodes (latest watched episode per show -> next episode card).
-        if ("mdblist" in libraryProviders || "mdblist" in progressProviders) {
-            if ("mdblist" in libraryProviders) {
-                mdblistWatchlist = previews(
-                    runCatching { MdbListApi.getWatchlist(settings) }.getOrNull().orEmpty()
-                        .take(20).map { entry -> entry.type to (entry.contentId to (entry.title ?: "")) }
-                )
-                val lists = runCatching { MdbListApi.getLists(settings) }.getOrNull().orEmpty()
-                mdblistLists = coroutineScope {
-                    lists.take(5).map { list ->
-                        async {
-                            val items = runCatching {
-                                MdbListApi.getListItems(settings, list.id)
-                            }.getOrNull().orEmpty()
-                            list.name to previews(
-                                items.take(20).map { it.type to (it.contentId to (it.title ?: "")) }
-                            )
-                        }
-                    }.awaitAll()
-                }.filter { (_, items) -> items.isNotEmpty() }
-            }
-            if ("mdblist" in progressProviders) {
-                val episodes = runCatching { MdbListApi.getWatchedEpisodes(settings) }.getOrNull().orEmpty()
-                val knownIds = cards.map { it.imdbId }.toSet()
-                val latestByShow = episodes.groupBy { it.showContentId }
-                    .mapValues { (_, eps) -> eps.maxBy { it.watchedAtMs } }
-                    .filter { (id, _) -> id !in knownIds }
-                for ((showId, ep) in latestByShow) {
-                    val meta = metaFor("series", showId)
-                    val nextNumber = ep.number + 1
-                    cards += UpNextCard(
-                        imdbId = showId,
-                        showTitle = meta?.name ?: ep.showTitle ?: "Series",
-                        service = "MDBList",
-                        nextLabel = "S${ep.season} E$nextNumber",
-                        metaLine = "Watched S${ep.season} E${ep.number} · on MDBList",
-                        progress = null,
-                        poster = meta?.poster,
-                        still = null,
-                        lastWatchedMs = ep.watchedAtMs
-                    )
-                }
-            }
-        }
         upNext = cards.sortedByDescending { it.lastWatchedMs }.take(10)
         loading = false
     }
@@ -581,10 +334,6 @@ fun LibraryScreen(
                     allListItems = allListItems,
                     traktWatchlist = traktWatchlist,
                     simklWatchlist = simklWatchlist,
-                    anilistWatchlist = anilistWatchlist,
-                    wetrakrWatchlist = wetrakrWatchlist,
-                    pmdbWatchlist = pmdbWatchlist,
-                    mdblistWatchlist = mdblistWatchlist,
                     watchedKeys = watchedKeys,
                     settings = settings,
                     onOpenDetail = onOpenDetail,
@@ -621,10 +370,6 @@ fun LibraryScreen(
                     allListItems = allListItems,
                     traktWatchlist = traktWatchlist,
                     simklWatchlist = simklWatchlist,
-                    anilistWatchlist = anilistWatchlist,
-                    wetrakrWatchlist = wetrakrWatchlist,
-                    pmdbWatchlist = pmdbWatchlist,
-                    mdblistWatchlist = mdblistWatchlist,
                     onOpenDetail = onOpenDetail
                 )
             }
@@ -642,7 +387,7 @@ fun LibraryScreen(
             }
         }
 
-        if (loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() && anilistWatchlist.isEmpty() && wetrakrWatchlist.isEmpty() && pmdbWatchlist.isEmpty() && mdblistWatchlist.isEmpty()) {
+        if (loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty()) {
             item(key = "lib_loading") {
                 Box(
                     Modifier.fillMaxWidth().padding(vertical = 36.dp),
@@ -677,35 +422,6 @@ fun LibraryScreen(
         if (simklWatchlist.isNotEmpty()) {
             item(key = "simkl_wl") {
                 FeedRow("Watchlist", "SIMKL", Color(0xFFFFB35C), simklWatchlist, onOpenDetail)
-            }
-        }
-        if (anilistWatchlist.isNotEmpty()) {
-            item(key = "anilist_wl") {
-                FeedRow("Watchlist", "ANILIST", Color(0xFF02A9FF), anilistWatchlist, onOpenDetail)
-            }
-        }
-        if (wetrakrWatchlist.isNotEmpty()) {
-            item(key = "wetrakr_wl") {
-                FeedRow("Watchlist", "WETRAKR", Color(0xFF7C5CFF), wetrakrWatchlist, onOpenDetail)
-            }
-        }
-        pmdbLists.forEachIndexed { index, (name, items) ->
-            if (items.isNotEmpty()) {
-                item(key = "pmdb_$index") {
-                    FeedRow(name, "PUBLICMETADB", Color(0xFF00BFA5), items, onOpenDetail)
-                }
-            }
-        }
-        if (mdblistWatchlist.isNotEmpty()) {
-            item(key = "mdblist_wl") {
-                FeedRow("Watchlist", "MDBLIST", Color(0xFF2196F3), mdblistWatchlist, onOpenDetail)
-            }
-        }
-        mdblistLists.forEachIndexed { index, (name, items) ->
-            if (items.isNotEmpty()) {
-                item(key = "mdblist_$index") {
-                    FeedRow(name, "MDBLIST", Color(0xFF2196F3), items, onOpenDetail)
-                }
             }
         }
 
@@ -824,14 +540,12 @@ fun LibraryScreen(
         }
 
         if (!loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() &&
-            anilistWatchlist.isEmpty() && wetrakrWatchlist.isEmpty() && pmdbWatchlist.isEmpty() &&
-            mdblistWatchlist.isEmpty() && traktLists.isEmpty() && pmdbLists.isEmpty() &&
-            mdblistLists.isEmpty() &&
+            traktLists.isEmpty() &&
             myWatchlist.isEmpty() && myLists.isEmpty()
         ) {
             item(key = "lib_empty") {
                 Text(
-                    if (traktLinked || simklLinked || anilistLinked || wetrakrLinked || publicMetaDbLinked || mdblistLinked) {
+                    if (traktLinked || simklLinked) {
                         "Nothing here yet — your watchlists and progress will show up once there is something to show."
                     } else {
                         "Nothing here yet — add something to your watchlist, or connect Trakt/Simkl above."
@@ -875,26 +589,18 @@ private fun LibraryCalendarTab(
     allListItems: List<com.pulsestream.app.data.db.CustomListItem>,
     traktWatchlist: List<MetaPreview>,
     simklWatchlist: List<MetaPreview>,
-    anilistWatchlist: List<MetaPreview> = emptyList(),
-    wetrakrWatchlist: List<MetaPreview> = emptyList(),
-    pmdbWatchlist: List<MetaPreview> = emptyList(),
-    mdblistWatchlist: List<MetaPreview> = emptyList(),
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
 ) {
     val palette = LocalPalette.current
     var days by remember { mutableStateOf<List<com.pulsestream.app.data.ReleaseDay>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var refreshTick by remember { mutableStateOf(0) }
-    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist, mdblistWatchlist) {
+    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist) {
         (
             myWatchlist.filter { it.type == "series" }.map { it.metaId } +
                 allListItems.filter { it.type == "series" }.map { it.metaId } +
                 traktWatchlist.filter { it.type == "series" }.map { it.id } +
-                simklWatchlist.filter { it.type == "series" }.map { it.id } +
-                anilistWatchlist.filter { it.type == "series" }.map { it.id } +
-                wetrakrWatchlist.filter { it.type == "series" }.map { it.id } +
-                pmdbWatchlist.filter { it.type == "series" }.map { it.id } +
-                mdblistWatchlist.filter { it.type == "series" }.map { it.id }
+                simklWatchlist.filter { it.type == "series" }.map { it.id }
             ).distinct()
     }
     LaunchedEffect(refreshTick) {
