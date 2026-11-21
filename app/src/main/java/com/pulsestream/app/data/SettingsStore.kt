@@ -494,6 +494,16 @@ class SettingsStore(context: Context) {
         get() = getSecret(KEY_REALDEBRID_API_KEY)?.takeIf { it.isNotBlank() }
         set(value) = putSecret(KEY_REALDEBRID_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
 
+    /** TMDB API key (null = not configured). Unlocks TMDB metadata/ratings lookups. */
+    var tmdbApiKey: String?
+        get() = getSecret(KEY_TMDB_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_TMDB_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** OMDb API key (null = not configured). Unlocks OMDb ratings lookups. */
+    var omdbApiKey: String?
+        get() = getSecret(KEY_OMDB_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_OMDB_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
 
     /** Trakt access token (null = not linked). */
     var traktAccessToken: String?
@@ -917,6 +927,8 @@ class SettingsStore(context: Context) {
         val keys = mutableMapOf<String, String>()
         torboxApiKey?.takeIf { it.isNotBlank() }?.let { keys["torbox_api_key"] = it }
         realDebridApiKey?.takeIf { it.isNotBlank() }?.let { keys["realdebrid_api_key"] = it }
+        tmdbApiKey?.takeIf { it.isNotBlank() }?.let { keys["tmdb_api_key"] = it }
+        omdbApiKey?.takeIf { it.isNotBlank() }?.let { keys["omdb_api_key"] = it }
         traktAccessToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_access_token"] = it }
         traktRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_refresh_token"] = it }
         simklToken?.takeIf { it.isNotBlank() }?.let { keys["simkl_token"] = it }
@@ -930,6 +942,8 @@ class SettingsStore(context: Context) {
     fun importApiKeysFromBackup(keys: Map<String, String>) {
         keys["torbox_api_key"]?.takeIf { it.isNotBlank() && torboxApiKey.isNullOrBlank() }?.let { torboxApiKey = it }
         keys["realdebrid_api_key"]?.takeIf { it.isNotBlank() && realDebridApiKey.isNullOrBlank() }?.let { realDebridApiKey = it }
+        keys["tmdb_api_key"]?.takeIf { it.isNotBlank() && tmdbApiKey.isNullOrBlank() }?.let { tmdbApiKey = it }
+        keys["omdb_api_key"]?.takeIf { it.isNotBlank() && omdbApiKey.isNullOrBlank() }?.let { omdbApiKey = it }
         keys["trakt_access_token"]?.takeIf { it.isNotBlank() && traktAccessToken.isNullOrBlank() }?.let { traktAccessToken = it }
         keys["trakt_refresh_token"]?.takeIf { it.isNotBlank() && traktRefreshToken.isNullOrBlank() }?.let { traktRefreshToken = it }
         keys["simkl_token"]?.takeIf { it.isNotBlank() && simklToken.isNullOrBlank() }?.let { simklToken = it }
@@ -974,7 +988,8 @@ class SettingsStore(context: Context) {
         private const val SECRET_KEY_ALIAS = "plavio.settings.secrets.v1"
         private val SECRET_KEYS = setOf(
             "simkl_token", "torbox_api_key", "realdebrid_api_key",
-            "trakt_access_token", "trakt_refresh_token"
+            "trakt_access_token", "trakt_refresh_token",
+            "tmdb_api_key", "omdb_api_key"
         )
         private const val KEY_AUTOPLAY = "autoplay"
         private const val KEY_SENTRY_ENABLED = "sentry_enabled"
@@ -1028,6 +1043,8 @@ class SettingsStore(context: Context) {
         private const val KEY_TRAKT_USERNAME = "trakt_username"
         private const val KEY_TORBOX_API_KEY = "torbox_api_key"
         private const val KEY_REALDEBRID_API_KEY = "realdebrid_api_key"
+        private const val KEY_TMDB_API_KEY = "tmdb_api_key"
+        private const val KEY_OMDB_API_KEY = "omdb_api_key"
         private const val KEY_STREAMS_PER_SOURCE = "streams_per_source"
         private const val KEY_QUALITY_ORDER = "quality_order"
         private const val KEY_STREAM_AUTOPLAY = "stream_autoplay"
