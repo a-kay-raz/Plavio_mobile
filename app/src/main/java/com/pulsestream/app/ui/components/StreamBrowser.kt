@@ -473,9 +473,14 @@ fun rememberStreamBrowserState(
         settings?.debridMinQuality, settings?.debridDvFilter, settings?.debridHdrFilter,
         settings?.debridCodecFilter, settings?.debridPreferredTags, settings?.debridRequiredTags,
         settings?.debridExcludedTags,
+        settings?.streamBadgeRulesJson,
         limitPerSource, isEpisode
     ) {
-        if (settings != null) applyStreamPreferences(streams, settings, limitPerSource, isEpisode) else streams
+        val base = if (settings != null) applyStreamPreferences(streams, settings, limitPerSource, isEpisode) else streams
+        // Step 61: match imported badge rules onto the ordered list.
+        val badgeRules = settings?.let { com.pulsestream.app.data.StreamBadgeRules.parseStored(it.streamBadgeRulesJson) }
+            ?: com.pulsestream.app.data.StreamBadgeRules()
+        if (badgeRules.hasImport) com.pulsestream.app.data.StreamBadgePresentation.applyToStreams(base, badgeRules) else base
     }
     // Saveable: the addon tab the user picked survives rotation. A stale
     // key (tab gone after the stream list changed) falls back to "All".
@@ -728,6 +733,19 @@ fun StreamCard(
                     color = Color(0xFFF59E0B)
                 )
             }
+            // Step 61: matched badge chips from the user's imported rules.
+            if (stream.badges.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    stream.badges.forEach { badge ->
+                        StreamBadgeChip(badge = badge, size = StreamBadgeChipSize.STREAM)
+                    }
+                }
+            }
 
             // Bottom row: download button only (no URLs — user's order).
             if (onDownload != null) {
@@ -799,6 +817,19 @@ private fun CompactStreamCard(
             }
             if (!unresolvedTorrent && com.pulsestream.app.data.isUnseekableStreamUrl(stream.url)) {
                 Text("Seeking not supported by this host", style = MaterialTheme.typography.labelSmall, color = Color(0xFFF59E0B))
+            }
+            // Step 61: matched badge chips from the user's imported rules.
+            if (stream.badges.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    stream.badges.forEach { badge ->
+                        StreamBadgeChip(badge = badge, size = StreamBadgeChipSize.STREAM)
+                    }
+                }
             }
             // The "Playing" state stays as PLAIN TEXT only — no chip
             // background/border, no decoration on stream rows.

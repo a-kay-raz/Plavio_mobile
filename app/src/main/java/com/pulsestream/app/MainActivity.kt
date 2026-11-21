@@ -133,6 +133,7 @@ import com.pulsestream.app.data.PlayerChoice
 import com.pulsestream.app.data.CollectionRepository
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.data.FavoritePeopleRepository
+import com.pulsestream.app.data.StreamBadgeSettings
 import com.pulsestream.app.data.ProfileStore
 import com.pulsestream.app.data.ProfilesRepository
 import com.pulsestream.app.data.StreamRepository
@@ -151,6 +152,7 @@ import com.pulsestream.app.ui.screens.SplashScreen
 import com.pulsestream.app.ui.screens.SettingsScreen
 import com.pulsestream.app.ui.screens.AccountScreen
 import com.pulsestream.app.ui.screens.DetailSectionsScreen
+import com.pulsestream.app.ui.screens.StreamBadgesScreen
 import com.pulsestream.app.ui.screens.PinEntryDialog
 import com.pulsestream.app.ui.screens.ProfilesScreen
 import com.pulsestream.app.ui.screens.AddonsScreen
@@ -713,6 +715,8 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
     val collectionRepository = remember { CollectionRepository(app.profileDatabase) }
     // Step 58: favorite people (per-profile via SettingsStore).
     val favoritePeopleRepository = remember { FavoritePeopleRepository(repository.settings) }
+    // Step 61: custom stream badges (per-profile via SettingsStore).
+    val streamBadgeSettings = remember { StreamBadgeSettings(repository.settings) }
     // Step 56: profiles live in the global database.
     val profilesRepository = remember { ProfilesRepository(app.database) }
 
@@ -1512,7 +1516,8 @@ private fun PulseNavGraph(
                 onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) },
                 onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) },
                 onGoToProfiles = { navController.navigate(Routes.PROFILES) },
-                onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) }
+                onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) },
+                onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) }
             )
         }
         composable(Routes.MEDIA_SERVERS) {
@@ -1609,6 +1614,13 @@ private fun PulseNavGraph(
         composable(Routes.DETAIL_SECTIONS) {
             DetailSectionsScreen(
                 settings = repository.settings,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        // Step 61: custom stream badges.
+        composable(Routes.STREAM_BADGES) {
+            StreamBadgesScreen(
+                badgeSettings = streamBadgeSettings,
                 onBack = { navController.popBackStack() }
             )
         }
