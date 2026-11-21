@@ -158,6 +158,7 @@ import com.pulsestream.app.ui.screens.StreamsSettingsScreen
 import com.pulsestream.app.ui.screens.SubtitleSettingsScreen
 import com.pulsestream.app.ui.screens.AppearanceSettingsScreen
 import com.pulsestream.app.ui.screens.AboutScreen
+import com.pulsestream.app.ui.screens.WhatsNewScreen
 import com.pulsestream.app.ui.screens.LicensesScreen
 import com.pulsestream.app.ui.screens.HomeScreen
 import com.pulsestream.app.ui.screens.PlayerScreen
@@ -1446,7 +1447,13 @@ private fun PulseNavGraph(
         composable(Routes.ABOUT) {
             AboutScreen(
                 onBack = { navController.popBackStack() },
-                onGoToLicenses = { navController.navigate(Routes.LICENSES) }
+                onGoToLicenses = { navController.navigate(Routes.LICENSES) },
+                onGoToWhatsNew = { navController.navigate(Routes.WHATS_NEW) }
+            )
+        }
+        composable(Routes.WHATS_NEW) {
+            WhatsNewScreen(
+                onBack = { navController.popBackStack() }
             )
         }
         composable(Routes.FEEDBACK) {
