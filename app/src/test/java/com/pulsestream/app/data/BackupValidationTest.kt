@@ -1,6 +1,7 @@
 package com.pulsestream.app.data
 
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.AddonDao
 import com.pulsestream.app.data.db.PlaybackDao
 import com.pulsestream.app.data.db.WatchlistDao
@@ -17,13 +18,14 @@ import org.junit.Test
 class BackupValidationTest {
     private fun repository(): StreamRepository {
         val db = mockk<AppDatabase>(relaxed = true)
+        val profileDb = mockk<ProfileDatabase>(relaxed = true)
         val addonDao = mockk<AddonDao> { every { observeAll() } returns emptyFlow() }
         val playbackDao = mockk<PlaybackDao> { every { observeRecent() } returns emptyFlow() }
         val watchlistDao = mockk<WatchlistDao> { every { observeAll() } returns emptyFlow() }
         every { db.addonDao() } returns addonDao
-        every { db.playbackDao() } returns playbackDao
-        every { db.watchlistDao() } returns watchlistDao
-        return StreamRepository(db, mockk(relaxed = true), mockk(relaxed = true))
+        every { profileDb.playbackDao() } returns playbackDao
+        every { profileDb.watchlistDao() } returns watchlistDao
+        return StreamRepository(db, profileDb, mockk(relaxed = true), mockk(relaxed = true))
     }
 
     @Test

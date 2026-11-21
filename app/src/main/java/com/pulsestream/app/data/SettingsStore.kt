@@ -373,11 +373,15 @@ enum class PlayerChoice(val label: String, val blurb: String) {
 }
 
 /** Tiny SharedPreferences-backed store for user settings (no extra dependency). */
-class SettingsStore(context: Context) {
+class SettingsStore(
+    context: Context,
+    /** Step 56: per-profile settings file. The global file ("pulse_settings") holds device-level keys only. */
+    prefsName: String = "pulse_settings"
+) {
 
     private val appContext = context.applicationContext
     private val prefs: SharedPreferences =
-        appContext.getSharedPreferences("pulse_settings", Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     /**
      * Adaptive quality ceiling (user's order 2026-10-20, Netflix/YouTube style):
@@ -1266,8 +1270,16 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_PROFILE_AVATAR, "") ?: ""
         set(value) = prefs.edit().putString(KEY_PROFILE_AVATAR, value).apply()
 
-    /** The user's own cropped profile photo (JPEG, app-private storage). */
-    fun profilePhotoFile(): File = File(appContext.filesDir, "profile_photo.jpg")
+    /**
+     * The user's own cropped profile photo (JPEG, app-private storage).
+     * Step 56: per-profile file for the active profile; the legacy
+     * single file is used only before the profiles migration runs.
+     */
+    fun profilePhotoFile(): File {
+        val activeId = ProfileStore.activeProfileId(appContext)
+        return if (activeId != null) ProfileStore.photoFile(appContext, activeId)
+        else File(appContext.filesDir, "profile_photo.jpg")
+    }
 
     fun readProfilePhotoBytes(): ByteArray? = runCatching {
         profilePhotoFile().takeIf { it.exists() }?.readBytes()
@@ -1832,6 +1844,13 @@ class SettingsStore(context: Context) {
     }
 
     companion object {
+        /** Step 56: the active profile's store — what background workers use. */
+        fun forActiveProfile(context: Context): SettingsStore {
+            val id = ProfileStore.activeProfileId(context)
+            return if (id != null) SettingsStore(context, ProfileStore.profilePrefsName(id))
+            else SettingsStore(context)
+        }
+
         private const val SECRET_KEY_ALIAS = "plavio.settings.secrets.v1"
         private val SECRET_KEYS = setOf(
             "simkl_token", "torbox_api_key", "realdebrid_api_key", "premiumize_api_key",

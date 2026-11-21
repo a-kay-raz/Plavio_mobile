@@ -516,3 +516,49 @@ interface CollectionDao {
     @Query("DELETE FROM collection_sources WHERE folderId = :folderId")
     suspend fun deleteSourcesByFolder(folderId: String)
 }
+
+/**
+ * Step 56: one local profile (Nuvio profiles/ProfileModels.kt, local
+ * half only — no server sync). The profiles table lives in the GLOBAL
+ * database (it must be readable before a profile's own database is
+ * opened); each profile's library/progress lives in its own database
+ * file (see ProfileDatabase). avatar reuses the SettingsStore encoding:
+ * "" = none, "photo" = the profile's own photo file,
+ * "preset:<id>" = one of the 12 built-in presets. pinHash/pinSalt are
+ * a local salted SHA-256 of the 4-digit PIN (Nuvio verifies server-side;
+ * Plavio has no profile backend, so the check is local).
+ */
+@Entity(tableName = "profiles")
+data class Profile(
+    @PrimaryKey val id: String,
+    val name: String,
+    val avatarColorHex: String = "#1E88E5",
+    val avatar: String = "",
+    val pinHash: String? = null,
+    val pinSalt: String? = null,
+    val createdAt: Long = 0,
+    val sortOrder: Long = 0
+) {
+    val pinEnabled: Boolean get() = pinHash != null
+}
+
+@Dao
+interface ProfileDao {
+    @Query("SELECT * FROM profiles ORDER BY sortOrder ASC")
+    fun observeAll(): Flow<List<Profile>>
+
+    @Query("SELECT * FROM profiles ORDER BY sortOrder ASC")
+    suspend fun getAll(): List<Profile>
+
+    @Query("SELECT * FROM profiles WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): Profile?
+
+    @Query("SELECT COUNT(*) FROM profiles")
+    suspend fun count(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(profile: Profile)
+
+    @Query("DELETE FROM profiles WHERE id = :id")
+    suspend fun deleteById(id: String)
+}

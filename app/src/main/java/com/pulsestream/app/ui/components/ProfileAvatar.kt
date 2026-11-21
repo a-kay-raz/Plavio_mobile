@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -62,7 +63,9 @@ fun ProfileAvatarImage(
     avatarSetting: String,
     photoFile: File?,
     modifier: Modifier = Modifier,
-    placeholderLetter: String? = null
+    placeholderLetter: String? = null,
+    /** Step 56: a profile's own color as the circle background. */
+    backgroundColor: Color? = null
 ) {
     val palette = LocalPalette.current
     val preset = profileAvatarPreset(avatarSetting)
@@ -70,7 +73,7 @@ fun ProfileAvatarImage(
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(palette.accent.copy(alpha = 0.20f)),
+            .background(backgroundColor?.copy(alpha = 0.25f) ?: palette.accent.copy(alpha = 0.20f)),
         contentAlignment = Alignment.Center
     ) {
         when {

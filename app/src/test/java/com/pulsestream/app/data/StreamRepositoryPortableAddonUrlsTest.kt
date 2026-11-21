@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.InstalledAddon
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -20,8 +21,9 @@ class StreamRepositoryPortableAddonUrlsTest {
     private fun withRepository(test: suspend (AppDatabase, StreamRepository) -> Unit) = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val repo = StreamRepository(db, StremioApi(), SettingsStore(context))
-        try { test(db, repo) } finally { db.close() }
+        val profileDb = Room.inMemoryDatabaseBuilder(context, ProfileDatabase::class.java).allowMainThreadQueries().build()
+        val repo = StreamRepository(db, profileDb, StremioApi(), SettingsStore(context))
+        try { test(db, repo) } finally { db.close(); profileDb.close() }
     }
 
     private fun addon(id: String, url: String, enabled: Boolean = true) = InstalledAddon(

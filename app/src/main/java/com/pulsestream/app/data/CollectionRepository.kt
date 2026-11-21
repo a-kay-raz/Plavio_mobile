@@ -1,6 +1,6 @@
 package com.pulsestream.app.data
 
-import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.Collection
 import com.pulsestream.app.data.db.CollectionFolder
 import com.pulsestream.app.data.db.CollectionSourceRow
@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
  * sources that resolve to titles. Writes that read-then-write are
  * serialized with a mutex, mirroring CustomListsRepository.
  */
-class CollectionRepository(private val db: AppDatabase) {
+class CollectionRepository(private val db: ProfileDatabase) {
 
     private val dao get() = db.collectionDao()
     private val writeMutex = Mutex()

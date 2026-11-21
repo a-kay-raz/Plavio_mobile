@@ -68,7 +68,7 @@ object EpisodeNotifications {
      */
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
-        if (!SettingsStore(appContext).episodeNotifications) return
+        if (!SettingsStore.forActiveProfile(appContext).episodeNotifications) return
         ensureChannel(appContext)
         val request = PeriodicWorkRequestBuilder<EpisodeCheckWorker>(
             CHECK_INTERVAL_HOURS, TimeUnit.HOURS

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.pulsestream.app.data.ProfileStore
 import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StremioApi
 import com.pulsestream.app.data.db.AppDatabase
@@ -37,7 +38,7 @@ class EpisodeCheckWorker(
 
     override suspend fun doWork(): Result {
         val ctx = applicationContext
-        val settings = SettingsStore(ctx)
+        val settings = SettingsStore.forActiveProfile(ctx)
         if (!settings.episodeNotifications) {
             EpisodeNotifications.cancel(ctx)
             return Result.success()
@@ -56,6 +57,17 @@ class EpisodeCheckWorker(
                 .build()
         }.getOrNull() ?: return Result.success()
 
+        // Step 56: the watchlist lives in the active profile's database
+        // now; addons stay in the global database.
+        val activeProfileId = ProfileStore.activeProfileId(ctx)
+        val profileDb = activeProfileId?.let {
+            runCatching { ProfileStore.openProfileDatabase(ctx, it) }.getOrNull()
+        }
+        if (profileDb == null) {
+            runCatching { db.close() }
+            return Result.success()
+        }
+
         try {
             val tracker = EpisodeTracker(ctx)
             val api = StremioApi()
@@ -65,7 +77,7 @@ class EpisodeCheckWorker(
                 .filter { it.enabled && "meta" in it.resourceSet }
                 .associateBy { it.id }
 
-            val series = runCatching { db.watchlistDao().getAll() }
+            val series = runCatching { profileDb.watchlistDao().getAll() }
                 .getOrNull().orEmpty()
                 .filter { it.type == "series" }
             if (series.isEmpty()) {
@@ -102,6 +114,7 @@ class EpisodeCheckWorker(
             }
             tracker.prune(keepKeys)
         } finally {
+            runCatching { profileDb.close() }
             runCatching { db.close() }
         }
         return Result.success()

@@ -20,6 +20,7 @@ object Routes {
     const val COLLECTION_FOLDER = "collection_folder/{folderId}"
     const val MEDIA_SERVERS = "media_servers"
     const val SERVER_LIBRARY = "server_library/{serverId}/{libraryId}"
+    const val PROFILES = "profiles"
     const val ADDONS = "addons"
     const val HOME_CATALOGS = "home_catalogs"
     const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"

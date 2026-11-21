@@ -9,6 +9,7 @@ import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StremioApi
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.InstalledAddon
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -29,7 +30,8 @@ class EncryptedAddonRepositoryRoundTripTest {
     @Test fun ordinaryRestoreStaysLockedUntilAuthenticatedPrivateUrlRestore() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val repository = StreamRepository(db, StremioApi(), SettingsStore(context))
+        val profileDb = Room.inMemoryDatabaseBuilder(context, ProfileDatabase::class.java).allowMainThreadQueries().build()
+        val repository = StreamRepository(db, profileDb, StremioApi(), SettingsStore(context))
         try {
             db.addonDao().upsert(InstalledAddon(id = "fixture.addon", name = "Fixture addon", version = "1", description = "Fixture",
                 baseUrl = rawUrl, types = "movie,series", resources = "catalog,meta,stream", configurable = true, enabled = true, addedAt = 1L))
@@ -59,7 +61,8 @@ class EncryptedAddonRepositoryRoundTripTest {
     @Test fun lockedPlaceholderCannotEraseAnExistingEncryptedConfiguredUrl() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val repository = StreamRepository(db, StremioApi(), SettingsStore(context))
+        val profileDb = Room.inMemoryDatabaseBuilder(context, ProfileDatabase::class.java).allowMainThreadQueries().build()
+        val repository = StreamRepository(db, profileDb, StremioApi(), SettingsStore(context))
         try {
             db.addonDao().upsert(InstalledAddon(id = "fixture.addon", name = "Fixture addon", version = "1", description = "Fixture",
                 baseUrl = rawUrl, types = "movie", resources = "stream", enabled = true, addedAt = 1L))

@@ -1,6 +1,6 @@
 package com.pulsestream.app.data
 
-import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.CustomList
 import com.pulsestream.app.data.db.CustomListItem
 import java.util.UUID
@@ -13,11 +13,12 @@ import kotlinx.coroutines.withContext
 /**
  * User-created named lists, separate from the flat watchlist.
  *
- * Takes the [AppDatabase] directly (PulseApp exposes it as `database`) so
- * this can live outside StreamRepository. Write paths that read-then-write
- * are serialized with a mutex, mirroring StreamRepository's watchlist toggle.
+ * Takes the [ProfileDatabase] directly (PulseApp exposes it as
+ * `profileDatabase`) so this can live outside StreamRepository. Write
+ * paths that read-then-write are serialized with a mutex, mirroring
+ * StreamRepository's watchlist toggle.
  */
-class CustomListsRepository(private val db: AppDatabase) {
+class CustomListsRepository(private val db: ProfileDatabase) {
 
     private val dao get() = db.customListDao()
     private val writeMutex = Mutex()

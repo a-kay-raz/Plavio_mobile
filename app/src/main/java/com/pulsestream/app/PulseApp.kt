@@ -7,10 +7,13 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.pulsestream.app.data.ProfileStore
 import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StremioApi
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.db.AppDatabase
+import com.pulsestream.app.data.db.MIGRATION_18_19
+import com.pulsestream.app.data.db.ProfileDatabase
 import com.pulsestream.app.data.db.MIGRATION_1_2
 import com.pulsestream.app.data.db.MIGRATION_2_3
 import com.pulsestream.app.data.db.MIGRATION_3_4
@@ -70,6 +73,10 @@ class PulseApp : Application(), ImageLoaderFactory {
     lateinit var database: AppDatabase
         private set
 
+    /** Step 56: the active profile's database (library/progress). */
+    lateinit var profileDatabase: ProfileDatabase
+        private set
+
     /**
      * A crashing background task must never kill the app (previously an
      * uncaught exception here meant an instant force-close loop that also
@@ -87,8 +94,20 @@ class PulseApp : Application(), ImageLoaderFactory {
         com.pulsestream.app.data.MotionPreferences.initialize(this)
         val db = openDatabase()
         database = db
-        settings = SettingsStore(this)
-        repository = StreamRepository(db, StremioApi(), settings)
+        // Step 56: the single identity becomes the "Main" profile on
+        // first launch (one-time, guarded), then the active profile's
+        // database + settings file open. runBlocking keeps the ordering:
+        // nothing below may run before the migration has seeded the
+        // profile database.
+        val legacySettings = SettingsStore(this)
+        kotlinx.coroutines.runBlocking {
+            ProfileStore.migrateLegacyData(this@PulseApp, db, legacySettings)
+        }
+        val activeProfileId = ProfileStore.activeProfileId(this)
+            ?: error("Profiles migration did not set an active profile")
+        profileDatabase = ProfileStore.openProfileDatabase(this, activeProfileId)
+        settings = SettingsStore(this, ProfileStore.profilePrefsName(activeProfileId))
+        repository = StreamRepository(db, profileDatabase, StremioApi(), settings)
         // Anonymous install/session counting on the owner's own
         // stats server (open-source backend, no Google — his order
         // 2026-10-22). Fire-and-forget; never blocks startup.
@@ -213,7 +232,7 @@ class PulseApp : Application(), ImageLoaderFactory {
 
     private fun buildDatabase(): AppDatabase =
         Room.databaseBuilder(this, AppDatabase::class.java, DB_NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
             .build()
 
     /**
