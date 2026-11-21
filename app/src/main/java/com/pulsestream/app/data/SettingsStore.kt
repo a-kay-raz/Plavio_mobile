@@ -846,6 +846,16 @@ class SettingsStore(
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
 
+    /** Step 67: forward the title's subtitles to the external player. */
+    var forwardSubtitlesToExternalPlayer: Boolean
+        get() = prefs.getBoolean(KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER, true)
+        set(value) = prefs.edit().putBoolean(KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER, value).apply()
+
+    /** Step 67: forward intro/recap/outro/credits segments to the external player. */
+    var sendSkipSegmentsToExternalPlayer: Boolean
+        get() = prefs.getBoolean(KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER, true)
+        set(value) = prefs.edit().putBoolean(KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER, value).apply()
+
     /** Step 66: downmix surround to stereo/mono (default off). */
     var downmixEnabled: Boolean
         get() = prefs.getBoolean(KEY_DOWNMIX_ENABLED, false)
@@ -2004,6 +2014,8 @@ class SettingsStore(
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_AUDIO_DELAY_MS = "audio_delay_ms"
         private const val KEY_DOWNMIX_ENABLED = "downmix_enabled"
+        private const val KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER = "forward_subtitles_to_external_player"
+        private const val KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER = "send_skip_segments_to_external_player"
         private const val KEY_DOWNMIX_TARGET_CHANNELS = "downmix_target_channels"
         private const val KEY_CENTER_MIX_LEVEL_DB = "center_mix_level_db"
         private const val KEY_MAINTAIN_ORIGINAL_AUDIO_DOWNMIX = "maintain_original_audio_on_downmix"

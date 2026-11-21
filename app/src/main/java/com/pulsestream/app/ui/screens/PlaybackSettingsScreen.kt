@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
@@ -117,6 +118,9 @@ fun PlaybackSettingsScreen(
     var keepScreenOn by remember { mutableStateOf(settings.keepScreenOn) }
     var showSkip by remember { mutableStateOf(settings.showSkipButton) }
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
+    // Step 67: what the external player gets on handoff.
+    var forwardSubsExt by remember { mutableStateOf(settings.forwardSubtitlesToExternalPlayer) }
+    var sendSkipSegsExt by remember { mutableStateOf(settings.sendSkipSegmentsToExternalPlayer) }
     var audioLang by remember { mutableStateOf(settings.preferredAudioLanguage) }
     var audioLangPickerOpen by remember { mutableStateOf(false) }
     // Step 38: secondary preferred audio language (fallback when the
@@ -311,6 +315,30 @@ fun PlaybackSettingsScreen(
                             title = "Preferred player",
                             subtitle = "Currently: ${PlayerChoice.fromName(settings.preferredPlayer).label}",
                             onClick = { playerPickerOpen = true }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Subtitles,
+                            title = "Forward subtitles to external player",
+                            subtitle = "Attach the title's subtitles when opening in VLC, MX Player etc.",
+                            checked = forwardSubsExt,
+                            onCheckedChange = {
+                                forwardSubsExt = it
+                                settings.forwardSubtitlesToExternalPlayer = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.FastForward,
+                            title = "Forward skip segments to external player",
+                            subtitle = "Send intro/recap/outro/credits timings that supporting players understand",
+                            checked = sendSkipSegsExt,
+                            onCheckedChange = {
+                                sendSkipSegsExt = it
+                                settings.sendSkipSegmentsToExternalPlayer = it
+                            }
                         )
                     },
                     {
