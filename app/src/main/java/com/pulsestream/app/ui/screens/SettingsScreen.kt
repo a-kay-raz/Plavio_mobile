@@ -184,68 +184,39 @@ fun SettingsScreen(
     val enabledAddons = remember(installedAddons) { installedAddons.count { it.enabled } }
     val reducedMotion by com.pulsestream.app.data.MotionPreferences.reduced.collectAsState()
 
-    val sectionAccount = stringResource(R.string.settings_section_account)
-    val sectionPlayback = stringResource(R.string.settings_section_playback)
-    val sectionContent = stringResource(R.string.settings_section_content)
-    val sectionAppearance = stringResource(R.string.settings_section_appearance)
-    val sectionHelp = "Help & About"
+    // Nuvio-style grouping (SettingsRootPage): the account card on top,
+    // then General / About / Advanced, in Nuvio's order. Plavio's own
+    // rows stay — only the grouping and order match Nuvio.
+    val sectionGeneral = stringResource(R.string.settings_section_general)
+    val sectionAbout = stringResource(R.string.settings_section_about)
+    val sectionAdvanced = stringResource(R.string.settings_section_advanced)
 
     // Every root entry as data, so the search field filters the very
     // rows the sections render. Destinations and behaviour are exactly
     // the pre-restructure ones — presentation only. The old Account nav
     // row is gone: the account card above the list IS the account entry.
     val entries = listOf(
-        SettingsEntry(sectionAccount, "Integrations",
-            "integrations torbox debrid real-debrid alldebrid premiumize link accounts api keys") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_appearance_title),
+            "appearance accent color amoled black theme dark light") {
             SettingsNavRow(
-                icon = Icons.Filled.Link,
-                title = "Integrations",
-                subtitle = "TorBox debrid and more",
-                onClick = onGoToIntegrations,
+                icon = Icons.Filled.Contrast,
+                title = stringResource(R.string.settings_appearance_title),
+                subtitle = stringResource(R.string.settings_appearance_sub),
+                onClick = onGoToAppearance,
                 compact = true
             )
         },
-        SettingsEntry(sectionPlayback, stringResource(R.string.settings_playback_title),
-            "playback autoplay next episode screen skip intro audio resume buffer") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_home_catalogs_title),
+            "home catalogs rows arrange visibility home screen order") {
             SettingsNavRow(
-                icon = Icons.Filled.PlayArrow,
-                title = stringResource(R.string.settings_playback_title),
-                subtitle = stringResource(R.string.settings_playback_sub),
-                onClick = onGoToPlayback,
+                icon = Icons.Filled.GridView,
+                title = stringResource(R.string.settings_home_catalogs_title),
+                subtitle = stringResource(R.string.settings_home_catalogs_sub),
+                onClick = onGoToHomeCatalogs,
                 compact = true
             )
         },
-        SettingsEntry(sectionPlayback, stringResource(R.string.settings_streams_title),
-            "streams sources source limits quality order autoplay rule providers") {
-            SettingsNavRow(
-                icon = Icons.Filled.VideoLibrary,
-                title = stringResource(R.string.settings_streams_title),
-                subtitle = stringResource(R.string.settings_streams_sub),
-                onClick = onGoToStreams,
-                compact = true
-            )
-        },
-        SettingsEntry(sectionPlayback, stringResource(R.string.settings_subtitles_title),
-            "subtitles captions preferred languages appearance font size") {
-            SettingsNavRow(
-                icon = Icons.Filled.ClosedCaption,
-                title = stringResource(R.string.settings_subtitles_title),
-                subtitle = stringResource(R.string.settings_subtitles_sub),
-                onClick = onGoToSubtitles,
-                compact = true
-            )
-        },
-        SettingsEntry(sectionContent, "Downloads",
-            "downloads offline files storage downloaded movies shows") {
-            SettingsNavRow(
-                icon = Icons.Filled.Download,
-                title = "Downloads",
-                subtitle = "Your downloaded movies and shows",
-                onClick = onGoToDownloads,
-                compact = true
-            )
-        },
-        SettingsEntry(sectionContent, stringResource(R.string.settings_addons_title),
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_addons_title),
             "addons manage extensions install sources manifest") {
             SettingsStaticRow(
                 icon = Icons.Filled.Extension,
@@ -266,38 +237,57 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionContent, stringResource(R.string.settings_home_catalogs_title),
-            "home catalogs rows arrange visibility home screen order") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_playback_title),
+            "playback autoplay next episode screen skip intro audio resume buffer") {
             SettingsNavRow(
-                icon = Icons.Filled.GridView,
-                title = stringResource(R.string.settings_home_catalogs_title),
-                subtitle = stringResource(R.string.settings_home_catalogs_sub),
-                onClick = onGoToHomeCatalogs,
+                icon = Icons.Filled.PlayArrow,
+                title = stringResource(R.string.settings_playback_title),
+                subtitle = stringResource(R.string.settings_playback_sub),
+                onClick = onGoToPlayback,
                 compact = true
             )
         },
-        SettingsEntry(sectionAppearance, stringResource(R.string.settings_appearance_title),
-            "appearance accent color amoled black theme dark light") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_streams_title),
+            "streams sources source limits quality order autoplay rule providers") {
             SettingsNavRow(
-                icon = Icons.Filled.Contrast,
-                title = stringResource(R.string.settings_appearance_title),
-                subtitle = stringResource(R.string.settings_appearance_sub),
-                onClick = onGoToAppearance,
+                icon = Icons.Filled.VideoLibrary,
+                title = stringResource(R.string.settings_streams_title),
+                subtitle = stringResource(R.string.settings_streams_sub),
+                onClick = onGoToStreams,
                 compact = true
             )
         },
-        SettingsEntry(sectionAppearance, "Reduced motion",
-            "reduced motion animations accessibility pause hero slides pulses") {
-            SettingsToggleRow(
-                icon = Icons.Filled.Contrast,
-                title = "Reduced motion",
-                subtitle = "Pause automatic hero slides and decorative pulses; also respects Android animation settings.",
-                checked = reducedMotion,
-                onCheckedChange = { com.pulsestream.app.data.MotionPreferences.setReduced(context, it) },
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_subtitles_title),
+            "subtitles captions preferred languages appearance font size") {
+            SettingsNavRow(
+                icon = Icons.Filled.ClosedCaption,
+                title = stringResource(R.string.settings_subtitles_title),
+                subtitle = stringResource(R.string.settings_subtitles_sub),
+                onClick = onGoToSubtitles,
                 compact = true
             )
         },
-        SettingsEntry(sectionContent, "New episode alerts",
+        SettingsEntry(sectionGeneral, "Downloads",
+            "downloads offline files storage downloaded movies shows") {
+            SettingsNavRow(
+                icon = Icons.Filled.Download,
+                title = "Downloads",
+                subtitle = "Your downloaded movies and shows",
+                onClick = onGoToDownloads,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Integrations",
+            "integrations torbox debrid real-debrid alldebrid premiumize link accounts api keys") {
+            SettingsNavRow(
+                icon = Icons.Filled.Link,
+                title = "Integrations",
+                subtitle = "TorBox debrid and more",
+                onClick = onGoToIntegrations,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "New episode alerts",
             "notifications new episode alerts series watchlist releases") {
             SettingsToggleRow(
                 icon = Icons.Filled.Notifications,
@@ -321,7 +311,38 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionHelp, "Anonymous usage counting",
+        SettingsEntry(sectionAbout, stringResource(R.string.settings_feedback_title),
+            "feedback send bug report feature request support") {
+            SettingsNavRow(
+                icon = Icons.Filled.Feedback,
+                title = stringResource(R.string.settings_feedback_title),
+                subtitle = stringResource(R.string.settings_feedback_sub),
+                onClick = onGoToFeedback,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionAbout, stringResource(R.string.settings_about_title),
+            "about version website updates app info check") {
+            SettingsNavRow(
+                icon = Icons.Filled.Info,
+                title = stringResource(R.string.settings_about_title),
+                subtitle = stringResource(R.string.settings_about_sub),
+                onClick = onGoToAbout,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionAdvanced, "Reduced motion",
+            "reduced motion animations accessibility pause hero slides pulses") {
+            SettingsToggleRow(
+                icon = Icons.Filled.Contrast,
+                title = "Reduced motion",
+                subtitle = "Pause automatic hero slides and decorative pulses; also respects Android animation settings.",
+                checked = reducedMotion,
+                onCheckedChange = { com.pulsestream.app.data.MotionPreferences.setReduced(context, it) },
+                compact = true
+            )
+        },
+        SettingsEntry(sectionAdvanced, "Anonymous usage counting",
             "anonymous counting installs online users privacy usage data own server") {
             SettingsToggleRow(
                 icon = Icons.Filled.Info,
@@ -335,7 +356,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionHelp, "Crash reports",
+        SettingsEntry(sectionAdvanced, "Crash reports",
             "crash reports sentry bugs errors anonymous fix") {
             SettingsToggleRow(
                 icon = Icons.Filled.BugReport,
@@ -350,26 +371,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionHelp, stringResource(R.string.settings_feedback_title),
-            "feedback send bug report feature request support") {
-            SettingsNavRow(
-                icon = Icons.Filled.Feedback,
-                title = stringResource(R.string.settings_feedback_title),
-                subtitle = stringResource(R.string.settings_feedback_sub),
-                onClick = onGoToFeedback,
-                compact = true
-            )
-        },
-        SettingsEntry(sectionHelp, stringResource(R.string.settings_about_title),
-            "about version website updates app info check") {
-            SettingsNavRow(
-                icon = Icons.Filled.Info,
-                title = stringResource(R.string.settings_about_title),
-                subtitle = stringResource(R.string.settings_about_sub),
-                onClick = onGoToAbout,
-                compact = true
-            )
-        }
+
     )
     val normalizedQuery = settingsQuery.trim().lowercase()
     val visibleEntries = if (normalizedQuery.isEmpty()) entries
