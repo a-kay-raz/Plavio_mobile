@@ -1161,6 +1161,63 @@ class StreamRepository(
         }
 
     /**
+     * Step 71: sectioned search — the same legs as [searchAllWithStatus]
+     * (local cache, then server, falling back to the per-addon fan-out),
+     * grouped into one section per addon (Nuvio's orderedSections, per-addon
+     * scope). "Plavio Search" (the server leg) leads when it has results;
+     * addon sections follow in enabled-addons order, so the order matches
+     * the remote fan-out. Local + remote merge inside each addon (local
+     * first, deduped by addonId+meta.id) and rank within the section, so a
+     * section reads best-first. Addons with no matches produce no section.
+     */
+    suspend fun searchAllSections(query: String, type: String? = null): SearchSectionsOutcome =
+        withContext(Dispatchers.IO) {
+            if (catalogCache.isEmpty()) {
+                runCatching { loadCatalogRowsCached() }
+            }
+            val local = search(query, type)
+            var remoteFailed = false
+            val remote = try {
+                searchServer(query, type) ?: searchRemote(query, type)
+            } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { remoteFailed = true; emptyList() }
+            val serverItems = remote.filter { it.addonId == SERVER_SEARCH_ADDON_ID }
+            val addonOrder = try {
+                enabledAddons().filter { it.hasCatalog }.map { it.id }
+            } catch (_: Exception) { emptyList() }
+            val sections = buildList {
+                if (serverItems.isNotEmpty()) {
+                    add(
+                        SearchSection(
+                            SERVER_SEARCH_ADDON_ID,
+                            "Plavio Search",
+                            rankSearchResults(serverItems, query)
+                        )
+                    )
+                }
+                val addonIds = local.map { it.addonId } +
+                    remote.filter { it.addonId != SERVER_SEARCH_ADDON_ID }.map { it.addonId }
+                val orderedIds = addonOrder.filter { it in addonIds } +
+                    addonIds.filter { it !in addonOrder }.distinct()
+                for (addonId in orderedIds) {
+                    val seen = mutableSetOf<String>()
+                    val merged = (
+                        local.filter { it.addonId == addonId } +
+                            remote.filter { it.addonId == addonId }
+                        ).filter { seen.add(it.addonId + it.meta.id) }
+                    if (merged.isEmpty()) continue
+                    add(
+                        SearchSection(
+                            addonId,
+                            merged.first().addonName,
+                            rankSearchResults(merged, query)
+                        )
+                    )
+                }
+            }
+            SearchSectionsOutcome(sections, remoteFailed)
+        }
+
+    /**
      * "Popular right now" for the Search tab's landing state (v0.12.4).
      * With a TMDB key: TMDB's weekly trending chart. Without one: the
      * best in-app source — titles from cached catalog rows whose name/id
