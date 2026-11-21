@@ -1826,7 +1826,12 @@ private fun DetailContent(
         DownloadConfirmDialog(
             stream = stream,
             title = meta.name ?: "Video",
-            onDismiss = { downloadStream = null }
+            onDismiss = { downloadStream = null },
+            // Step 36: series episodes group under the show; movies stay flat.
+            metaId = if (meta.type == "series") meta.id else "",
+            seriesName = meta.name,
+            season = vm.selectedVideo?.season ?: 0,
+            episode = vm.selectedVideo?.episode ?: 0
         )
     }
 

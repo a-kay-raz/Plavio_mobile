@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -74,6 +75,8 @@ class DownloadManager private constructor(private val appContext: Context) {
         private const val KEY_WIFI_ONLY = "wifi_only"
         private const val KEY_PREFERRED_RESOLUTION = "download_preferred_resolution"
         private const val KEY_CONCURRENCY_LIMIT = "download_concurrency_limit"
+        // Step 36: paused show keys (JSON array of meta ids).
+        private const val KEY_PAUSED_SHOWS = "paused_download_shows"
         /** Resolutions the confirm dialog offers for HLS streams (Nuvio DownloadPreferredResolution). */
         val RESOLUTION_OPTIONS = intArrayOf(720, 1080, 2160)
 
@@ -108,6 +111,12 @@ class DownloadManager private constructor(private val appContext: Context) {
     // Stored limit (default 3) — `prefs` is lazy and declared above, so the
     // initializer reads the saved value on first construction.
     @Volatile private var downloadPermits = Semaphore(getDownloadConcurrencyLimit())
+    // Step 36: one mutex per show — at most one episode of a show downloads
+    // at a time (Nuvio DownloadConcurrencyLimit.EpisodesPerShow = 1).
+    private val showMutexes = mutableMapOf<String, Mutex>()
+    private fun showMutexFor(showKey: String): Mutex = synchronized(showMutexes) {
+        showMutexes.getOrPut(showKey) { Mutex() }
+    }
     private val recoveryLock = Any()
     @Volatile private var recoveryRunning = false
 
@@ -189,7 +198,17 @@ class DownloadManager private constructor(private val appContext: Context) {
 
     fun isDashDownloadUrl(url: String): Boolean = DownloadProtocol.isDash(decodeUrlForDetection(url))
 
-    suspend fun startDownload(url: String, title: String, headers: Map<String, String> = emptyMap()): String {
+    suspend fun startDownload(
+        url: String,
+        title: String,
+        headers: Map<String, String> = emptyMap(),
+        // Step 36: per-show grouping — parent meta id ("" = movie/ungrouped),
+        // series display name, and the episode position.
+        showKey: String = "",
+        seriesName: String = "",
+        season: Int = 0,
+        episode: Int = 0
+    ): String {
         require(!isDashDownloadUrl(url)) {
             "DASH streams can't be saved as offline downloads yet."
         }
@@ -218,11 +237,65 @@ class DownloadManager private constructor(private val appContext: Context) {
             id = id, url = url, title = title, fileName = fileName,
             filePath = file.absolutePath,
             headersJson = JSONObject(normalizedHeaders as Map<*, *>).toString(),
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            showKey = showKey,
+            seriesName = seriesName,
+            season = season,
+            episode = episode
         )
         withContext(Dispatchers.IO) { dao.upsert(item) }
+        // Step 36: a paused show stays paused — new episodes queue as PAUSED
+        // instead of starting until the show is resumed.
+        if (showKey.isNotBlank() && isShowPaused(showKey)) {
+            withContext(Dispatchers.IO) { dao.updateStatus(id, "PAUSED") }
+            return id
+        }
         launchDownload(item)
         return id
+    }
+
+    // ---- Per-show pause + retry-all (Step 36, Nuvio toggleShowPause / resumeOrRetryAllDownloads) ----
+
+    /** Paused show keys (persisted so a paused show survives restarts). */
+    fun pausedShowKeys(): Set<String> = runCatching {
+        val arr = JSONArray(prefs.getString(KEY_PAUSED_SHOWS, "[]") ?: "[]")
+        buildSet { for (i in 0 until arr.length()) add(arr.optString(i)) }
+    }.getOrDefault(emptySet())
+
+    fun isShowPaused(showKey: String): Boolean =
+        showKey.isNotBlank() && showKey in pausedShowKeys()
+
+    private fun setShowPaused(showKey: String, paused: Boolean) {
+        val keys = pausedShowKeys().toMutableSet()
+        if (paused) keys += showKey else keys -= showKey
+        val arr = JSONArray()
+        keys.forEach { arr.put(it) }
+        prefs.edit().putString(KEY_PAUSED_SHOWS, arr.toString()).apply()
+    }
+
+    /**
+     * Pause every active download of a show, or resume every paused one.
+     * Returns true when the show ends up paused.
+     */
+    suspend fun toggleShowPause(showKey: String): Boolean {
+        val items = withContext(Dispatchers.IO) { dao.getAll().filter { it.showKey == showKey } }
+        val hasActive = items.any { it.status in listOf("QUEUED", "DOWNLOADING") }
+        if (hasActive) {
+            setShowPaused(showKey, true)
+            items.filter { it.status in listOf("QUEUED", "DOWNLOADING") }
+                .forEach { pauseDownload(it.id) }
+            return true
+        }
+        setShowPaused(showKey, false)
+        items.filter { it.status == "PAUSED" }.forEach { resumeDownload(it.id) }
+        return false
+    }
+
+    /** Resume every FAILED download (retry-all). Returns the retried count. */
+    suspend fun retryAllFailed(): Int {
+        val failed = withContext(Dispatchers.IO) { dao.getAll().filter { it.status == "FAILED" } }
+        failed.forEach { resumeDownload(it.id) }
+        return failed.size
     }
 
     fun pauseDownload(id: String) {
@@ -343,7 +416,14 @@ class DownloadManager private constructor(private val appContext: Context) {
                 put(item.id, DownloadProgress(item.id, item.downloadedBytes, item.totalBytes, "QUEUED"))
             }
             val job = scope.launch(start = CoroutineStart.LAZY) {
+                // Step 36: at most one episode of a show downloads at a time
+                // (Nuvio EpisodesPerShow = 1) — the mutex is taken before the
+                // global permit so a waiting episode holds no permit.
+                val showMutex = if (item.showKey.isNotBlank()) showMutexFor(item.showKey) else null
+                var showLocked = false
                 try {
+                    showMutex?.lock()
+                    showLocked = showMutex != null
                     downloadPermits.withPermit {
                         if (isWifiOnlyDownloads() && !isOnWifi()) {
                             withContext(Dispatchers.IO) { dao.updateStatus(item.id, "QUEUED", "Waiting for Wi-Fi") }
@@ -364,6 +444,7 @@ class DownloadManager private constructor(private val appContext: Context) {
                     withContext(Dispatchers.IO) { dao.updateStatus(item.id, "FAILED", e.message?.take(200)) }
                     updateProgressFlow(item.id)
                 } finally {
+                    if (showLocked) showMutex?.unlock()
                     synchronized(jobs) { jobs.remove(item.id) }
                 }
             }

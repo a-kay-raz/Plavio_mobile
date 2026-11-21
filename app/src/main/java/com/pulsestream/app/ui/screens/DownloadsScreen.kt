@@ -77,6 +77,22 @@ fun DownloadsScreen(
     val heroProgress = heroItem?.let { activeProgress[it.id] }
     val listActive = if (heroItem != null) active.filter { it.id != heroItem.id } else active
 
+    // Step 36: per-show grouping — episodes sharing a showKey collapse under
+    // one header; movies and ungrouped singles stay flat. Groups sort by
+    // their most recent item; items inside sort by season/episode.
+    val showGroups = remember(downloads) {
+        downloads.filter { it.showKey.isNotBlank() }
+            .groupBy { it.showKey }
+            .toList()
+            .sortedByDescending { (_, items) -> items.maxOf { it.createdAt } }
+    }
+    val singleActive = remember(listActive) {
+        listActive.filter { it.showKey.isBlank() }
+    }
+    val singleCompleted = remember(completed) {
+        completed.filter { it.showKey.isBlank() }
+    }
+
     // Transfer speed for the hero, from progress deltas (the manager
     // exposes bytes only): sample on each progress change, ignore
     // windows under 500ms, smooth 60/40 towards the newest sample.
@@ -241,6 +257,17 @@ fun DownloadsScreen(
                                         }) { Text("Resume queue") }
                                     }
                                 }
+                                // Step 36: retry every failed download at once.
+                                if (downloads.any { it.status == "FAILED" }) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick = {
+                                            scope.launch {
+                                                manager.retryAllFailed()
+                                                DownloadServiceStarter.start(context)
+                                            }
+                                        }) { Text("Retry all failed") }
+                                    }
+                                }
                             }
                         }
                     }
@@ -258,7 +285,28 @@ fun DownloadsScreen(
                         }
                     }
 
-                    if (listActive.isNotEmpty() || (heroItem != null && completed.isNotEmpty())) {
+                    // Step 36: per-show groups — a show's episodes collapse
+                    // under one header with one pause button. The hero item
+                    // is excluded from its group (it already shows up top).
+                    showGroups.forEach { (showKey, groupItems) ->
+                        val visible = groupItems
+                            .filter { it.id != heroItem?.id }
+                            .sortedWith(compareBy({ it.season }, { it.episode }, { it.createdAt }))
+                        if (visible.isNotEmpty()) {
+                            item(key = "show_$showKey") {
+                                ShowDownloadGroup(
+                                    showKey = showKey,
+                                    items = visible,
+                                    manager = manager,
+                                    activeProgress = activeProgress,
+                                    onPlayFile = onPlayFile,
+                                    onDelete = { confirmDelete = it }
+                                )
+                            }
+                        }
+                    }
+
+                    if (singleActive.isNotEmpty() || (heroItem != null && singleCompleted.isNotEmpty())) {
                         item {
                             Text(
                                 // Sample E: with a hero up top, everything
@@ -271,8 +319,8 @@ fun DownloadsScreen(
                             )
                         }
                     }
-                    if (listActive.isNotEmpty()) {
-                        items(listActive, key = { it.id }) { item ->
+                    if (singleActive.isNotEmpty()) {
+                        items(singleActive, key = { it.id }) { item ->
                             val progress = activeProgress[item.id]
                             DownloadRow(
                                 item = item,
@@ -288,7 +336,7 @@ fun DownloadsScreen(
                         }
                     }
 
-                    if (completed.isNotEmpty()) {
+                    if (singleCompleted.isNotEmpty()) {
                         // With a hero, the combined header above already
                         // covers the finished rows (Sample E).
                         if (heroItem == null) {
@@ -302,73 +350,13 @@ fun DownloadsScreen(
                                 )
                             }
                         }
-                        items(completed, key = { it.id }) { item ->
-                            // v0.12.1: a completed row whose file was deleted
-                            // outside the app used to offer a Play button
-                            // that could only fail — say so plainly instead.
-                            val fileMissing = remember(item.id, item.filePath) { !File(item.filePath).exists() }
-                            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Movie,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            item.title,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = TextPrimary,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            when {
-                                                fileMissing -> "File missing — it may have been deleted outside the app"
-                                                manager.isDashDownloadUrl(item.url) -> "Manifest only — not a complete offline download"
-                                                else -> {
-                                                    // Sample E row sub (v0.12.4):
-                                                    // "1.4 GB · 1080p · Ready" —
-                                                    // quality only when the
-                                                    // title/file name carries
-                                                    // one; never guessed.
-                                                    val sizeText = manager.formatBytes(
-                                                        item.totalBytes.takeIf { it > 0 }
-                                                            ?: File(item.filePath).length()
-                                                    )
-                                                    val quality = DOWNLOAD_QUALITY_REGEX.find(item.title)?.value
-                                                        ?: DOWNLOAD_QUALITY_REGEX.find(item.fileName)?.value
-                                                    if (quality != null) "$sizeText · ${quality.lowercase()} · Ready"
-                                                    else "$sizeText · Ready"
-                                                }
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (fileMissing || manager.isDashDownloadUrl(item.url)) MaterialTheme.colorScheme.error else TextSecondary
-                                        )
-                                    }
-                                    if (!fileMissing && !manager.isDashDownloadUrl(item.url)) {
-                                        GlassIconButton(
-                                            image = Icons.Filled.PlayArrow,
-                                            contentDescription = "Play",
-                                            onClick = { onPlayFile(item.filePath, item.title) },
-                                            tint = TextPrimary
-                                        )
-                                    }
-                                    GlassIconButton(
-                                        image = Icons.Filled.Delete,
-                                        contentDescription = "Delete",
-                                        onClick = { confirmDelete = item },
-                                        tint = TextSecondary
-                                    )
-                                }
-                            }
+                        items(singleCompleted, key = { it.id }) { item ->
+                            CompletedDownloadRow(
+                                item = item,
+                                manager = manager,
+                                onPlayFile = onPlayFile,
+                                onDelete = { confirmDelete = it }
+                            )
                         }
                     }
                 }
@@ -644,6 +632,186 @@ private fun DownloadRow(
                     progress = { fraction },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+
+/** One finished download row (extracted from the inline LazyColumn body so show groups can reuse it). */
+@Composable
+private fun CompletedDownloadRow(
+    item: DownloadItem,
+    manager: DownloadManager,
+    onPlayFile: (filePath: String, title: String) -> Unit,
+    onDelete: (DownloadItem) -> Unit
+) {
+    // v0.12.1: a completed row whose file was deleted
+            // outside the app used to offer a Play button
+            // that could only fail — say so plainly instead.
+            val fileMissing = remember(item.id, item.filePath) { !File(item.filePath).exists() }
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Movie,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            item.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            when {
+                                fileMissing -> "File missing — it may have been deleted outside the app"
+                                manager.isDashDownloadUrl(item.url) -> "Manifest only — not a complete offline download"
+                                else -> {
+                                    // Sample E row sub (v0.12.4):
+                                    // "1.4 GB · 1080p · Ready" —
+                                    // quality only when the
+                                    // title/file name carries
+                                    // one; never guessed.
+                                    val sizeText = manager.formatBytes(
+                                        item.totalBytes.takeIf { it > 0 }
+                                            ?: File(item.filePath).length()
+                                    )
+                                    val quality = DOWNLOAD_QUALITY_REGEX.find(item.title)?.value
+                                        ?: DOWNLOAD_QUALITY_REGEX.find(item.fileName)?.value
+                                    if (quality != null) "$sizeText · ${quality.lowercase()} · Ready"
+                                    else "$sizeText · Ready"
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (fileMissing || manager.isDashDownloadUrl(item.url)) MaterialTheme.colorScheme.error else TextSecondary
+                        )
+                    }
+                    if (!fileMissing && !manager.isDashDownloadUrl(item.url)) {
+                        GlassIconButton(
+                            image = Icons.Filled.PlayArrow,
+                            contentDescription = "Play",
+                            onClick = { onPlayFile(item.filePath, item.title) },
+                            tint = TextPrimary
+                        )
+                    }
+                    GlassIconButton(
+                        image = Icons.Filled.Delete,
+                        contentDescription = "Delete",
+                        onClick = { onDelete(item) },
+                        tint = TextSecondary
+                    )
+                }
+            }
+        
+}
+
+/**
+ * Step 36: one collapsible header per show (Nuvio downloadsShowContent) —
+ * the series name, a summary line (Nuvio SummaryText), one pause/resume
+ * button for the whole show, and the episode rows when expanded.
+ */
+@Composable
+private fun ShowDownloadGroup(
+    showKey: String,
+    items: List<DownloadItem>,
+    manager: DownloadManager,
+    activeProgress: Map<String, DownloadManager.DownloadProgress>,
+    onPlayFile: (filePath: String, title: String) -> Unit,
+    onDelete: (DownloadItem) -> Unit
+) {
+    var expanded by rememberSaveable(showKey) { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val name = items.firstOrNull()?.seriesName?.takeIf { it.isNotBlank() } ?: showKey
+    val downloading = items.count { it.status == "DOWNLOADING" }
+    val queued = items.count { it.status == "QUEUED" }
+    val completed = items.count { it.status == "COMPLETED" }
+    val failed = items.count { it.status == "FAILED" }
+    val paused = items.count { it.status == "PAUSED" }
+    val hasActive = downloading + queued > 0
+    val summary = buildString {
+        append("${items.size} episode${if (items.size == 1) "" else "s"}")
+        if (downloading > 0) append(" · $downloading downloading")
+        if (queued > 0) append(" · $queued queued")
+        if (completed > 0) append(" · $completed done")
+        if (failed > 0) append(" · $failed failed")
+        if (paused > 0) append(" · $paused paused")
+    }
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = TextSecondary
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+                GlassIconButton(
+                    image = if (hasActive) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (hasActive) "Pause show" else "Resume show",
+                    onClick = {
+                        scope.launch {
+                            manager.toggleShowPause(showKey)
+                            if (!hasActive) DownloadServiceStarter.start(context)
+                        }
+                    },
+                    tint = TextPrimary
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items.forEach { item ->
+                        if (item.status == "COMPLETED") {
+                            CompletedDownloadRow(
+                                item = item,
+                                manager = manager,
+                                onPlayFile = onPlayFile,
+                                onDelete = onDelete
+                            )
+                        } else {
+                            val progress = activeProgress[item.id]
+                            DownloadRow(
+                                item = item,
+                                progress = progress,
+                                manager = manager,
+                                onPause = { manager.pauseDownload(item.id) },
+                                onResume = {
+                                    manager.resumeDownload(item.id)
+                                    DownloadServiceStarter.start(context)
+                                },
+                                onCancel = { manager.cancelDownload(item.id) }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
