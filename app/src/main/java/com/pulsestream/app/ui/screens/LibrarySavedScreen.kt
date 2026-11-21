@@ -73,11 +73,12 @@ fun LibrarySavedScreen(
     anilistWatchlist: List<MetaPreview> = emptyList(),
     wetrakrWatchlist: List<MetaPreview> = emptyList(),
     pmdbWatchlist: List<MetaPreview> = emptyList(),
+    mdblistWatchlist: List<MetaPreview> = emptyList(),
     watchedKeys: Set<String>,
     settings: SettingsStore,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
 ) {
-    val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist) {
+    val allItems = remember(myWatchlist, myLists, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist, wetrakrWatchlist, pmdbWatchlist, mdblistWatchlist) {
         buildList {
             myWatchlist.forEach { item ->
                 add(
@@ -148,6 +149,16 @@ fun LibrarySavedScreen(
                         poster = preview.poster, addonId = "",
                         sectionKey = "publicmetadb", sectionName = "PublicMetaDB",
                         addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 104
+                    )
+                )
+            }
+            mdblistWatchlist.forEach { preview ->
+                add(
+                    SavedLibraryItem(
+                        metaId = preview.id, type = preview.type, name = preview.name,
+                        poster = preview.poster, addonId = "",
+                        sectionKey = "mdblist", sectionName = "MDBList",
+                        addedAt = 0L, year = parseReleaseYear(preview.releaseInfo), sourceOrder = 105
                     )
                 )
             }

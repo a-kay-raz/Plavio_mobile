@@ -17,7 +17,8 @@ enum class TrackingLibrarySource(val stored: String, val label: String) {
     SIMKL("simkl", "Simkl"),
     ANILIST("anilist", "AniList"),
     WETRAKR("wetrakr", "WeTrakr"),
-    PUBLICMETADB("publicmetadb", "PublicMetaDB");
+    PUBLICMETADB("publicmetadb", "PublicMetaDB"),
+    MDBLIST("mdblist", "MDBList");
 
     companion object {
         fun fromStored(value: String?): TrackingLibrarySource =
@@ -32,7 +33,8 @@ enum class TrackingProgressSource(val stored: String, val label: String) {
     SIMKL("simkl", "Simkl"),
     ANILIST("anilist", "AniList"),
     WETRAKR("wetrakr", "WeTrakr"),
-    PUBLICMETADB("publicmetadb", "PublicMetaDB");
+    PUBLICMETADB("publicmetadb", "PublicMetaDB"),
+    MDBLIST("mdblist", "MDBList");
 
     companion object {
         fun fromStored(value: String?): TrackingProgressSource =
@@ -42,12 +44,13 @@ enum class TrackingProgressSource(val stored: String, val label: String) {
 
 /**
  * Simkl and PublicMetaDB have no ratings API in Plavio, so the ratings
- * picker is Trakt / AniList / WeTrakr only.
+ * picker is Trakt / AniList / WeTrakr / MDBList only.
  */
 enum class TrackingRatingsSource(val stored: String, val label: String) {
     TRAKT("trakt", "Trakt"),
     ANILIST("anilist", "AniList"),
-    WETRAKR("wetrakr", "WeTrakr");
+    WETRAKR("wetrakr", "WeTrakr"),
+    MDBLIST("mdblist", "MDBList");
 
     companion object {
         fun fromStored(value: String?): TrackingRatingsSource =
@@ -65,6 +68,8 @@ fun SettingsStore.isWetrakrLinked(): Boolean = !wetrakrAccessToken.isNullOrBlank
 
 fun SettingsStore.isPublicMetaDbLinked(): Boolean = !publicMetaDbApiKey.isNullOrBlank()
 
+fun SettingsStore.isMdblistLinked(): Boolean = !mdblistAccessToken.isNullOrBlank()
+
 /** Services feeding the Library for the current library-source setting. */
 fun SettingsStore.libraryProviders(): Set<String> {
     val linked = linkedProviders()
@@ -76,6 +81,7 @@ fun SettingsStore.libraryProviders(): Set<String> {
         TrackingLibrarySource.ANILIST -> if ("anilist" in linked) setOf("anilist") else linked
         TrackingLibrarySource.WETRAKR -> if ("wetrakr" in linked) setOf("wetrakr") else linked
         TrackingLibrarySource.PUBLICMETADB -> if ("publicmetadb" in linked) setOf("publicmetadb") else linked
+        TrackingLibrarySource.MDBLIST -> if ("mdblist" in linked) setOf("mdblist") else linked
     }
 }
 
@@ -90,6 +96,7 @@ fun SettingsStore.progressProviders(): Set<String> {
         TrackingProgressSource.ANILIST -> if ("anilist" in linked) setOf("anilist") else linked
         TrackingProgressSource.WETRAKR -> if ("wetrakr" in linked) setOf("wetrakr") else linked
         TrackingProgressSource.PUBLICMETADB -> if ("publicmetadb" in linked) setOf("publicmetadb") else linked
+        TrackingProgressSource.MDBLIST -> if ("mdblist" in linked) setOf("mdblist") else linked
     }
 }
 
@@ -99,6 +106,7 @@ fun SettingsStore.effectiveRatingsSource(): TrackingRatingsSource {
     return when (source) {
         TrackingRatingsSource.ANILIST -> if (isAnilistLinked()) source else TrackingRatingsSource.TRAKT
         TrackingRatingsSource.WETRAKR -> if (isWetrakrLinked()) source else TrackingRatingsSource.TRAKT
+        TrackingRatingsSource.MDBLIST -> if (isMdblistLinked()) source else TrackingRatingsSource.TRAKT
         TrackingRatingsSource.TRAKT -> source
     }
 }
@@ -109,4 +117,5 @@ private fun SettingsStore.linkedProviders(): Set<String> = buildSet {
     if (isAnilistLinked()) add("anilist")
     if (isWetrakrLinked()) add("wetrakr")
     if (isPublicMetaDbLinked()) add("publicmetadb")
+    if (isMdblistLinked()) add("mdblist")
 }

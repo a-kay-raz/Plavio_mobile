@@ -35,6 +35,7 @@ import com.pulsestream.app.data.tracking.TrackingProgressSource
 import com.pulsestream.app.data.tracking.TrackingRatingsSource
 import com.pulsestream.app.data.tracking.effectiveRatingsSource
 import com.pulsestream.app.data.tracking.isAnilistLinked
+import com.pulsestream.app.data.tracking.isMdblistLinked
 import com.pulsestream.app.data.tracking.isPublicMetaDbLinked
 import com.pulsestream.app.data.tracking.isSimklLinked
 import com.pulsestream.app.data.tracking.isWetrakrLinked
@@ -68,6 +69,7 @@ fun TrackingSettingsScreen(
     val anilistLinked = remember(tick) { settings.isAnilistLinked() }
     val wetrakrLinked = remember(tick) { settings.isWetrakrLinked() }
     val publicMetaDbLinked = remember(tick) { settings.isPublicMetaDbLinked() }
+    val mdblistLinked = remember(tick) { settings.isMdblistLinked() }
     val librarySource = remember(tick) {
         TrackingLibrarySource.fromStored(settings.trackingLibrarySource)
     }
@@ -114,7 +116,8 @@ fun TrackingSettingsScreen(
                             "Simkl — ${if (simklLinked) "linked" else "not linked"}\n" +
                             "AniList — ${if (anilistLinked) "linked" else "not linked"}\n" +
                             "WeTrakr — ${if (wetrakrLinked) "linked" else "not linked"}\n" +
-                            "PublicMetaDB — ${if (publicMetaDbLinked) "linked" else "not linked"}",
+                            "PublicMetaDB — ${if (publicMetaDbLinked) "linked" else "not linked"}\n" +
+                            "MDBList — ${if (mdblistLinked) "linked" else "not linked"}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
@@ -136,6 +139,7 @@ fun TrackingSettingsScreen(
                             TrackingLibrarySource.ANILIST -> linkedNote("anilist", anilistLinked, "all linked services")
                             TrackingLibrarySource.WETRAKR -> linkedNote("wetrakr", wetrakrLinked, "all linked services")
                             TrackingLibrarySource.PUBLICMETADB -> linkedNote("publicmetadb", publicMetaDbLinked, "all linked services")
+                            TrackingLibrarySource.MDBLIST -> linkedNote("mdblist", mdblistLinked, "all linked services")
                             else -> null
                         },
                         onClick = { libraryPickerOpen = true }
@@ -152,6 +156,7 @@ fun TrackingSettingsScreen(
                             TrackingProgressSource.ANILIST -> linkedNote("anilist", anilistLinked, "all linked services")
                             TrackingProgressSource.WETRAKR -> linkedNote("wetrakr", wetrakrLinked, "all linked services")
                             TrackingProgressSource.PUBLICMETADB -> linkedNote("publicmetadb", publicMetaDbLinked, "all linked services")
+                            TrackingProgressSource.MDBLIST -> linkedNote("mdblist", mdblistLinked, "all linked services")
                             else -> null
                         },
                         onClick = { progressPickerOpen = true }
@@ -167,6 +172,8 @@ fun TrackingSettingsScreen(
                                 if (!anilistLinked) "AniList isn't linked — showing Trakt ratings instead." else null
                             TrackingRatingsSource.WETRAKR ->
                                 if (!wetrakrLinked) "WeTrakr isn't linked — showing Trakt ratings instead." else null
+                            TrackingRatingsSource.MDBLIST ->
+                                if (!mdblistLinked) "MDBList isn't linked — showing Trakt ratings instead." else null
                             else -> null
                         },
                         onClick = { ratingsPickerOpen = true }

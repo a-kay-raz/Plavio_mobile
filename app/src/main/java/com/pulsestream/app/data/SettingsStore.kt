@@ -1156,6 +1156,31 @@ class SettingsStore(context: Context) {
         get() = getSecret(KEY_PUBLICMETADB_API_KEY)?.takeIf { it.isNotBlank() }
         set(value) = putSecret(KEY_PUBLICMETADB_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
 
+    // ---- MDBList (Step 54) ----
+
+    /** MDBList OAuth client id the user created (needed for device-code auth). */
+    var mdblistClientId: String?
+        get() = prefs.getString(KEY_MDBLIST_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value.isNullOrBlank()) prefs.edit().remove(KEY_MDBLIST_CLIENT_ID).apply()
+            else prefs.edit().putString(KEY_MDBLIST_CLIENT_ID, value.trim()).apply()
+        }
+
+    /** MDBList OAuth access token (null = not linked). Encrypted secret. */
+    var mdblistAccessToken: String?
+        get() = getSecret(KEY_MDBLIST_ACCESS_TOKEN)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_MDBLIST_ACCESS_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** MDBList OAuth refresh token. Encrypted secret. */
+    var mdblistRefreshToken: String?
+        get() = getSecret(KEY_MDBLIST_REFRESH_TOKEN)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_MDBLIST_REFRESH_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** Epoch ms when the MDBList access token expires (0 = unknown). */
+    var mdblistTokenExpiresAtMs: Long
+        get() = prefs.getLong(KEY_MDBLIST_TOKEN_EXPIRES_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_MDBLIST_TOKEN_EXPIRES_AT, value).apply()
+
     // ---- Unified tracking sources (Step 52, Nuvio tracking/TrackingSources) ----
 
     /**
@@ -1722,6 +1747,8 @@ class SettingsStore(context: Context) {
         wetrakrAccessToken?.takeIf { it.isNotBlank() }?.let { keys["wetrakr_access_token"] = it }
         wetrakrRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["wetrakr_refresh_token"] = it }
         publicMetaDbApiKey?.takeIf { it.isNotBlank() }?.let { keys["publicmetadb_api_key"] = it }
+        mdblistAccessToken?.takeIf { it.isNotBlank() }?.let { keys["mdblist_access_token"] = it }
+        mdblistRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["mdblist_refresh_token"] = it }
         return keys
     }
 
@@ -1742,6 +1769,8 @@ class SettingsStore(context: Context) {
         keys["wetrakr_access_token"]?.takeIf { it.isNotBlank() && wetrakrAccessToken.isNullOrBlank() }?.let { wetrakrAccessToken = it }
         keys["wetrakr_refresh_token"]?.takeIf { it.isNotBlank() && wetrakrRefreshToken.isNullOrBlank() }?.let { wetrakrRefreshToken = it }
         keys["publicmetadb_api_key"]?.takeIf { it.isNotBlank() && publicMetaDbApiKey.isNullOrBlank() }?.let { publicMetaDbApiKey = it }
+        keys["mdblist_access_token"]?.takeIf { it.isNotBlank() && mdblistAccessToken.isNullOrBlank() }?.let { mdblistAccessToken = it }
+        keys["mdblist_refresh_token"]?.takeIf { it.isNotBlank() && mdblistRefreshToken.isNullOrBlank() }?.let { mdblistRefreshToken = it }
     }
 
     /**
@@ -1787,6 +1816,7 @@ class SettingsStore(context: Context) {
             "anilist_access_token",
             "wetrakr_access_token", "wetrakr_refresh_token",
             "publicmetadb_api_key",
+            "mdblist_access_token", "mdblist_refresh_token",
             "tmdb_api_key", "omdb_api_key",
             "xtream_password", "stalker_password"
         )
@@ -1927,6 +1957,10 @@ class SettingsStore(context: Context) {
         private const val KEY_WETRAKR_TOKEN_EXPIRES_AT = "wetrakr_token_expires_at"
         private const val KEY_WETRAKR_USERNAME = "wetrakr_username"
         private const val KEY_PUBLICMETADB_API_KEY = "publicmetadb_api_key"
+        private const val KEY_MDBLIST_CLIENT_ID = "mdblist_client_id"
+        private const val KEY_MDBLIST_ACCESS_TOKEN = "mdblist_access_token"
+        private const val KEY_MDBLIST_REFRESH_TOKEN = "mdblist_refresh_token"
+        private const val KEY_MDBLIST_TOKEN_EXPIRES_AT = "mdblist_token_expires_at"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
         private const val KEY_TRACKING_RATINGS_SOURCE = "tracking_ratings_source"
