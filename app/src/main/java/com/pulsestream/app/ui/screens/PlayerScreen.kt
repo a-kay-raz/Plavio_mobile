@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
@@ -989,6 +990,18 @@ fun PlayerScreen(
     // Sources + episodes sheets
     var sourcesOpen by remember { mutableStateOf(false) }
     var episodesOpen by remember { mutableStateOf(false) }
+    // Step 41: shuffle sheet state + one no-repeat picker per request.
+    var shuffleOpen by remember { mutableStateOf(false) }
+    val shuffleWatchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
+    val playerShufflePicker = remember(currentRequest.metaId) {
+        com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
+    }
+    LaunchedEffect(currentRequest.episodes, shuffleWatchedKeys) {
+        playerShufflePicker.update(
+            currentRequest.episodes,
+            com.pulsestream.app.data.watchedEpisodeKeys(currentRequest.metaId, shuffleWatchedKeys),
+        )
+    }
     // Per-episode stream choice (Nuvio PlayerEpisodesPanel): the episode
     // whose streams are being browsed in its own sheet.
     var episodeStreamsVideo by remember { mutableStateOf<Video?>(null) }
@@ -5193,13 +5206,32 @@ fun PlayerScreen(
             ) {
                 Column(Modifier.tvSheetFocus()) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                    Text(
-                        "Episodes",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Episodes",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // Step 41: shuffle sheet for this series.
+                        IconButton(
+                            onClick = {
+                                episodesOpen = false
+                                shuffleOpen = true
+                            },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Shuffle,
+                                contentDescription = "Shuffle episodes",
+                                tint = if (settings.shuffleEpisodes) LocalPalette.current.accent else TextSecondary,
+                            )
+                        }
+                    }
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -5351,6 +5383,23 @@ fun PlayerScreen(
                     poster = video.thumbnail ?: currentRequest.poster
                 )
             }
+        }
+
+        // Shuffle sheet (Step 41): random episode for this series.
+        if (shuffleOpen && !currentRequest.isMovie) {
+            EpisodeShuffleSheet(
+                showName = currentRequest.seriesName ?: currentRequest.title,
+                picker = playerShufflePicker,
+                includeWatched = settings.shuffleIncludeWatched,
+                onIncludeWatchedChange = { settings.shuffleIncludeWatched = it },
+                shuffleFollowing = settings.shuffleEpisodes,
+                onShuffleFollowingChange = { settings.shuffleEpisodes = it },
+                onPlay = { video ->
+                    shuffleOpen = false
+                    playEpisode(video)
+                },
+                onDismiss = { shuffleOpen = false },
+            )
         }
     }
 }

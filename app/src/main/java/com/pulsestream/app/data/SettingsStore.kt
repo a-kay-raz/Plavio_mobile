@@ -553,6 +553,11 @@ class SettingsStore(context: Context) {
         get() = prefInt(KEY_FALLBACK_STARTUP_TIMEOUT_S, 15).coerceIn(5, 45)
         set(value) = prefs.edit().putInt(KEY_FALLBACK_STARTUP_TIMEOUT_S, value.coerceIn(5, 45)).apply()
 
+    /** Shuffle sheet: include watched episodes in the random pool (Step 41). */
+    var shuffleIncludeWatched: Boolean
+        get() = prefs.getBoolean(KEY_SHUFFLE_INCLUDE_WATCHED, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHUFFLE_INCLUDE_WATCHED, value).apply()
+
     /**
      * On-disk playback cache size in MB (0 = off). Caches progressive
      * media so re-watches don't re-download. HLS/DASH segments are cached
@@ -1438,6 +1443,7 @@ class SettingsStore(context: Context) {
         private const val KEY_DISK_CACHE_AUTO_SIZE = "disk_cache_auto_size"
         private const val KEY_FALLBACK_MAX_SOURCES = "fallback_max_sources"
         private const val KEY_FALLBACK_STARTUP_TIMEOUT_S = "fallback_startup_timeout_seconds"
+        private const val KEY_SHUFFLE_INCLUDE_WATCHED = "shuffle_include_watched"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"
