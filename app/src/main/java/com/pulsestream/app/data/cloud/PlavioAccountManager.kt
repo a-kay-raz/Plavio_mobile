@@ -21,8 +21,10 @@ import java.util.concurrent.TimeUnit
  * Drive sync carries — library, progress, addons, settings and API keys)
  * stored in a per-user row guarded by row-level security.
  *
- * Email codes are used ONLY for password reset (recover -> verify OTP ->
- * set new password). Google Drive stays available as a second door.
+ * Email codes are used for password reset (recover -> verify OTP ->
+ * set new password) and for passwordless sign-in (otp -> verify OTP ->
+ * session, no password typed on the phone). Google Drive stays
+ * available as a second door.
  *
  * The feature hides itself until the backend is configured at build
  * time (PLAVIO_SUPABASE_URL / PLAVIO_SUPABASE_ANON_KEY).
@@ -83,6 +85,31 @@ class PlavioAccountManager(
     suspend fun signIn(email: String, password: String): Result<Unit> = authCall {
         val body = JSONObject().put("email", email).put("password", password)
         val resp = post("/auth/v1/token?grant_type=password", body, accessToken = null)
+        if (resp.code !in 200..299) throw AuthException(errorMessage(resp.json, resp.code))
+        val json = resp.json ?: throw AuthException("Unexpected response from the account server.")
+        saveSession(json, email)
+    }
+
+    /**
+     * Passwordless sign-in, step 1: sends a 6-digit sign-in code to the
+     * email. This is the Nuvio device-link equivalent on Plavio's
+     * backend — no password is typed on the phone; the code is read
+     * from email on any device. (A true Nuvio-style device link — phone
+     * shows a code, another device approves it — needs server-side
+     * RPCs + an edge function + a link page on the Supabase project,
+     * which Plavio's project does not have; the email code is
+     * Supabase's native passwordless route and needs no backend work.)
+     */
+    suspend fun requestSignInCode(email: String): Result<Unit> = authCall {
+        val body = JSONObject().put("email", email).put("create_user", false)
+        val resp = post("/auth/v1/otp", body, accessToken = null)
+        if (resp.code !in 200..299) throw AuthException(errorMessage(resp.json, resp.code))
+    }
+
+    /** Passwordless sign-in, step 2: verifies the emailed code and signs in. Ends signed in. */
+    suspend fun verifySignInCode(email: String, code: String): Result<Unit> = authCall {
+        val body = JSONObject().put("email", email).put("token", code).put("type", "email")
+        val resp = post("/auth/v1/verify", body, accessToken = null)
         if (resp.code !in 200..299) throw AuthException(errorMessage(resp.json, resp.code))
         val json = resp.json ?: throw AuthException("Unexpected response from the account server.")
         saveSession(json, email)
