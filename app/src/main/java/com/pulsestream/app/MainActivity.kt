@@ -175,6 +175,7 @@ import com.pulsestream.app.ui.screens.WatchlistScreen
 import com.pulsestream.app.ui.screens.CollectionEditorScreen
 import com.pulsestream.app.ui.screens.CollectionFolderScreen
 import com.pulsestream.app.ui.screens.CollectionsScreen
+import com.pulsestream.app.ui.screens.TrackingSettingsScreen
 import com.pulsestream.app.ui.screens.ListsScreen
 import com.pulsestream.app.ui.screens.ListDetailScreen
 import com.pulsestream.app.ui.screens.BackupScreen
@@ -1458,7 +1459,14 @@ private fun PulseNavGraph(
                 onGoToAccount = { navController.navigate(Routes.ACCOUNT) },
                 onGoToIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
-                onGoToCollections = { navController.navigate(Routes.COLLECTIONS) }
+                onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
+                onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) }
+            )
+        }
+        composable(Routes.TRACKING_SETTINGS) {
+            TrackingSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
             )
         }
         composable(Routes.COLLECTIONS) {

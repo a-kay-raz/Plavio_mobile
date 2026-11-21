@@ -1093,6 +1093,50 @@ class SettingsStore(context: Context) {
             else prefs.edit().putString(KEY_TRAKT_USERNAME, value).apply()
         }
 
+    // ---- AniList (Step 52) ----
+
+    /** AniList OAuth access token (null = not linked). Encrypted secret. */
+    var anilistAccessToken: String?
+        get() = getSecret(KEY_ANILIST_TOKEN)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_ANILIST_TOKEN, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** AniList OAuth client id the user created (needed for the authorize link). */
+    var anilistClientId: String?
+        get() = prefs.getString(KEY_ANILIST_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value.isNullOrBlank()) prefs.edit().remove(KEY_ANILIST_CLIENT_ID).apply()
+            else prefs.edit().putString(KEY_ANILIST_CLIENT_ID, value.trim()).apply()
+        }
+
+    /** AniList display name for the linked account. */
+    var anilistViewerName: String?
+        get() = prefs.getString(KEY_ANILIST_VIEWER_NAME, null)
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_ANILIST_VIEWER_NAME).apply()
+            else prefs.edit().putString(KEY_ANILIST_VIEWER_NAME, value).apply()
+        }
+
+    // ---- Unified tracking sources (Step 52, Nuvio tracking/TrackingSources) ----
+
+    /**
+     * Which services feed the Library (watchlists + lists): "all" (every
+     * linked service, the pre-Step-52 behaviour), "local", "trakt",
+     * "simkl" or "anilist".
+     */
+    var trackingLibrarySource: String
+        get() = prefs.getString(KEY_TRACKING_LIBRARY_SOURCE, "all") ?: "all"
+        set(value) = prefs.edit().putString(KEY_TRACKING_LIBRARY_SOURCE, value).apply()
+
+    /** Which service feeds Up Next progress: same values as [trackingLibrarySource]. */
+    var trackingProgressSource: String
+        get() = prefs.getString(KEY_TRACKING_PROGRESS_SOURCE, "all") ?: "all"
+        set(value) = prefs.edit().putString(KEY_TRACKING_PROGRESS_SOURCE, value).apply()
+
+    /** Which service provides the community rating in the ratings sheet: "trakt" or "anilist". */
+    var trackingRatingsSource: String
+        get() = prefs.getString(KEY_TRACKING_RATINGS_SOURCE, "trakt") ?: "trakt"
+        set(value) = prefs.edit().putString(KEY_TRACKING_RATINGS_SOURCE, value).apply()
+
     // ---- Trakt/Simkl library sync ----
 
     /**
@@ -1634,6 +1678,7 @@ class SettingsStore(context: Context) {
         traktAccessToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_access_token"] = it }
         traktRefreshToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_refresh_token"] = it }
         simklToken?.takeIf { it.isNotBlank() }?.let { keys["simkl_token"] = it }
+        anilistAccessToken?.takeIf { it.isNotBlank() }?.let { keys["anilist_access_token"] = it }
         return keys
     }
 
@@ -1650,6 +1695,7 @@ class SettingsStore(context: Context) {
         keys["trakt_access_token"]?.takeIf { it.isNotBlank() && traktAccessToken.isNullOrBlank() }?.let { traktAccessToken = it }
         keys["trakt_refresh_token"]?.takeIf { it.isNotBlank() && traktRefreshToken.isNullOrBlank() }?.let { traktRefreshToken = it }
         keys["simkl_token"]?.takeIf { it.isNotBlank() && simklToken.isNullOrBlank() }?.let { simklToken = it }
+        keys["anilist_access_token"]?.takeIf { it.isNotBlank() && anilistAccessToken.isNullOrBlank() }?.let { anilistAccessToken = it }
     }
 
     /**
@@ -1692,6 +1738,7 @@ class SettingsStore(context: Context) {
         private val SECRET_KEYS = setOf(
             "simkl_token", "torbox_api_key", "realdebrid_api_key", "premiumize_api_key",
             "trakt_access_token", "trakt_refresh_token",
+            "anilist_access_token",
             "tmdb_api_key", "omdb_api_key",
             "xtream_password", "stalker_password"
         )
@@ -1823,6 +1870,12 @@ class SettingsStore(context: Context) {
         private const val KEY_TRAKT_REFRESH = "trakt_refresh_token"
         private const val KEY_TRAKT_EXPIRY = "trakt_token_expiry"
         private const val KEY_TRAKT_USERNAME = "trakt_username"
+        private const val KEY_ANILIST_TOKEN = "anilist_access_token"
+        private const val KEY_ANILIST_CLIENT_ID = "anilist_client_id"
+        private const val KEY_ANILIST_VIEWER_NAME = "anilist_viewer_name"
+        private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
+        private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
+        private const val KEY_TRACKING_RATINGS_SOURCE = "tracking_ratings_source"
         private const val KEY_TORBOX_API_KEY = "torbox_api_key"
         private const val KEY_REALDEBRID_API_KEY = "realdebrid_api_key"
         private const val KEY_PREMIUMIZE_API_KEY = "premiumize_api_key"

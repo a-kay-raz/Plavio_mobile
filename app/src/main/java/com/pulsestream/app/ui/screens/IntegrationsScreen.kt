@@ -428,6 +428,10 @@ fun IntegrationsScreen(
                 TraktSimklSection(settings = settings)
             }
 
+            item(key = "anilist") {
+                AniListSection(settings = settings)
+            }
+
             item(key = "library_sync") {
                 LibrarySyncRow(repository = repository)
             }

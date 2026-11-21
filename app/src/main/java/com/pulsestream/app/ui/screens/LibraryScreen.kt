@@ -53,7 +53,10 @@ import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.db.DownloadItem
 import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.data.db.CustomList
+import com.pulsestream.app.data.anilist.AniListApi
 import com.pulsestream.app.data.simkl.SimklApi
+import com.pulsestream.app.data.tracking.libraryProviders
+import com.pulsestream.app.data.tracking.progressProviders
 import com.pulsestream.app.data.trakt.TraktApi
 import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.ui.components.GlassCard
@@ -105,11 +108,17 @@ fun LibraryScreen(
     val palette = LocalPalette.current
     val traktLinked = !settings.traktAccessToken.isNullOrBlank()
     val simklLinked = !settings.simklToken.isNullOrBlank()
+    // Step 52: AniList links in like Trakt/Simkl; the tracking-source
+    // pickers gate which of the three feed the Library / Up Next.
+    val anilistLinked = !settings.anilistAccessToken.isNullOrBlank()
+    val librarySource = settings.trackingLibrarySource
+    val progressSource = settings.trackingProgressSource
 
-    var loading by remember { mutableStateOf(traktLinked || simklLinked) }
+    var loading by remember { mutableStateOf(traktLinked || simklLinked || anilistLinked) }
     var upNext by remember { mutableStateOf<List<UpNextCard>>(emptyList()) }
     var traktWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var simklWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
+    var anilistWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     /** Personal Trakt lists (Step 33): (list, first 20 posters). */
     var traktLists by remember {
         mutableStateOf<List<Pair<TraktApi.TraktList, List<MetaPreview>>>>(emptyList())
@@ -133,18 +142,38 @@ fun LibraryScreen(
         settings.librarySyncedKeys.map { it.substringAfter('|') }.toSet()
     }
 
-    LaunchedEffect(traktLinked, simklLinked) {
-        if (!traktLinked && !simklLinked) {
+    LaunchedEffect(traktLinked, simklLinked, anilistLinked, librarySource, progressSource) {
+        if (!traktLinked && !simklLinked && !anilistLinked) {
+            loading = false
+            return@LaunchedEffect
+        }
+        // Step 52: only the picked sources load — "all" keeps the old
+        // merged behaviour; an unlinked pick falls back to all linked.
+        val libraryProviders = settings.libraryProviders()
+        val progressProviders = settings.progressProviders()
+        if (libraryProviders.isEmpty() && progressProviders.isEmpty()) {
+            traktWatchlist = emptyList()
+            simklWatchlist = emptyList()
+            anilistWatchlist = emptyList()
+            upNext = emptyList()
             loading = false
             return@LaunchedEffect
         }
         loading = true
+        // Reset first: a source change that excludes a service must not
+        // leave its previous titles on screen.
+        traktWatchlist = emptyList()
+        simklWatchlist = emptyList()
+        anilistWatchlist = emptyList()
+        traktLists = emptyList()
+        upNext = emptyList()
         val traktApi = TraktApi()
         val simklApi = SimklApi()
         val traktToken = if (traktLinked) {
             runCatching { TraktManager(settings).validAccessToken() }.getOrNull()
         } else null
         val simklToken = settings.simklToken?.takeIf { it.isNotBlank() }
+        val anilistToken = settings.anilistAccessToken?.takeIf { it.isNotBlank() }
 
         // Posters/stills by IMDb id, fetched a few at a time.
         suspend fun metaFor(type: String, imdb: String) =
@@ -167,7 +196,7 @@ fun LibraryScreen(
             }
 
         val cards = mutableListOf<UpNextCard>()
-        if (traktToken != null) {
+        if (traktToken != null && "trakt" in libraryProviders) {
             runCatching { traktApi.getWatchlist(traktToken) }.getOrNull()?.let { entries ->
                 traktWatchlist = previews(entries.take(20).map { it.type to (it.imdbId to it.title) })
             }
@@ -185,6 +214,8 @@ fun LibraryScreen(
                     }.awaitAll().filter { (_, items) -> items.isNotEmpty() }
                 }
             }
+        }
+        if (traktToken != null && "trakt" in progressProviders) {
             runCatching { traktApi.getUpNext(traktToken) }.getOrNull()?.forEach { e ->
                 val meta = metaFor("series", e.imdbId)
                 val still = meta?.videos?.firstOrNull {
@@ -206,10 +237,12 @@ fun LibraryScreen(
                 )
             }
         }
-        if (simklToken != null) {
+        if (simklToken != null && "simkl" in libraryProviders) {
             runCatching { simklApi.getPlanToWatch(simklToken) }.getOrNull()?.let { entries ->
                 simklWatchlist = previews(entries.take(20).map { it.type to (it.imdbId to it.title) })
             }
+        }
+        if (simklToken != null && "simkl" in progressProviders) {
             val traktIds = cards.map { it.imdbId }.toSet()
             runCatching { simklApi.getWatching(simklToken) }.getOrNull()
                 ?.filter { it.imdbId !in traktIds }
@@ -235,6 +268,52 @@ fun LibraryScreen(
                         lastWatchedMs = lastMs
                     )
                 }
+        }
+        // Step 52: AniList — list entries map to IMDb ids via ARM, then to
+        // posters like the other services. Only CURRENT entries feed Up Next.
+        if (anilistToken != null && ("anilist" in libraryProviders || "anilist" in progressProviders)) {
+            val entries = runCatching { AniListApi.getWatchlist(anilistToken) }.getOrNull().orEmpty()
+            // Resolve IMDb ids in parallel (ARM), keeping the entry order.
+            val withImdb = coroutineScope {
+                entries.map { entry ->
+                    async {
+                        val imdb = runCatching { AniListApi.imdbForAnilist(entry.mediaId) }.getOrNull()
+                        entry to imdb
+                    }
+                }.awaitAll()
+            }.filter { (_, imdb) -> imdb != null }
+            if ("anilist" in libraryProviders) {
+                anilistWatchlist = previews(
+                    withImdb.take(20).map { (entry, imdb) -> "series" to (imdb!! to entry.title) }
+                )
+            }
+            if ("anilist" in progressProviders) {
+                val knownIds = cards.map { it.imdbId }.toSet()
+                withImdb
+                    .filter { (entry, imdb) ->
+                        entry.status == "CURRENT" && imdb != null && imdb !in knownIds
+                    }
+                    .forEach { (entry, imdb) ->
+                        val meta = metaFor("series", imdb!!)
+                        val nextEpisode = entry.progress + 1
+                        val counts = if (entry.episodes != null) {
+                            "Watched ${entry.progress} of ${entry.episodes} episodes · on AniList"
+                        } else "Watched ${entry.progress} episodes · on AniList"
+                        cards += UpNextCard(
+                            imdbId = imdb,
+                            showTitle = meta?.name ?: entry.title,
+                            service = "AniList",
+                            nextLabel = "Episode $nextEpisode",
+                            metaLine = counts,
+                            progress = if (entry.episodes != null && entry.episodes > 0) {
+                                entry.progress.toFloat() / entry.episodes.toFloat()
+                            } else null,
+                            poster = meta?.poster ?: entry.poster,
+                            still = null,
+                            lastWatchedMs = entry.updatedAtMs
+                        )
+                    }
+            }
         }
         upNext = cards.sortedByDescending { it.lastWatchedMs }.take(10)
         loading = false
@@ -302,6 +381,7 @@ fun LibraryScreen(
                     allListItems = allListItems,
                     traktWatchlist = traktWatchlist,
                     simklWatchlist = simklWatchlist,
+                    anilistWatchlist = anilistWatchlist,
                     watchedKeys = watchedKeys,
                     settings = settings,
                     onOpenDetail = onOpenDetail
@@ -336,6 +416,7 @@ fun LibraryScreen(
                     allListItems = allListItems,
                     traktWatchlist = traktWatchlist,
                     simklWatchlist = simklWatchlist,
+                    anilistWatchlist = anilistWatchlist,
                     onOpenDetail = onOpenDetail
                 )
             }
@@ -353,7 +434,7 @@ fun LibraryScreen(
             }
         }
 
-        if (loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty()) {
+        if (loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() && anilistWatchlist.isEmpty()) {
             item(key = "lib_loading") {
                 Box(
                     Modifier.fillMaxWidth().padding(vertical = 36.dp),
@@ -388,6 +469,11 @@ fun LibraryScreen(
         if (simklWatchlist.isNotEmpty()) {
             item(key = "simkl_wl") {
                 FeedRow("Watchlist", "SIMKL", Color(0xFFFFB35C), simklWatchlist, onOpenDetail)
+            }
+        }
+        if (anilistWatchlist.isNotEmpty()) {
+            item(key = "anilist_wl") {
+                FeedRow("Watchlist", "ANILIST", Color(0xFF02A9FF), anilistWatchlist, onOpenDetail)
             }
         }
 
@@ -506,7 +592,7 @@ fun LibraryScreen(
         }
 
         if (!loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() &&
-            traktLists.isEmpty() &&
+            anilistWatchlist.isEmpty() && traktLists.isEmpty() &&
             myWatchlist.isEmpty() && myLists.isEmpty()
         ) {
             item(key = "lib_empty") {
@@ -555,18 +641,20 @@ private fun LibraryCalendarTab(
     allListItems: List<com.pulsestream.app.data.db.CustomListItem>,
     traktWatchlist: List<MetaPreview>,
     simklWatchlist: List<MetaPreview>,
+    anilistWatchlist: List<MetaPreview> = emptyList(),
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
 ) {
     val palette = LocalPalette.current
     var days by remember { mutableStateOf<List<com.pulsestream.app.data.ReleaseDay>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var refreshTick by remember { mutableStateOf(0) }
-    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist) {
+    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist, anilistWatchlist) {
         (
             myWatchlist.filter { it.type == "series" }.map { it.metaId } +
                 allListItems.filter { it.type == "series" }.map { it.metaId } +
                 traktWatchlist.filter { it.type == "series" }.map { it.id } +
-                simklWatchlist.filter { it.type == "series" }.map { it.id }
+                simklWatchlist.filter { it.type == "series" }.map { it.id } +
+                anilistWatchlist.filter { it.type == "series" }.map { it.id }
             ).distinct()
     }
     LaunchedEffect(refreshTick) {
