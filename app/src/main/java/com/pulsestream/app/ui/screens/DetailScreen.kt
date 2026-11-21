@@ -61,6 +61,8 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -124,6 +126,9 @@ import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.data.MetaDetail
 import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.BrowsingPrivacy
+import com.pulsestream.app.data.OmdbClient
+import com.pulsestream.app.data.OmdbRating
+import com.pulsestream.app.data.UserRatings
 import com.pulsestream.app.data.TrailerResolver
 import com.pulsestream.app.data.RelatedSection
 import com.pulsestream.app.data.StreamItem
@@ -686,6 +691,25 @@ private fun DetailContent(
     var playFocusLanded by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val browsingPrivacy = remember(context) { BrowsingPrivacy(context) }
+    // Ratings (Nuvio D5/M4): provider scores + your local star rating.
+    val userRatings = remember(context) { UserRatings(context) }
+    var userStars by remember(meta.id) { mutableStateOf(userRatings.getRating(meta.id)) }
+    var ratingsSheetOpen by remember { mutableStateOf(false) }
+    var omdbRatings by remember { mutableStateOf<List<OmdbRating>?>(null) }
+    LaunchedEffect(meta.id) {
+        omdbRatings = null
+        val key = settings.omdbApiKey
+        val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
+        if (!key.isNullOrBlank() && imdbId != null) {
+            omdbRatings = OmdbClient.fetchRatings(key, imdbId)
+        }
+    }
+    // Provider scores: OMDb's matrix when loaded, else the meta's IMDb value.
+    val providerRatings = remember(meta.imdbRating, omdbRatings) {
+        if (!omdbRatings.isNullOrEmpty()) omdbRatings!!
+        else meta.imdbRating?.takeIf { it.isNotBlank() }
+            ?.let { listOf(OmdbRating("Internet Movie Database", it)) } ?: emptyList()
+    }
     var hideEpisodeDetails by remember { mutableStateOf(browsingPrivacy.hideUnrevealedEpisodes()) }
     var blurUnwatched by remember { mutableStateOf(browsingPrivacy.blurUnwatchedEpisodes()) }
     val episodeShowKey = "$addonId|${meta.type}|${meta.id}"
@@ -848,6 +872,14 @@ private fun DetailContent(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        // Ratings row (Nuvio DetailRatingsRow): provider scores +
+                        // your stars; tap opens the breakdown + Rate sheet.
+                        Spacer(Modifier.height(6.dp))
+                        DetailRatingsRow(
+                            ratings = providerRatings,
+                            userStars = userStars,
+                            onClick = { ratingsSheetOpen = true }
+                        )
                     }
                 }
             }
@@ -1595,6 +1627,23 @@ private fun DetailContent(
         )
     }
 
+    // Ratings sheet (Nuvio DetailRatingsSheet + UserRatingSheet): provider
+    // breakdown + your local star rating.
+    if (ratingsSheetOpen) {
+        RatingsSheet(
+            title = meta.name,
+            ratings = providerRatings,
+            userStars = userStars,
+            omdbLoaded = omdbRatings != null,
+            onRate = { stars ->
+                if (stars == null) userRatings.clearRating(meta.id)
+                else userRatings.setRating(meta.id, stars)
+                userStars = stars
+            },
+            onDismiss = { ratingsSheetOpen = false }
+        )
+    }
+
     // "Add to list" bottom sheet
     if (showAddToList) {
         AddToListSheet(
@@ -2023,6 +2072,149 @@ private data class PlaybackIds(
  * "tt1234567:1:2". Everything downstream (IntroDB, subtitle search) wants
  * the bare IMDb id plus season/episode.
  */
+/**
+ * Ratings row (Nuvio `DetailRatingsRow`): IMDb / Rotten Tomatoes /
+ * Metacritic scores in one line, plus your stars when rated. Always
+ * rendered — with no scores it reads "Rate this title" so the Rate
+ * action stays reachable.
+ */
+@Composable
+private fun DetailRatingsRow(
+    ratings: List<OmdbRating>,
+    userStars: Int?,
+    onClick: () -> Unit
+) {
+    val shortLabel = mapOf(
+        "Internet Movie Database" to "IMDb",
+        "Rotten Tomatoes" to "RT",
+        "Metacritic" to "Metacritic"
+    )
+    val parts = ratings.mapNotNull { rating ->
+        shortLabel[rating.source]?.let { label -> "$label ${rating.value}" }
+    }.toMutableList()
+    if (userStars != null) {
+        parts += "You ${"★".repeat(userStars)}${"☆".repeat(5 - userStars)}"
+    }
+    val text = if (parts.isNotEmpty()) parts.joinToString("  •  ") else "★ Rate this title"
+    Text(
+        text = com.pulsestream.app.ui.components.accentStarText(text, LocalPalette.current.accent),
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color(0xFFC7D2DE),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.clickable(onClick = onClick)
+    )
+}
+
+/**
+ * Ratings bottom sheet (Nuvio `DetailRatingsSheet` + `UserRatingSheet`):
+ * per-source scores, then your local 1–5 star rating — tap a star to
+ * set it, tap the same star again (or Clear) to remove it. The rating
+ * persists locally and shows on the row on revisit.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RatingsSheet(
+    title: String,
+    ratings: List<OmdbRating>,
+    userStars: Int?,
+    omdbLoaded: Boolean,
+    onRate: (Int?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        dragHandle = null,
+        containerColor = Color(0xFF14141F)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+        ) {
+            Text(
+                "Ratings",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            if (ratings.isEmpty()) {
+                Text(
+                    "No provider scores for this title yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            } else {
+                ratings.forEach { rating ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            rating.source,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            rating.value,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+            if (!omdbLoaded) {
+                Text(
+                    "Add an OMDb key in Settings > Integrations for Rotten Tomatoes and Metacritic scores.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Your rating",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Row(
+                Modifier.padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                (1..5).forEach { star ->
+                    val filled = userStars != null && star <= userStars
+                    IconButton(
+                        onClick = { onRate(if (userStars == star) null else star) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            if (filled) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = "Rate $star star${if (star > 1) "s" else ""}",
+                            tint = if (filled) Color(0xFFFFC107) else TextSecondary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+            }
+            if (userStars != null) {
+                TextButton(onClick = { onRate(null) }) {
+                    Text("Clear rating", color = TextSecondary)
+                }
+            }
+        }
+    }
+}
+
 private fun resolvePlaybackIds(meta: MetaDetail, video: Video?): PlaybackIds {
     val vid = video?.id ?: meta.id
     return PlaybackIds(
