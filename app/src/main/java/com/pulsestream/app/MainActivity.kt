@@ -152,6 +152,7 @@ import com.pulsestream.app.ui.screens.ContinueWatchingSettingsScreen
 import com.pulsestream.app.ui.screens.DetailScreen
 import com.pulsestream.app.ui.screens.FeedbackScreen
 import com.pulsestream.app.ui.screens.DownloadsScreen
+import com.pulsestream.app.ui.screens.DownloadsSettingsScreen
 import com.pulsestream.app.ui.screens.LibraryScreen
 import com.pulsestream.app.ui.screens.HomeCatalogsScreen
 import com.pulsestream.app.ui.screens.PlaybackSettingsScreen
@@ -1482,7 +1483,14 @@ private fun PulseNavGraph(
         composable(Routes.DOWNLOADS) {
             DownloadsScreen(
                 onBack = { navController.popBackStack() },
-                onPlayFile = playDownloadedFile
+                onPlayFile = playDownloadedFile,
+                onGoToDownloadSettings = { navController.navigate(Routes.DOWNLOADS_SETTINGS) }
+            )
+        }
+        composable(Routes.DOWNLOADS_SETTINGS) {
+            DownloadsSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
             )
         }
         composable(Routes.LICENSES) {

@@ -550,6 +550,11 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_CW_VISIBLE, true)
         set(value) = prefs.edit().putBoolean(KEY_CW_VISIBLE, value).apply()
 
+    /** Download button on stream rows (Step 35 — Downloads settings). */
+    var showDownloadButton: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_DOWNLOAD_BUTTON, true)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_DOWNLOAD_BUTTON, value).apply()
+
     /** Continue Watching card style (Nuvio ContinueWatchingSectionStyle): "card" | "wide" | "poster". */
     var continueWatchingStyle: String
         get() = prefs.getString(KEY_CW_STYLE, "card") ?: "card"
@@ -1297,6 +1302,7 @@ class SettingsStore(context: Context) {
         private const val KEY_HERO_TRAILER_START_DELAY_SECONDS = "hero_trailer_start_delay_seconds"
         private const val KEY_HERO_TRAILER_START_UNMUTED = "hero_trailer_start_unmuted"
         private const val KEY_CW_VISIBLE = "continue_watching_visible"
+        private const val KEY_SHOW_DOWNLOAD_BUTTON = "show_download_button"
         private const val KEY_CW_STYLE = "continue_watching_style"
         private const val KEY_CW_SORT_MODE = "continue_watching_sort_mode"
         private const val KEY_CW_CLICK_ACTION = "continue_watching_click_action"

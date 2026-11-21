@@ -101,6 +101,22 @@ data class HlsQualityState(
 
 const val HLS_QUALITY_AUTO_ID = "auto"
 
+/**
+ * Step 35: pick the download variant for a preferred resolution — the
+ * tallest variant at or below [preferredHeight]p, else the smallest
+ * variant above it (never higher than necessary). Variants without a
+ * height sort by their name's digits (see [HlsQualityVariant.sortHeight]).
+ */
+fun pickClosestVariant(
+    variants: List<HlsQualityVariant>,
+    preferredHeight: Int
+): HlsQualityVariant? {
+    if (variants.isEmpty()) return null
+    val sorted = variants.sortedBy { it.sortHeight }
+    return sorted.lastOrNull { it.sortHeight <= preferredHeight }
+        ?: sorted.firstOrNull()
+}
+
 object HlsQualityResolver {
     private const val TAG = "HlsQuality"
     private const val TEMP_PLAYLIST_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000

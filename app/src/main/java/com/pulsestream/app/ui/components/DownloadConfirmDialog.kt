@@ -7,9 +7,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.pulsestream.app.data.HlsQualityResolver
+import com.pulsestream.app.data.HlsQualityVariant
 import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.data.download.DownloadService
+import com.pulsestream.app.data.pickClosestVariant
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -35,11 +38,32 @@ fun DownloadConfirmDialog(
     var requestError by remember { mutableStateOf<String?>(null) }
     val dashUnsupported = manager.isDashDownloadUrl(stream.url)
     val isHls = manager.isHlsDownloadUrl(stream.url)
+    // Step 35: preferred resolution (Nuvio DownloadPreferredResolution).
+    // HLS only — a single-file stream has one quality and nothing to pick.
+    var resolution by remember { mutableStateOf(manager.getDownloadPreferredResolution()) }
+    var variants by remember { mutableStateOf<List<HlsQualityVariant>?>(null) }
+    var variantsLoading by remember { mutableStateOf(false) }
+    val chosenVariant = variants?.let { pickClosestVariant(it, resolution) }
+    // The download URL: the chosen variant's own playlist for HLS (its
+    // absoluteUri, NOT the player's sanitized temp file), else the stream URL.
+    val downloadUrl = chosenVariant?.absoluteUri ?: stream.url
 
     LaunchedEffect(stream.url) {
         alreadyDownloaded = manager.getByUrl(stream.url)?.status == "COMPLETED"
         if (!dashUnsupported && !isHls) sizeBytes = manager.probeSize(stream.url, stream.headers)
         probing = false
+    }
+
+    // Step 35: resolve the HLS master once so the resolution row can offer
+    // the real variants. A failed resolve keeps today's behaviour (master URL).
+    LaunchedEffect(stream.url, isHls) {
+        if (!isHls || dashUnsupported) return@LaunchedEffect
+        variantsLoading = true
+        val state = runCatching {
+            HlsQualityResolver.resolve(context, stream.url, stream.headers)
+        }.getOrNull()
+        variants = state?.variants?.takeIf { it.size > 1 }
+        variantsLoading = false
     }
 
     val enoughStorage = manager.storagePreflight(sizeBytes)
@@ -118,6 +142,47 @@ fun DownloadConfirmDialog(
                         }
                     }
                 }
+                // Step 35: resolution choice for HLS (variants resolved above).
+                // Single-file streams have one quality — no row for them.
+                if (isHls && !dashUnsupported && !alreadyDownloaded) {
+                    Spacer(Modifier.height(12.dp))
+                    if (variantsLoading) {
+                        Text(
+                            "Checking available qualities…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    } else if (variants != null) {
+                        Text(
+                            "Quality",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DownloadManager.RESOLUTION_OPTIONS.forEach { height ->
+                                val selected = resolution == height
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { resolution = height },
+                                    label = { Text("${height}p") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                )
+                            }
+                        }
+                        chosenVariant?.let { variant ->
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Downloads at ${variant.displayLabel}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
                 requestError?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -130,7 +195,10 @@ fun DownloadConfirmDialog(
                     if (!alreadyDownloaded) {
                         scope.launch(kotlinx.coroutines.NonCancellable) {
                             try {
-                                manager.startDownload(url = stream.url, title = displayTitle, headers = stream.headers)
+                                // Step 35: persist the chosen resolution and
+                                // download the chosen variant's playlist.
+                                manager.setDownloadPreferredResolution(resolution)
+                                manager.startDownload(url = downloadUrl, title = displayTitle, headers = stream.headers)
                                 DownloadService.start(context)
                                 onStarted()
                                 onDismiss()

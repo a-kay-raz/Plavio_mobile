@@ -72,6 +72,10 @@ class DownloadManager private constructor(private val appContext: Context) {
         private const val MAX_CONCURRENT_DOWNLOADS = 3
         private const val PREFS = "download_policy"
         private const val KEY_WIFI_ONLY = "wifi_only"
+        private const val KEY_PREFERRED_RESOLUTION = "download_preferred_resolution"
+        private const val KEY_CONCURRENCY_LIMIT = "download_concurrency_limit"
+        /** Resolutions the confirm dialog offers for HLS streams (Nuvio DownloadPreferredResolution). */
+        val RESOLUTION_OPTIONS = intArrayOf(720, 1080, 2160)
 
         @Volatile private var instance: DownloadManager? = null
         fun get(context: Context): DownloadManager = instance ?: synchronized(this) {
@@ -98,7 +102,12 @@ class DownloadManager private constructor(private val appContext: Context) {
         .connectionPool(okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
         .build()
     private val jobs = mutableMapOf<String, Job>()
-    private val downloadPermits = Semaphore(MAX_CONCURRENT_DOWNLOADS)
+    // Step 35: the permit pool follows the user-set concurrency limit — a
+    // new Semaphore is built when the limit changes; jobs already running
+    // keep holding the old pool's permits until they finish.
+    // Stored limit (default 3) — `prefs` is lazy and declared above, so the
+    // initializer reads the saved value on first construction.
+    @Volatile private var downloadPermits = Semaphore(getDownloadConcurrencyLimit())
     private val recoveryLock = Any()
     @Volatile private var recoveryRunning = false
 
@@ -146,6 +155,28 @@ class DownloadManager private constructor(private val appContext: Context) {
     suspend fun getByUrl(url: String): DownloadItem? = dao.getByUrl(url)
     fun isWifiOnlyDownloads(): Boolean = prefs.getBoolean(KEY_WIFI_ONLY, false)
     fun setWifiOnlyDownloads(enabled: Boolean) { prefs.edit().putBoolean(KEY_WIFI_ONLY, enabled).apply() }
+
+    /** Preferred download resolution in p (720/1080/2160, default 1080 — Nuvio DownloadPreferredResolution). */
+    fun getDownloadPreferredResolution(): Int =
+        prefs.getInt(KEY_PREFERRED_RESOLUTION, 1080).let { if (it in RESOLUTION_OPTIONS) it else 1080 }
+    fun setDownloadPreferredResolution(height: Int) {
+        prefs.edit().putInt(KEY_PREFERRED_RESOLUTION, if (height in RESOLUTION_OPTIONS) height else 1080).apply()
+    }
+
+    /** Max simultaneous downloads, 1–5, default 3 (Nuvio DownloadConcurrencyLimit.TotalDownloads). */
+    fun getDownloadConcurrencyLimit(): Int =
+        prefs.getInt(KEY_CONCURRENCY_LIMIT, MAX_CONCURRENT_DOWNLOADS).coerceIn(1, 5)
+    fun setDownloadConcurrencyLimit(limit: Int) {
+        val clamped = limit.coerceIn(1, 5)
+        prefs.edit().putInt(KEY_CONCURRENCY_LIMIT, clamped).apply()
+        downloadPermits = Semaphore(clamped)
+    }
+
+    /** Total device storage bytes (StatFs on the downloads dir) — storage bar. */
+    fun storageTotalBytes(): Long = runCatching { StatFs(downloadsDir().absolutePath).totalBytes }.getOrDefault(0L)
+
+    /** Free device storage bytes — storage bar. */
+    fun storageFreeBytes(): Long = availableBytes()
     fun storagePreflight(sizeBytes: Long?): Boolean =
         sizeBytes == null || sizeBytes <= 0 || DownloadProtocol.fitsWithReserve(
             availableBytes(), sizeBytes, STORAGE_RESERVE_BYTES
