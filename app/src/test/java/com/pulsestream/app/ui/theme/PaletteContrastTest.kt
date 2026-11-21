@@ -8,7 +8,11 @@ import org.junit.Test
 class PaletteContrastTest {
     @Test
     fun defaultPaletteKeepsTextReadableOnCanvasPanelsAndGlass() {
-        val palette = paletteFor(AccentTheme.PULSE, amoled = false)
+        // WHITE is the default accent (PULSE was replaced by WEAVE in
+        // 2026-10-26 and no longer exists). Text colors come from the
+        // palette itself — TextPrimary/TextSecondary are @Composable
+        // getters and cannot be read from a plain @Test.
+        val palette = paletteFor(AccentTheme.WHITE, amoled = false)
         val surfaces = listOf(
             palette.background,
             palette.panel,
@@ -17,8 +21,8 @@ class PaletteContrastTest {
         )
 
         surfaces.forEach { surface ->
-            assertTrue("Primary text contrast on $surface", contrastRatio(TextPrimary, surface) >= 4.5)
-            assertTrue("Secondary text contrast on $surface", contrastRatio(TextSecondary, surface) >= 4.5)
+            assertTrue("Primary text contrast on $surface", contrastRatio(palette.textPrimary, surface) >= 4.5)
+            assertTrue("Secondary text contrast on $surface", contrastRatio(palette.textSecondary, surface) >= 4.5)
         }
         assertTrue(luminance(palette.panel) > luminance(palette.background))
         assertTrue(luminance(liquidGlassTopSurface(palette.background)) > luminance(palette.panel))
@@ -27,13 +31,13 @@ class PaletteContrastTest {
 
     @Test
     fun amoledOptInRetainsPureBlackCanvasAndNearBlackPanel() {
-        val palette = paletteFor(AccentTheme.PULSE, amoled = true)
+        val palette = paletteFor(AccentTheme.WHITE, amoled = true)
 
         assertEquals(Color.Black, palette.background)
         assertEquals(Color(0xFF0A0A0A), palette.panel)
         assertTrue(palette.amoled)
-        assertTrue(contrastRatio(TextPrimary, palette.background) >= 4.5)
-        assertTrue(contrastRatio(TextPrimary, palette.panel) >= 4.5)
+        assertTrue(contrastRatio(palette.textPrimary, palette.background) >= 4.5)
+        assertTrue(contrastRatio(palette.textPrimary, palette.panel) >= 4.5)
     }
 
     private fun contrastRatio(foreground: Color, background: Color): Double {
