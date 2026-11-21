@@ -29,10 +29,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilterChip
 import com.pulsestream.app.ui.components.OrbitDots
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -107,6 +112,13 @@ fun SearchScreen(
     // actor): name + photo, tap opens the actor page.
     var people by remember { mutableStateOf<List<CastMember>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    // True when the last settled search's remote leg failed (Nuvio
+    // RequestFailed): an empty result then means "search failed", not
+    // "no matches".
+    var searchFailed by remember { mutableStateOf(false) }
+    // Whether any enabled addon exists — the typed empty state needs it.
+    val installedAddons by repository.addons.collectAsState(initial = emptyList())
+    val hasActiveAddons = installedAddons.any { it.enabled }
     var resultOwner by remember { mutableStateOf("") }
     val queryOwner = "${query.trim()}|$selectedType"
     val queryResults = if (queryOwner == resultOwner) results else emptyList()
@@ -124,6 +136,9 @@ fun SearchScreen(
     }
     val appContext = LocalContext.current.applicationContext
     var history by remember { mutableStateOf(SearchHistory.get(appContext)) }
+    // Search history on/off (Nuvio's enabled flag): when off, nothing is
+    // recorded and the recents section hides.
+    var historyEnabled by remember { mutableStateOf(SearchHistory.isEnabled(appContext)) }
     // "Popular right now" for the landing state (v0.12.4, Sample B):
     // TMDB trending with a key, in-app chart catalogs without one;
     // empty when no source can supply titles (recents then stand alone).
@@ -161,8 +176,9 @@ fun SearchScreen(
         }
         searching = true
         delay(500)
-        val fetchedResults = repository.searchAll(q, selectedType)
-        results = fetchedResults
+        val outcome = repository.searchAllWithStatus(q, selectedType)
+        results = outcome.results
+        searchFailed = outcome.remoteFailed
         resultOwner = owner
         searching = false
         // People ride the same settled query; skipped for 1-letter
@@ -376,30 +392,45 @@ fun SearchScreen(
                             .padding(top = headerDp),
                         contentPadding = PaddingValues(bottom = 104.dp)
                     ) {
-                        if (history.isNotEmpty()) {
-                            item(key = "recent_header") {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        "Recent searches",
-                                        color = TextSecondary,
-                                        style = MaterialTheme.typography.labelLarge
+                        // The header always shows so the history switch stays
+                        // reachable even with no entries; the chips hide
+                        // when history is off.
+                        item(key = "recent_header") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Recent searches",
+                                    color = TextSecondary,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Switch(
+                                        checked = historyEnabled,
+                                        onCheckedChange = {
+                                            historyEnabled = it
+                                            SearchHistory.setEnabled(appContext, it)
+                                        },
+                                        colors = settingsSwitchColors()
                                     )
-                                    TextButton(
-                                        onClick = {
-                                            SearchHistory.clear(appContext)
-                                            history = emptyList()
+                                    if (history.isNotEmpty()) {
+                                        TextButton(
+                                            onClick = {
+                                                SearchHistory.clear(appContext)
+                                                history = emptyList()
+                                            }
+                                        ) {
+                                            Text("Clear", color = TextSecondary)
                                         }
-                                    ) {
-                                        Text("Clear", color = TextSecondary)
                                     }
                                 }
                             }
+                        }
+                        if (historyEnabled && history.isNotEmpty()) {
                             item(key = "recent_chips") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -407,15 +438,13 @@ fun SearchScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     items(history, key = { it }) { past ->
-                                        FilterChip(
-                                            modifier = Modifier.tvFocusRing(RoundedCornerShape(50)),
-                                            selected = false,
-                                            onClick = { query = past },
-                                            label = { Text(past) },
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                containerColor = Color.White.copy(alpha = 0.06f),
-                                                labelColor = TextSecondary
-                                            )
+                                        RecentSearchChip(
+                                            text = past,
+                                            onSelect = { query = past },
+                                            onDelete = {
+                                                SearchHistory.remove(appContext, past)
+                                                history = SearchHistory.get(appContext)
+                                            }
                                         )
                                     }
                                 }
@@ -442,7 +471,7 @@ fun SearchScreen(
                                 }
                             }
                         }
-                        if (history.isEmpty() && popular.isEmpty()) {
+                        if ((history.isEmpty() || !historyEnabled) && popular.isEmpty()) {
                             item(key = "landing_hint") {
                                 Box(
                                     Modifier
@@ -583,10 +612,19 @@ fun SearchScreen(
                         .padding(top = headerDp),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Typed empty states (Nuvio SearchEmptyStateReason):
+                    // no addons at all vs the remote leg failing vs a
+                    // genuine zero — each reads differently.
                     Text(
-                        "No results for \"$query\"",
+                        text = when {
+                            !hasActiveAddons -> "No addons installed — add one to search."
+                            searchFailed -> "Search failed — check your connection and try again."
+                            else -> "No results for \"$query\""
+                        },
                         color = TextSecondary,
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 32.dp)
                     )
                 }
                 else -> {
@@ -726,6 +764,45 @@ fun SearchScreen(
  * right-aligned "Movie · 2024" / "Series · 2023" tag (year omitted when
  * the source didn't provide one).
  */
+/**
+ * Recent-search chip with a per-entry delete (Nuvio removeSearch): tap
+ * the text to search again, tap × to drop just that entry. Same pill
+ * look as the old FilterChip (white 0.06 container, secondary label).
+ */
+@Composable
+private fun RecentSearchChip(
+    text: String,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        color = Color.White.copy(alpha = 0.06f),
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text,
+                color = TextSecondary,
+                modifier = Modifier
+                    .clickable { onSelect() }
+                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 2.dp)
+            )
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Remove $text",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PopularRow(rank: Int, item: CachedMeta, onClick: () -> Unit) {
     Row(
