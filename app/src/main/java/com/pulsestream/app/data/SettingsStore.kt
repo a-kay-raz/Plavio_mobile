@@ -949,6 +949,31 @@ class SettingsStore(context: Context) {
         get() = getSecret(KEY_REALDEBRID_API_KEY)?.takeIf { it.isNotBlank() }
         set(value) = putSecret(KEY_REALDEBRID_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
 
+    /** Premiumize API key (null = not configured). Debrid-only (Step 43). */
+    var premiumizeApiKey: String?
+        get() = getSecret(KEY_PREMIUMIZE_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_PREMIUMIZE_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /**
+     * Preferred debrid resolver (Step 43, Nuvio preferredResolverProviderId):
+     * "" = automatic (TorBox → Premiumize → Real-Debrid), otherwise
+     * "torbox" | "premiumize" | "realdebrid" — the preferred provider is
+     * tried first, the rest follow in canonical order.
+     */
+    var preferredDebridResolver: String
+        get() = prefs.getString(KEY_PREFERRED_DEBRID_RESOLVER, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PREFERRED_DEBRID_RESOLVER, value).apply()
+
+    /**
+     * Instant-preparation limit (Step 43, Nuvio instantPlaybackPreparationLimit):
+     * max infoHash streams resolved per title, 0 = no cap (current behaviour —
+     * resolve all). Nuvio's 0 means "preparation off"; Plavio's resolve is
+     * the core path, not a background extra, so 0 here means uncapped.
+     */
+    var debridInstantPrepareLimit: Int
+        get() = prefInt(KEY_DEBRID_INSTANT_PREPARE_LIMIT, 0).coerceIn(0, 5)
+        set(value) = prefs.edit().putInt(KEY_DEBRID_INSTANT_PREPARE_LIMIT, value.coerceIn(0, 5)).apply()
+
     /** TMDB API key (null = not configured). Unlocks TMDB metadata/ratings lookups. */
     var tmdbApiKey: String?
         get() = getSecret(KEY_TMDB_API_KEY)?.takeIf { it.isNotBlank() }
@@ -1518,6 +1543,7 @@ class SettingsStore(context: Context) {
         val keys = mutableMapOf<String, String>()
         torboxApiKey?.takeIf { it.isNotBlank() }?.let { keys["torbox_api_key"] = it }
         realDebridApiKey?.takeIf { it.isNotBlank() }?.let { keys["realdebrid_api_key"] = it }
+        premiumizeApiKey?.takeIf { it.isNotBlank() }?.let { keys["premiumize_api_key"] = it }
         tmdbApiKey?.takeIf { it.isNotBlank() }?.let { keys["tmdb_api_key"] = it }
         omdbApiKey?.takeIf { it.isNotBlank() }?.let { keys["omdb_api_key"] = it }
         traktAccessToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_access_token"] = it }
@@ -1533,6 +1559,7 @@ class SettingsStore(context: Context) {
     fun importApiKeysFromBackup(keys: Map<String, String>) {
         keys["torbox_api_key"]?.takeIf { it.isNotBlank() && torboxApiKey.isNullOrBlank() }?.let { torboxApiKey = it }
         keys["realdebrid_api_key"]?.takeIf { it.isNotBlank() && realDebridApiKey.isNullOrBlank() }?.let { realDebridApiKey = it }
+        keys["premiumize_api_key"]?.takeIf { it.isNotBlank() && premiumizeApiKey.isNullOrBlank() }?.let { premiumizeApiKey = it }
         keys["tmdb_api_key"]?.takeIf { it.isNotBlank() && tmdbApiKey.isNullOrBlank() }?.let { tmdbApiKey = it }
         keys["omdb_api_key"]?.takeIf { it.isNotBlank() && omdbApiKey.isNullOrBlank() }?.let { omdbApiKey = it }
         keys["trakt_access_token"]?.takeIf { it.isNotBlank() && traktAccessToken.isNullOrBlank() }?.let { traktAccessToken = it }
@@ -1578,7 +1605,7 @@ class SettingsStore(context: Context) {
     companion object {
         private const val SECRET_KEY_ALIAS = "plavio.settings.secrets.v1"
         private val SECRET_KEYS = setOf(
-            "simkl_token", "torbox_api_key", "realdebrid_api_key",
+            "simkl_token", "torbox_api_key", "realdebrid_api_key", "premiumize_api_key",
             "trakt_access_token", "trakt_refresh_token",
             "tmdb_api_key", "omdb_api_key",
             "xtream_password", "stalker_password"
@@ -1698,6 +1725,9 @@ class SettingsStore(context: Context) {
         private const val KEY_TRAKT_USERNAME = "trakt_username"
         private const val KEY_TORBOX_API_KEY = "torbox_api_key"
         private const val KEY_REALDEBRID_API_KEY = "realdebrid_api_key"
+        private const val KEY_PREMIUMIZE_API_KEY = "premiumize_api_key"
+        private const val KEY_PREFERRED_DEBRID_RESOLVER = "preferred_debrid_resolver"
+        private const val KEY_DEBRID_INSTANT_PREPARE_LIMIT = "debrid_instant_prepare_limit"
         private const val KEY_TMDB_API_KEY = "tmdb_api_key"
         private const val KEY_OMDB_API_KEY = "omdb_api_key"
         private const val KEY_STREAMS_PER_SOURCE = "streams_per_source"
