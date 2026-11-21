@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -161,7 +162,7 @@ sealed interface StreamsUiState {
 }
 
 /** Fired when the user pressed Play: play this stream immediately. */
-data class AutoPlay(val stream: StreamItem, val subtitles: List<Subtitle>)
+data class AutoPlay(val stream: StreamItem, val subtitles: List<Subtitle>, val fromStart: Boolean = false)
 
 /** State of the "Plavio Pick" background stream check. */
 sealed interface PickState {
@@ -365,8 +366,16 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
      * If the background probe already found a winner, play it. If the probe
      * is still running, give it a brief moment, then play the winner or fall
      * back to the first available stream.
+     *
+     * fromStart (Nuvio "Start from beginning"): the same pick, but the
+     * player ignores the saved resume position and the resume prompt.
+     * Kept in [playFromStartRequest] so the pending-play path (streams
+     * still loading when pressed) and the probe-wait launch carry it too.
      */
-    fun onPlayPressed() {
+    private var playFromStartRequest = false
+
+    fun onPlayPressed(fromStart: Boolean = false) {
+        playFromStartRequest = fromStart
         when (val s = streamsState) {
             is StreamsUiState.Content -> playBestOrFirst()
             is StreamsUiState.Error -> { /* nothing playable — leave the error visible */ }
@@ -393,7 +402,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         if (repo.settings.streamAutoplay) {
             val ruled = pickAutoplayStream(playableStreams, repo.settings)
             if (ruled != null) {
-                autoPlayEvent = AutoPlay(ruled, s.subtitles)
+                autoPlayEvent = AutoPlay(ruled, s.subtitles, playFromStartRequest)
                 return
             }
             // No playable streams yet - wait for debrid resolution instead of
@@ -402,7 +411,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         }
         val pick = pickState as? PickState.Found
         if (pick != null && !pick.stream.url.startsWith("infohash:")) {
-            autoPlayEvent = AutoPlay(pick.stream, s.subtitles)
+            autoPlayEvent = AutoPlay(pick.stream, s.subtitles, playFromStartRequest)
             return
         }
         if (pickState is PickState.Probing) {
@@ -411,17 +420,19 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                 val best = pickState as? PickState.Found
                 val cur = streamsState as? StreamsUiState.Content ?: return@launch
                 val curPlayable = cur.streams.filter { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
-                if (best != null && !best.stream.url.startsWith("infohash:")) autoPlayEvent = AutoPlay(best.stream, cur.subtitles)
-                else if (curPlayable.isNotEmpty()) autoPlayEvent = AutoPlay(curPlayable.first(), cur.subtitles)
+                if (best != null && !best.stream.url.startsWith("infohash:")) autoPlayEvent = AutoPlay(best.stream, cur.subtitles, playFromStartRequest)
+                else if (curPlayable.isNotEmpty()) autoPlayEvent = AutoPlay(curPlayable.first(), cur.subtitles, playFromStartRequest)
             }
             return
         }
-        if (playableStreams.isNotEmpty()) autoPlayEvent = AutoPlay(playableStreams.first(), s.subtitles)
+        if (playableStreams.isNotEmpty()) autoPlayEvent = AutoPlay(playableStreams.first(), s.subtitles, playFromStartRequest)
     }
 
     fun consumeAutoPlay(): AutoPlay? {
         val e = autoPlayEvent
         autoPlayEvent = null
+        // The flag is one-shot per press; never let it leak into a later play.
+        playFromStartRequest = false
         return e
     }
 
@@ -477,7 +488,7 @@ fun DetailScreen(
             // out — never navigate to the player from a dead screen.
             if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
             val allStreams = (vm.streamsState as? StreamsUiState.Content)?.streams ?: emptyList()
-            startPlayback(vm, repository, autoplay.stream, autoplay.subtitles, allStreams, onPlay)
+            startPlayback(vm, repository, autoplay.stream, autoplay.subtitles, allStreams, onPlay, fromStart = autoplay.fromStart)
         }
     }
 
@@ -521,7 +532,8 @@ private fun startPlayback(
     stream: StreamItem,
     subtitles: List<Subtitle>,
     allStreams: List<StreamItem>,
-    onPlay: () -> Unit
+    onPlay: () -> Unit,
+    fromStart: Boolean = false
 ) {
     if (stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)) return
     val meta = (vm.metaState as? MetaUiState.Content)?.meta ?: return
@@ -550,7 +562,8 @@ private fun startPlayback(
         episodes = meta.videos,
         metaId = meta.id,
         seriesName = meta.name.takeIf { !ids.isMovie },
-        episodeTitle = vm.selectedVideo?.title
+        episodeTitle = vm.selectedVideo?.title,
+        playFromStart = fromStart
     )
     onPlay()
 }
@@ -855,6 +868,29 @@ private fun DetailContent(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
             )
+            // Play from start (Nuvio DetailActions secondary action):
+            // same stream pick, but the player ignores the saved resume
+            // position and the resume prompt — always starts at 0:00.
+            // Only shown when there is a position to ignore.
+            if (hasResume) {
+                TextButton(
+                    onClick = { vm.onPlayPressed(fromStart = true) },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Replay,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Play from start",
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
           }
         }
         if (!meta.description.isNullOrBlank()) {
