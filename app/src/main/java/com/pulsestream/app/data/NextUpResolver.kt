@@ -83,6 +83,10 @@ object NextUpResolver {
         return meta
     }
 
+    /** Step 69: the cached meta fetch, shared with ReleaseRadar. */
+    suspend fun metaForSeries(repository: StreamRepository, seriesId: String): MetaDetail? =
+        metaFor(repository, seriesId)
+
     private fun parseAirDate(released: String?): LocalDate? {
         if (released.isNullOrBlank()) return null
         return runCatching { LocalDate.parse(released.take(10)) }.getOrNull()
