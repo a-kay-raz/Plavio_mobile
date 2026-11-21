@@ -1,5 +1,8 @@
 package com.pulsestream.app.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +17,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Wifi
@@ -73,6 +77,23 @@ fun DownloadsSettingsScreen(
     var concurrency by remember { mutableIntStateOf(manager.getDownloadConcurrencyLimit()) }
     var resolutionOpen by remember { mutableStateOf(false) }
     var concurrencyOpen by remember { mutableStateOf(false) }
+    // Step 37: custom download folder (SAF) — system folder picker, the
+    // permission survives restarts via takePersistableUriPermission.
+    var locationName by remember { mutableStateOf(manager.downloadLocationDisplayName()) }
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            manager.setDownloadLocationUri(uri.toString())
+            locationName = manager.downloadLocationDisplayName()
+        }
+    }
 
     GlowBackground {
         LazyColumn(
@@ -151,6 +172,28 @@ fun DownloadsSettingsScreen(
                             subtitle = "$concurrency at a time",
                             onClick = { concurrencyOpen = true }
                         )
+                    },
+                    {
+                        // Step 37: custom download folder — new downloads
+                        // move there on completion; old files stay reachable.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Folder,
+                            title = "Download location",
+                            subtitle = locationName ?: "App folder (default)",
+                            onClick = { folderPicker.launch(null) }
+                        )
+                    },
+                    {
+                        if (locationName != null) {
+                            Row(
+                                modifier = Modifier.padding(start = 56.dp, end = 16.dp, top = 2.dp, bottom = 8.dp)
+                            ) {
+                                TextButton(onClick = {
+                                    manager.setDownloadLocationUri(null)
+                                    locationName = null
+                                }) { Text("Reset to app folder") }
+                            }
+                        }
                     }
                 )
             }

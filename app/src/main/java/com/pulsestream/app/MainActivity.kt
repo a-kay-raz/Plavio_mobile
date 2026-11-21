@@ -1197,9 +1197,19 @@ private fun PulseNavGraph(
 
     // Shared downloaded-file playback (Downloads screen + Library
     // Downloads section): same file check, same local player route.
+    // Step 37: content-URI-aware — a moved file plays from its SAF URI.
     val playDownloadedFile: (String, String) -> Unit = { filePath, title ->
-        val file = java.io.File(filePath)
-        if (!file.exists() || !file.canRead()) {
+        val isContent = filePath.startsWith("content://")
+        val exists = if (isContent) {
+            runCatching {
+                appContext.contentResolver.openInputStream(android.net.Uri.parse(filePath))?.close()
+                true
+            }.getOrDefault(false)
+        } else {
+            val file = java.io.File(filePath)
+            file.exists() && file.canRead()
+        }
+        if (!exists) {
             android.widget.Toast.makeText(
                 appContext,
                 "Downloaded file not found \u2014 it may have been deleted.",
@@ -1208,7 +1218,7 @@ private fun PulseNavGraph(
         } else {
             playRequest(
                 PlaybackRequest(
-                    streamUrl = "file://$filePath",
+                    streamUrl = if (isContent) filePath else "file://$filePath",
                     title = title,
                     poster = null,
                     videoId = "download_${filePath.hashCode()}",
