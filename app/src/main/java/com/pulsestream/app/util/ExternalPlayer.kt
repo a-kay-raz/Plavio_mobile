@@ -1,13 +1,21 @@
 package com.pulsestream.app.util
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import androidx.media3.common.MimeTypes
 import com.pulsestream.app.data.PlaybackHeaders
 import com.pulsestream.app.data.PlaybackRequest
+import com.pulsestream.app.data.ResolvedSubtitle
+import com.pulsestream.app.data.SegmentType
+import com.pulsestream.app.data.SkipSegment
+import com.pulsestream.app.data.autoSkipStoredValue
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -58,11 +66,22 @@ object ExternalPlayer {
      * link for its headers (owner's order 2026-10-26) — callers gate
      * protected links behind the warning popup via [needsWarning].
      *
+     * Step 67: forwards the already-downloaded subtitles ([subtitles],
+     * shared via FileProvider) and the skip-segments JSON ([skipSegmentsJson])
+     * using Nuvio's external-player intent contract, plus the resume
+     * position. Players that don't understand an extra ignore it.
+     *
      * @return true if a player was launched; false when no player could
      * handle it (a toast is shown explaining why) — the caller should then
      * fall back to the built-in player.
      */
-    fun play(context: Context, request: PlaybackRequest): Boolean {
+    fun play(
+        context: Context,
+        request: PlaybackRequest,
+        subtitles: List<ResolvedSubtitle> = emptyList(),
+        skipSegmentsJson: String? = null,
+        resumePositionMs: Long = 0L,
+    ): Boolean {
         val (uri, mime) = resolveUri(context, request.streamUrl)
         if (uri == null) {
             Toast.makeText(
@@ -81,6 +100,18 @@ object ExternalPlayer {
             }
             // Title shown by players that support it (VLC, MX Player).
             putExtra("title", request.title)
+            // Resume position (MX Player / Just Player / mpv, Vimu).
+            if (resumePositionMs > 0L) {
+                putExtra("position", resumePositionMs.toInt())
+                putExtra("startfrom", resumePositionMs.toInt())
+                putExtra("forceresume", true)
+                putExtra("from_start", false)
+            }
+            // Ask the player to report its position back (MX Player).
+            putExtra("return_result", true)
+            // Skip segments (intro/recap/outro/credits); the receiving
+            // player controls their handling.
+            skipSegmentsJson?.let { putExtra("skip_segments", it) }
             // VLC reads a String[] "headers" extra. Normalize headers and
             // deliberately omit credentials/cookies: the receiving app and
             // any redirects it follows are outside our origin boundary.
@@ -90,6 +121,45 @@ object ExternalPlayer {
                     "headers",
                     headers.map { (k, v) -> "$k: $v" }.toTypedArray()
                 )
+            }
+            // Subtitles: the resolved files are shared via FileProvider.
+            // Grant read permission via ClipData — FLAG_GRANT_READ_URI_PERMISSION
+            // only covers intent.data, not extras.
+            if (subtitles.isNotEmpty()) {
+                val subtitleUris = subtitles.map { sub ->
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        sub.file
+                    )
+                }.toTypedArray()
+                val subtitleNames = subtitles.map { it.sub.lang }.toTypedArray()
+                val subtitleFilenames = subtitles.map { sub ->
+                    val ext = if (sub.mimeType == MimeTypes.TEXT_VTT) ".vtt" else ".srt"
+                    "${sub.sub.lang}_subtitle$ext"
+                }.toTypedArray()
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val clipData = ClipData(
+                    "subtitles",
+                    arrayOf("application/x-subrip", "text/vtt"),
+                    ClipData.Item(subtitleUris.first())
+                )
+                subtitleUris.drop(1).forEach { subtitleUri ->
+                    clipData.addItem(ClipData.Item(subtitleUri))
+                }
+                setClipData(clipData)
+                // MX Player / mpv-android / Nova
+                putExtra("subs", subtitleUris)
+                putExtra("subs.name", subtitleNames)
+                putExtra("subs.filename", subtitleFilenames)
+                putExtra("subs.enable", arrayOf(subtitleUris.first()))
+                // Just Player
+                putExtra("subtitle_uri", subtitleUris)
+                putExtra("subtitle_name", subtitleNames)
+                // VLC (single subtitle — use first one)
+                putExtra("subtitles_location", subtitleUris.first())
+                // Vimu Player
+                putExtra("forcedsrt", subtitleUris.first().toString())
             }
         }
         return try {
@@ -103,6 +173,29 @@ object ExternalPlayer {
             ).show()
             false
         }
+    }
+
+    /**
+     * Serializes skip segments to Nuvio's external-player JSON contract:
+     * a JSON array of objects with `type` (String), `start` (seconds) and
+     * `end` (seconds). Post-credits maps to "end-credits" (Nuvio's
+     * toSkipSegmentsJson). Returns null when there is nothing to send.
+     */
+    fun buildSkipSegmentsJson(segments: List<SkipSegment>): String? {
+        if (segments.isEmpty()) return null
+        val arr = JSONArray()
+        for (seg in segments) {
+            val obj = JSONObject()
+            obj.put(
+                "type",
+                if (seg.type == SegmentType.POST_CREDITS) "end-credits"
+                else seg.type.autoSkipStoredValue()
+            )
+            obj.put("start", seg.startMs / 1000.0)
+            obj.put("end", seg.endMs / 1000.0)
+            arr.put(obj)
+        }
+        return arr.toString()
     }
 
     /**
