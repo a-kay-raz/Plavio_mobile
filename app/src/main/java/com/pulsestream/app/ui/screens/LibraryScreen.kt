@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -261,22 +262,35 @@ fun LibraryScreen(
                 ServiceChip("Simkl", simklLinked, settings.simklUsername, Modifier.weight(1f), onConnect)
             }
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = libraryTab == "saved",
-                    onClick = { libraryTab = "saved" },
-                    label = { Text("Saved") }
-                )
-                FilterChip(
-                    selected = libraryTab == "sections",
-                    onClick = { libraryTab = "sections" },
-                    label = { Text("Sections") }
-                )
-                FilterChip(
-                    selected = libraryTab == "downloaded",
-                    onClick = { libraryTab = "downloaded" },
-                    label = { Text("Downloaded") }
-                )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item(key = "tab_saved") {
+                    FilterChip(
+                        selected = libraryTab == "saved",
+                        onClick = { libraryTab = "saved" },
+                        label = { Text("Saved") }
+                    )
+                }
+                item(key = "tab_sections") {
+                    FilterChip(
+                        selected = libraryTab == "sections",
+                        onClick = { libraryTab = "sections" },
+                        label = { Text("Sections") }
+                    )
+                }
+                item(key = "tab_downloaded") {
+                    FilterChip(
+                        selected = libraryTab == "downloaded",
+                        onClick = { libraryTab = "downloaded" },
+                        label = { Text("Downloaded") }
+                    )
+                }
+                item(key = "tab_calendar") {
+                    FilterChip(
+                        selected = libraryTab == "calendar",
+                        onClick = { libraryTab = "calendar" },
+                        label = { Text("Calendar") }
+                    )
+                }
             }
         }
 
@@ -306,6 +320,23 @@ fun LibraryScreen(
                     manager = downloadManager,
                     onPlayDownload = onPlayDownload,
                     onGoToDownloads = onGoToDownloads
+                )
+            }
+            return@Column
+        }
+
+        // Step 49: release calendar — episodes airing in the next 30 days
+        // from the library, grouped by air date.
+        if (libraryTab == "calendar") {
+            Box(Modifier.weight(1f)) {
+                LibraryCalendarTab(
+                    repository = repository,
+                    watchedKeys = watchedKeys,
+                    myWatchlist = myWatchlist,
+                    allListItems = allListItems,
+                    traktWatchlist = traktWatchlist,
+                    simklWatchlist = simklWatchlist,
+                    onOpenDetail = onOpenDetail
                 )
             }
             return@Column
@@ -510,6 +541,154 @@ private fun formatDownloadSize(totalBytes: Long): String {
  * the title's initial, a download badge and the file size — tap plays
  * the file, same as the Downloads screen.
  */
+/**
+ * Step 49: release calendar (Nuvio library/LibraryReleaseCalendarPanel,
+ * scoped port — a date-grouped list instead of Nuvio's month grid).
+ * Episodes airing in the next 30 days from the library (watched series +
+ * saved series), unwatched, grouped by air date. Tap opens the series.
+ */
+@Composable
+private fun LibraryCalendarTab(
+    repository: StreamRepository,
+    watchedKeys: Set<String>,
+    myWatchlist: List<com.pulsestream.app.data.db.WatchlistItem>,
+    allListItems: List<com.pulsestream.app.data.db.CustomListItem>,
+    traktWatchlist: List<MetaPreview>,
+    simklWatchlist: List<MetaPreview>,
+    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
+) {
+    val palette = LocalPalette.current
+    var days by remember { mutableStateOf<List<com.pulsestream.app.data.ReleaseDay>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var refreshTick by remember { mutableStateOf(0) }
+    val savedSeriesIds = remember(myWatchlist, allListItems, traktWatchlist, simklWatchlist) {
+        (
+            myWatchlist.filter { it.type == "series" }.map { it.metaId } +
+                allListItems.filter { it.type == "series" }.map { it.metaId } +
+                traktWatchlist.filter { it.type == "series" }.map { it.id } +
+                simklWatchlist.filter { it.type == "series" }.map { it.id }
+            ).distinct()
+    }
+    LaunchedEffect(refreshTick) {
+        loading = true
+        days = com.pulsestream.app.data.NextUpResolver.resolveUpcomingReleases(
+            repository, watchedKeys, savedSeriesIds
+        )
+        loading = false
+    }
+    val today = java.time.LocalDate.now()
+    val dayFormat = remember { java.time.format.DateTimeFormatter.ofPattern("EEEE, MMM d") }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 110.dp)
+    ) {
+        item(key = "cal_header") {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp, top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Release calendar · next 30 days",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = {
+                        com.pulsestream.app.data.NextUpResolver.clearCache()
+                        refreshTick++
+                    }
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Refresh calendar",
+                        tint = TextSecondary
+                    )
+                }
+            }
+        }
+
+        if (loading && days.isEmpty()) {
+            item(key = "cal_loading") {
+                Box(
+                    Modifier.fillMaxWidth().padding(vertical = 36.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    OrbitDots(modifier = Modifier.size(38.dp))
+                }
+            }
+        }
+
+        days.forEach { day ->
+            val label = when (day.date) {
+                today -> "Today"
+                today.plusDays(1) -> "Tomorrow"
+                else -> day.date.format(dayFormat)
+            }
+            item(key = "cal_day_${day.date}") {
+                SectionTitle("$label · ${day.episodes.size} ${if (day.episodes.size == 1) "episode" else "episodes"}")
+            }
+            items(day.episodes, key = { "${it.showId}_${it.season}_${it.episode}" }) { episode ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenDetail("", "series", episode.showId) }
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SafePosterImage(
+                        model = episode.poster,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            episode.showName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${episode.episodeLabel} · ${episode.episodeTitle?.takeIf { it.isNotBlank() } ?: "Episode"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        if (day.date == today) "Today" else if (day.date == today.plusDays(1)) "Tomorrow" else day.date.format(
+                            java.time.format.DateTimeFormatter.ofPattern("MMM d")
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = palette.accent
+                    )
+                }
+            }
+        }
+
+        if (!loading && days.isEmpty()) {
+            item(key = "cal_empty") {
+                Text(
+                    "No upcoming episodes in the next 30 days from your library — watch an episode or save a series and its next air dates will show up here.",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 28.dp)
+                )
+            }
+        }
+    }
+}
+
 /**
  * Step 48: Downloaded as a real Library mode (Nuvio
  * library/LibraryDownloadedContent.kt, scoped port). In-progress downloads
