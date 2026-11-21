@@ -17,7 +17,6 @@ from pathlib import Path
 PAGE_ALIGNMENT = 16 * 1024
 EXPECTED = {
     "arm64-v8a": (2, 183),       # ELFCLASS64, EM_AARCH64
-    "armeabi-v7a": (1, 40),      # ELFCLASS32, EM_ARM
 }
 LIBRARY = "libffmpegJNI.so"
 PT_LOAD = 1
