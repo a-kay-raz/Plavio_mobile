@@ -216,7 +216,6 @@ import com.pulsestream.app.data.HlsQualityState
 import com.pulsestream.app.data.HlsQualityVariant
 import com.pulsestream.app.data.StreamLinkCache
 import com.pulsestream.app.data.streamLinkContentKey
-import com.pulsestream.app.data.IntroDbApi
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.PlaybackHeaders
 import com.pulsestream.app.data.PlaybackRequest
@@ -1564,42 +1563,24 @@ fun PlayerScreen(
         runCatching { opt.group.getFormat(opt.trackIndex).id }.getOrNull()
 
     // Step 67: external-player handoff with subtitles + skip segments.
-    // The subtitle files are already downloaded (resolvedSubs); skip
-    // segments come from IntroDB, bounded so a slow lookup never stalls
-    // the launch. Runs off the main thread; the intent fires on Main.
-    val introDbApi = remember { IntroDbApi() }
+    // Preparation (subtitle ordering + IntroDB lookup) lives in
+    // ExternalPlayer.prepareLaunch; the intent fires on Main.
     fun launchExternalPlayer(ctx: Context, req: PlaybackRequest) {
         val posAtClick = positionMs
-        val imdb = req.imdbId
         ioScope.launch {
-            val subs = if (settings.forwardSubtitlesToExternalPlayer) {
-                val selectedUrl = textOpts.firstOrNull { it.selected }
-                    ?.let { panelTrackId(it) }
-                val selected = resolvedSubs.firstOrNull { it.sub.url == selectedUrl }
-                val preferred = settings.subtitleLanguages
-                buildList {
-                    selected?.let { add(it) }
-                    for (lang in preferred) {
-                        resolvedSubs.filter { it.sub.lang.equals(lang, ignoreCase = true) }
-                            .forEach { if (!contains(it)) add(it) }
-                    }
-                    if (isEmpty()) resolvedSubs.firstOrNull()?.let { add(it) }
-                }.take(5)
-            } else {
-                emptyList()
-            }
-            val skipJson = if (settings.sendSkipSegmentsToExternalPlayer && !imdb.isNullOrBlank()) {
-                withTimeoutOrNull(4_000L) {
-                    runCatching {
-                        introDbApi.fetchSegments(imdb, req.season, req.episode, req.isMovie)
-                    }.getOrNull()?.let { ExternalPlayer.buildSkipSegmentsJson(it) }
-                }
-            } else null
+            val selectedUrl = textOpts.firstOrNull { it.selected }
+                ?.let { panelTrackId(it) }
+            val extras = ExternalPlayer.prepareLaunch(
+                ctx, req, settings,
+                alreadyResolved = resolvedSubs,
+                selectedSubtitleUrl = selectedUrl,
+                isTv = isTv
+            )
             withContext(Dispatchers.Main) {
                 ExternalPlayer.play(
                     ctx, req,
-                    subtitles = subs,
-                    skipSegmentsJson = skipJson,
+                    subtitles = extras.subtitles,
+                    skipSegmentsJson = extras.skipSegmentsJson,
                     resumePositionMs = posAtClick
                 )
             }
