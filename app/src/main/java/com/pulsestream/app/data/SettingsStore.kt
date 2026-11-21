@@ -535,6 +535,11 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_SEASON_VIEW_MODE, "posters") ?: "posters"
         set(value) = prefs.edit().putString(KEY_SEASON_VIEW_MODE, value).apply()
 
+    /** Pinned stream sources (Nuvio PinnedStreamSourcesRepository): keys "addonId|sourceName". Pinned sources list first everywhere. */
+    var pinnedStreamSources: Set<String>
+        get() = prefs.getStringSet(KEY_PINNED_STREAM_SOURCES, emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_PINNED_STREAM_SOURCES, value.toSet()).apply()
+
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -1124,6 +1129,7 @@ class SettingsStore(context: Context) {
         private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
         private const val KEY_AUTO_SKIP_SEGMENT_TYPES = "auto_skip_segment_types"
         private const val KEY_SEASON_VIEW_MODE = "season_view_mode"
+        private const val KEY_PINNED_STREAM_SOURCES = "pinned_stream_sources"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"

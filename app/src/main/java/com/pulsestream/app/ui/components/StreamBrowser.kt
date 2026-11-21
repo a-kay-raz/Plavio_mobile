@@ -253,6 +253,10 @@ fun streamDisplayModel(stream: StreamItem): StreamDisplayModel {
 fun StreamItem.addonKey(): String = sourceName?.takeIf { it.isNotBlank() }
     ?: name?.takeIf { it.isNotBlank() } ?: "Unknown"
 
+/** Pin identity for a stream (Nuvio PinnedStreamSourcesRepository): addon + name. */
+fun pinnedStreamSourceKey(stream: StreamItem): String =
+    "${stream.sourceId ?: ""}|${stream.sourceName ?: stream.addonKey()}"
+
 // ---------------------------------------------------------------------------
 // Stream preference sorting (Settings > Streams, v0.8.31+)
 // ---------------------------------------------------------------------------
@@ -300,10 +304,15 @@ fun applyStreamPreferences(
     val order = settings.qualityOrder
     val capped = if (limitPerSource) streams.groupBy { it.addonKey() }
         .flatMap { (_, list) -> list.take(perSource) } else streams
+    // Pinned sources first (Nuvio splitPinnedSources): a pinned source's
+    // streams list first everywhere, including autoplay picks.
+    val pinned = settings.pinnedStreamSources
     // TorBox priority (user's order): when TorBox is linked, its instant ⚡ streams
     // sort first so they play first.
     val torboxLinked = !settings.torboxApiKey.isNullOrBlank()
     return capped.sortedWith(compareByDescending<StreamItem> { s ->
+        if (pinnedStreamSourceKey(s) in pinned) 1 else 0
+    }.thenByDescending { s ->
         // TorBox cached streams first (identified by ⚡ in title/name or TorBox in source name)
         if (torboxLinked && ((s.title?.contains("⚡") == true) || (s.name?.contains("⚡") == true) || (s.sourceName?.contains("TorBox", ignoreCase = true) == true))) 1 else 0
     }.thenBy { s ->
@@ -390,7 +399,7 @@ fun rememberStreamBrowserState(
     limitPerSource: Boolean = true
 ): StreamBrowserState {
     // The player shows the complete loaded set; other pickers retain the user's cap.
-    val ordered = remember(streams, settings?.streamsPerSource, settings?.qualityOrder, limitPerSource) {
+    val ordered = remember(streams, settings?.streamsPerSource, settings?.qualityOrder, settings?.pinnedStreamSources, limitPerSource) {
         if (settings != null) applyStreamPreferences(streams, settings, limitPerSource) else streams
     }
     // Saveable: the addon tab the user picked survives rotation. A stale

@@ -12,17 +12,28 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.CircularProgressIndicator
 import com.pulsestream.app.ui.components.OrbitDots
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -35,6 +46,7 @@ import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.ui.components.AddonTabs
 import com.pulsestream.app.ui.components.QualityPills
+import com.pulsestream.app.ui.components.pinnedStreamSourceKey
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
 import com.pulsestream.app.ui.components.streamListItems
@@ -46,6 +58,7 @@ import com.pulsestream.app.ui.theme.TextSecondary
  * source count) at the top, then addon tabs, quality pills and stream cards
  * sharing one scroll area.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlayerSourcesContent(
     title: String,
@@ -61,6 +74,29 @@ internal fun PlayerSourcesContent(
     poster: String? = null
 ) {
     val browser = rememberStreamBrowserState(streams, settings, limitPerSource = false)
+    // Pinned sources (Nuvio StreamSourcePinSheet): one row per distinct
+    // source in this list; pin toggles persist in SettingsStore and the
+    // pinned-first sort in applyStreamPreferences re-applies everywhere
+    // (player Sources, per-episode streams, Detail browser, autoplay).
+    var pinSheetOpen by remember { mutableStateOf(false) }
+    var pinsVersion by remember { mutableStateOf(0) }
+    val pinSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val store = settings
+    val pinnedKeys = store?.pinnedStreamSources ?: emptySet()
+    val pinSources = remember(streams, pinsVersion) {
+        streams.groupBy { pinnedStreamSourceKey(it) }
+            .map { (key, list) ->
+                Triple(
+                    key,
+                    list.first().sourceName?.takeIf { it.isNotBlank() } ?: list.first().addonKey(),
+                    list.size
+                )
+            }
+            .sortedWith(
+                compareByDescending<Triple<String, String, Int>> { it.first in pinnedKeys }
+                    .thenByDescending { it.third }
+            )
+    }
     LazyColumn(
         modifier = modifier.fillMaxWidth().testTag("player-source-list"),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -123,8 +159,21 @@ internal fun PlayerSourcesContent(
         if (streams.isNotEmpty()) {
             item { AddonTabs(browser) }
             item { QualityPills(browser) }
-            item { Text("${browser.filtered.size} sources", style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("${browser.filtered.size} sources", style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { pinSheetOpen = true }) {
+                        Icon(Icons.Filled.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Pin sources")
+                    }
+                }
+            }
             if (browser.filtered.isEmpty()) item {
                 Text("No sources match these filters.", color = TextSecondary, modifier = Modifier.padding(16.dp))
             }
@@ -142,6 +191,59 @@ internal fun PlayerSourcesContent(
                 }
             }
             if (!loading) item { TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Load sources") } }
+        }
+    }
+    if (pinSheetOpen && store != null) {
+        ModalBottomSheet(
+            onDismissRequest = { pinSheetOpen = false },
+            sheetState = pinSheetState,
+            dragHandle = null,
+            containerColor = Color(0xFF14141F)
+        ) {
+            Text(
+                text = "Pin sources",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+            Text(
+                text = "Pinned sources list first on every title until unpinned.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                items(pinSources, key = { it.first }) { (key, label, count) ->
+                    val isPinned = key in pinnedKeys
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(label, style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold, color = TextPrimary,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("$count streams", style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary)
+                        }
+                        IconButton(onClick = {
+                            store.pinnedStreamSources =
+                                if (isPinned) pinnedKeys - key else pinnedKeys + key
+                            pinsVersion++
+                        }) {
+                            Icon(
+                                if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = if (isPinned) "Unpin $label" else "Pin $label",
+                                tint = if (isPinned) Color(0xFFFFC107) else TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
