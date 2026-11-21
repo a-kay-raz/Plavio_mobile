@@ -5,6 +5,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
@@ -58,12 +59,26 @@ class NoHardwareDolbySelector : MediaCodecSelector {
  * MediaCodecSelector to prevent MediaCodec from claiming these formats.
  * The standard FFmpeg extension renderer (added via EXTENSION_RENDERER_MODE_PREFER)
  * then handles them via software decoding.
+ *
+ * Step 66: when a [DownmixConfig] is supplied, the audio sink carries a
+ * [DownmixAudioProcessor] that mixes surround PCM down to stereo/mono.
+ * The sink is otherwise the stock DefaultAudioSink (float output on).
  */
 @UnstableApi
-class PlavioAudioRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+class PlavioAudioRenderersFactory(
+    context: Context,
+    downmixConfig: DownmixConfig? = null,
+) : DefaultRenderersFactory(context) {
 
     init {
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
         setMediaCodecSelector(NoHardwareDolbySelector())
+        if (downmixConfig != null) {
+            setAudioSink(
+                DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf(DownmixAudioProcessor(downmixConfig)))
+                    .build()
+            )
+        }
     }
 }
