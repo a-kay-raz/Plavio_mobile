@@ -60,7 +60,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Plavio account section (owner's order + approved samples 2026-10-25):
- * email + password sign-in; the email code is only for password resets.
+ * email + password sign-in, or a 6-digit email code (passwordless —
+ * the Nuvio device-link equivalent on Plavio's Supabase backend);
+ * the email code is also used for password resets.
  * Syncs the same full backup as Google Drive (which stays as a second
  * door below). Renders nothing until the backend is configured.
  */
@@ -88,6 +90,7 @@ fun PlavioAccountSection(
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var resetCode by remember { mutableStateOf("") }
+    var signInCode by remember { mutableStateOf("") }
     var resendIn by remember { mutableStateOf(0) }
     var refreshTick by remember { mutableStateOf(0) }
     val signedEmail = remember(refreshTick) { manager.accountEmail() }.orEmpty()
@@ -269,6 +272,17 @@ fun PlavioAccountSection(
                             Text(if (mode == Mode.SignIn) "Sign in" else "Create account")
                         }
                     }
+                    if (mode == Mode.SignIn) {
+                        TextButton(
+                            onClick = {
+                                error = null
+                                notice = null
+                                mode = Mode.CodeRequest
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Sign in with an email code instead") }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
@@ -292,6 +306,116 @@ fun PlavioAccountSection(
                     }
                     Text(
                         "Free forever. Your data stays yours.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+
+                Mode.CodeRequest -> {
+                    Text(
+                        "Sign in with a code",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        "Enter your email and we'll send you a 6-digit code — no password needed on this phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it.trim() },
+                        label = { Text("Email") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            error = null
+                            busy = true
+                            scope.launch {
+                                manager.requestSignInCode(email)
+                                    .onSuccess {
+                                        busy = false
+                                        resendIn = 60
+                                        mode = Mode.CodeVerify
+                                    }
+                                    .onFailure { fail(it) }
+                            }
+                        },
+                        enabled = !busy && email.contains("@"),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (busy) "Sending…" else "Send code") }
+                    TextButton(
+                        onClick = { mode = Mode.SignIn },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Back to sign in") }
+                }
+
+                Mode.CodeVerify -> {
+                    Text(
+                        "Sign in with a code",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        "We emailed a 6-digit code to $email",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    OutlinedTextField(
+                        value = signInCode,
+                        onValueChange = { signInCode = it.filter { c -> c.isDigit() }.take(6) },
+                        label = { Text("6-digit code") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            error = null
+                            busy = true
+                            scope.launch {
+                                manager.verifySignInCode(email, signInCode)
+                                    .onSuccess {
+                                        signInCode = ""
+                                        afterAuth()
+                                    }
+                                    .onFailure { fail(it) }
+                            }
+                        },
+                        enabled = !busy && signInCode.length == 6,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (busy) "Signing in…" else "Sign in") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { mode = Mode.SignIn },
+                            enabled = !busy
+                        ) { Text("Back to sign in") }
+                        TextButton(
+                            onClick = {
+                                error = null
+                                scope.launch {
+                                    manager.requestSignInCode(email)
+                                        .onSuccess { resendIn = 60 }
+                                        .onFailure { error = it.message }
+                                }
+                            },
+                            enabled = !busy && resendIn == 0
+                        ) {
+                            Text(if (resendIn > 0) "Resend code (0:${"%02d".format(resendIn)})" else "Resend code")
+                        }
+                    }
+                    Text(
+                        "Didn't get it? Check your spam folder.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -579,7 +703,7 @@ fun PlavioAccountSection(
     }
 }
 
-private enum class Mode { SignIn, Create, ResetRequest, ResetVerify, SignedIn, WelcomeBack }
+private enum class Mode { SignIn, Create, CodeRequest, CodeVerify, ResetRequest, ResetVerify, SignedIn, WelcomeBack }
 
 @Composable
 private fun PasswordRules(password: String) {
