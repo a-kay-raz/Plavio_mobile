@@ -315,6 +315,13 @@ fun bufferPresetName(minMs: Int, maxMs: Int, forPlaybackMs: Int): String =
     BUFFER_PRESETS.find { it.second == Triple(minMs, maxMs, forPlaybackMs) }?.first
         ?: "Custom (${minMs / 1000}s / ${maxMs / 1000}s)"
 
+/** Fine buffer value options (Step 39): per-second tuning instead of presets only. */
+val BUFFER_MIN_OPTIONS_S: List<Int> = listOf(5, 10, 15, 30, 60, 120)
+val BUFFER_MAX_OPTIONS_S: List<Int> = listOf(10, 30, 50, 100, 150, 300)
+val BUFFER_START_OPTIONS_MS: List<Int> = listOf(1_000, 1_500, 2_500, 5_000, 10_000, 15_000, 30_000)
+val BUFFER_REBUFFER_OPTIONS_MS: List<Int> = listOf(1_000, 2_500, 5_000, 10_000, 15_000, 30_000)
+val BUFFER_BACK_OPTIONS_S: List<Int> = listOf(0, 5, 10, 30, 60)
+
 /** Disk cache size options in MB (0 = off). */
 val DISK_CACHE_OPTIONS: List<Pair<Int, String>> = listOf(
     0 to "Off",
@@ -494,6 +501,34 @@ class SettingsStore(context: Context) {
     var bufferForPlaybackMs: Int
         get() = prefInt(KEY_BUFFER_FOR_PLAYBACK_MS, 2_500).coerceIn(1_000, 30_000)
         set(value) = prefs.edit().putInt(KEY_BUFFER_FOR_PLAYBACK_MS, value.coerceIn(1_000, 30_000)).apply()
+
+    /**
+     * Custom per-second buffer values (Step 39, Nuvio
+     * customPlaybackBuffersEnabled). Off = presets only: rebuffer is
+     * derived (2x start) and no back buffer is kept.
+     */
+    var customPlaybackBuffersEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CUSTOM_BUFFERS, false)
+        set(value) = prefs.edit().putBoolean(KEY_CUSTOM_BUFFERS, value).apply()
+
+    /** How much must be buffered after a stall before playback resumes (ms). Only when custom buffers are on. */
+    var bufferRebufferMs: Int
+        get() = prefInt(KEY_BUFFER_REBUFFER_MS, 5_000).coerceIn(1_000, 30_000)
+        set(value) = prefs.edit().putInt(KEY_BUFFER_REBUFFER_MS, value.coerceIn(1_000, 30_000)).apply()
+
+    /** Already-played media kept buffered for instant seek-back (ms). Only when custom buffers are on. */
+    var bufferBackBufferMs: Int
+        get() = prefInt(KEY_BUFFER_BACK_BUFFER_MS, 10_000).coerceIn(0, 60_000)
+        set(value) = prefs.edit().putInt(KEY_BUFFER_BACK_BUFFER_MS, value.coerceIn(0, 60_000)).apply()
+
+    /**
+     * Size the disk cache from free space (1/5 of free, 256 MB – 10 GB)
+     * instead of the fixed size (Nuvio vodDiskCacheAutoSize, default on).
+     * Only applies when the disk cache is enabled (size > 0).
+     */
+    var diskCacheAutoSize: Boolean
+        get() = prefs.getBoolean(KEY_DISK_CACHE_AUTO_SIZE, true)
+        set(value) = prefs.edit().putBoolean(KEY_DISK_CACHE_AUTO_SIZE, value).apply()
 
     /**
      * On-disk playback cache size in MB (0 = off). Caches progressive
@@ -1374,6 +1409,10 @@ class SettingsStore(context: Context) {
         private const val KEY_BUFFER_MIN_MS = "buffer_min_ms"
         private const val KEY_BUFFER_MAX_MS = "buffer_max_ms"
         private const val KEY_BUFFER_FOR_PLAYBACK_MS = "buffer_for_playback_ms"
+        private const val KEY_CUSTOM_BUFFERS = "custom_playback_buffers_enabled"
+        private const val KEY_BUFFER_REBUFFER_MS = "buffer_rebuffer_ms"
+        private const val KEY_BUFFER_BACK_BUFFER_MS = "buffer_back_buffer_ms"
+        private const val KEY_DISK_CACHE_AUTO_SIZE = "disk_cache_auto_size"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"

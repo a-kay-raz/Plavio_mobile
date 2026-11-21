@@ -38,4 +38,13 @@ object PlaybackCache {
             this.maxBytes = maxBytes
         }
     }
+
+    /**
+     * Auto cache size (Step 39, Nuvio PlaybackDiskCache): 1/5 of the cache
+     * volume's free space, clamped to 256 MB – 10 GB.
+     */
+    fun autoSizeBytes(context: Context): Long {
+        val mb = 1024L * 1024L
+        return (context.cacheDir.usableSpace / 5L).coerceIn(256L * mb, 10_240L * mb)
+    }
 }
