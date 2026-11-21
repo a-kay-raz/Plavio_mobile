@@ -99,6 +99,10 @@ fun LibraryScreen(
     var upNext by remember { mutableStateOf<List<UpNextCard>>(emptyList()) }
     var traktWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var simklWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
+    /** Personal Trakt lists (Step 33): (list, first 20 posters). */
+    var traktLists by remember {
+        mutableStateOf<List<Pair<TraktApi.TraktList, List<MetaPreview>>>>(emptyList())
+    }
 
     val context = LocalContext.current
     val downloadManager = remember { DownloadManager.get(context) }
@@ -148,6 +152,20 @@ fun LibraryScreen(
         if (traktToken != null) {
             runCatching { traktApi.getWatchlist(traktToken) }.getOrNull()?.let { entries ->
                 traktWatchlist = previews(entries.take(20).map { it.type to (it.imdbId to it.title) })
+            }
+            // Personal Trakt lists (Step 33, Nuvio TraktLibraryRepository):
+            // first 5 lists, first 20 posters each, fetched in parallel.
+            // A list that fails to load is skipped, never fatal.
+            runCatching { traktApi.getLists(traktToken) }.getOrNull()?.take(5)?.let { lists ->
+                traktLists = coroutineScope {
+                    lists.map { list ->
+                        async {
+                            val items = runCatching { traktApi.getListItems(traktToken, list.id) }
+                                .getOrNull().orEmpty()
+                            list to previews(items.take(20).map { it.type to (it.imdbId to it.title) })
+                        }
+                    }.awaitAll().filter { (_, items) -> items.isNotEmpty() }
+                }
             }
             runCatching { traktApi.getUpNext(traktToken) }.getOrNull()?.forEach { e ->
                 val meta = metaFor("series", e.imdbId)
@@ -256,6 +274,13 @@ fun LibraryScreen(
         if (traktWatchlist.isNotEmpty()) {
             item(key = "trakt_wl") {
                 FeedRow("Watchlist", "TRAKT", Color(0xFFFF858D), traktWatchlist, onOpenDetail)
+            }
+        }
+
+        // Personal Trakt lists (Step 33): one poster row per list.
+        traktLists.forEach { (list, items) ->
+            item(key = "trakt_list_${list.id}") {
+                FeedRow(list.name, "TRAKT LIST", Color(0xFFFF858D), items, onOpenDetail)
             }
         }
         if (simklWatchlist.isNotEmpty()) {
@@ -379,6 +404,7 @@ fun LibraryScreen(
         }
 
         if (!loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() &&
+            traktLists.isEmpty() &&
             myWatchlist.isEmpty() && myLists.isEmpty()
         ) {
             item(key = "lib_empty") {
