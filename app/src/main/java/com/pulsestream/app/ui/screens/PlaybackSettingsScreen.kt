@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Swipe
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -108,6 +110,9 @@ fun PlaybackSettingsScreen(
     var skipOffsetOpen by remember { mutableStateOf(false) }
     var reuseLastLink by remember { mutableStateOf(settings.reuseLastLinkEnabled) }
     var reuseLinkHoursOpen by remember { mutableStateOf(false) }
+    var heroTrailerPlayback by remember { mutableStateOf(settings.heroTrailerPlayback) }
+    var heroTrailerDelayOpen by remember { mutableStateOf(false) }
+    var heroTrailerUnmuted by remember { mutableStateOf(settings.heroTrailerStartUnmuted) }
     var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
@@ -125,6 +130,8 @@ fun PlaybackSettingsScreen(
     var skipSettingsUiTick by remember { mutableStateOf(0) }
     // Refresh key so the last-link cache subtitle updates after the dialog closes.
     var reuseLinkUiTick by remember { mutableStateOf(0) }
+    // Refresh key so the hero-trailer delay subtitle updates after the dialog closes.
+    var heroTrailerUiTick by remember { mutableStateOf(0) }
 
     GlowBackground {
         LazyColumn(
@@ -167,6 +174,7 @@ fun PlaybackSettingsScreen(
                 nextEpisodeUiTick
                 skipSettingsUiTick
                 reuseLinkUiTick
+                heroTrailerUiTick
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -361,6 +369,38 @@ fun PlaybackSettingsScreen(
                             subtitle = "Links stay reusable for ${settings.reuseLastLinkCacheHours}h",
                             onClick = { reuseLinkHoursOpen = true }
                         )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Movie,
+                            title = "Hero trailer autoplay",
+                            subtitle = "Play the first trailer muted in the detail hero",
+                            checked = heroTrailerPlayback,
+                            onCheckedChange = {
+                                heroTrailerPlayback = it
+                                settings.heroTrailerPlayback = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Schedule,
+                            title = "Trailer start delay",
+                            subtitle = heroTrailerDelayLabel(settings),
+                            onClick = { heroTrailerDelayOpen = true }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.VolumeUp,
+                            title = "Start trailer with sound",
+                            subtitle = "Hero trailers start unmuted instead of muted",
+                            checked = heroTrailerUnmuted,
+                            onCheckedChange = {
+                                heroTrailerUnmuted = it
+                                settings.heroTrailerStartUnmuted = it
+                            }
+                        )
                     }
                 )
             }
@@ -458,6 +498,14 @@ fun PlaybackSettingsScreen(
             settings = settings,
             onDismiss = { reuseLinkHoursOpen = false },
             onDone = { reuseLinkHoursOpen = false; reuseLinkUiTick++ }
+        )
+    }
+
+    if (heroTrailerDelayOpen) {
+        HeroTrailerDelayDialog(
+            settings = settings,
+            onDismiss = { heroTrailerDelayOpen = false },
+            onDone = { heroTrailerDelayOpen = false; heroTrailerUiTick++ }
         )
     }
 }
@@ -578,6 +626,80 @@ fun ReuseLinkHoursDialog(
         confirmButton = {
             TextButton(onClick = {
                 settings.reuseLastLinkCacheHours = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/** Hero trailer start delay, seconds (Nuvio heroTrailerStartDelaySeconds): 0–10. */
+private val HERO_TRAILER_DELAY_OPTIONS = listOf(0, 1, 2, 3, 5, 10)
+
+private fun heroTrailerDelayLabel(settings: SettingsStore): String {
+    val seconds = settings.heroTrailerStartDelaySeconds
+    return if (seconds == 0) "Starts immediately" else "Starts after ${seconds}s"
+}
+
+/**
+ * Hero-trailer delay picker (Settings > Playback, Nuvio
+ * heroTrailerStartDelaySeconds): how long after the detail opens the hero
+ * trailer fades in.
+ */
+@Composable
+fun HeroTrailerDelayDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember { mutableStateOf(settings.heroTrailerStartDelaySeconds) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Trailer start delay", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "How long after the detail opens the hero trailer starts playing.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(HERO_TRAILER_DELAY_OPTIONS, key = { it }) { seconds ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = seconds }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == seconds,
+                                onClick = { selected = seconds },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                if (seconds == 0) "Immediately" else "${seconds}s",
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.heroTrailerStartDelaySeconds = selected
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
