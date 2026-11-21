@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
@@ -50,6 +50,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,10 +96,10 @@ import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.ui.components.AddToListSheet
-import com.pulsestream.app.ui.components.LoadingState
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.SectionTitle
+import com.pulsestream.app.ui.components.ShimmerPoster
 import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.GlassBorder
@@ -212,6 +213,27 @@ fun HomeScreen(
     onGoToLive: () -> Unit = {},
 ) {
     val vm: HomeViewModel = viewModel(factory = vmFactory { HomeViewModel(repository) })
+
+    // Scroll restore (Nuvio MaintainHomeScrollPosition): the list state
+    // is saveable, so backing out of Detail restores the exact spot; it
+    // starts from the persisted index so a cold start lands where the
+    // last session left off. Hoisted above the uiState switch — the old
+    // rememberLazyListState() inside Content reset to the top on every
+    // return from Detail.
+    val homeListState = rememberSaveable(saver = LazyListState.Saver) {
+        LazyListState(
+            firstVisibleItemIndex = repository.settings.homeScrollIndex,
+            firstVisibleItemScrollOffset = repository.settings.homeScrollOffset
+        )
+    }
+    // Persist the spot when Home leaves the composition (Detail open,
+    // app closed) so the next cold start restores it.
+    DisposableEffect(Unit) {
+        onDispose {
+            repository.settings.homeScrollIndex = homeListState.firstVisibleItemIndex
+            repository.settings.homeScrollOffset = homeListState.firstVisibleItemScrollOffset
+        }
+    }
     val watching by repository.continueWatching.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     // Long-press context menu target: (addonId, meta) for the pressed poster.
@@ -249,7 +271,7 @@ fun HomeScreen(
         // content states).
         Box(Modifier.fillMaxSize()) {
             when (val state = vm.uiState) {
-                is HomeUiState.Loading -> LoadingState("Loading your catalogs…")
+                is HomeUiState.Loading -> HomeSkeleton()
                 is HomeUiState.Error -> ErrorState(state.message, onRetry = { vm.load() })
                 is HomeUiState.Empty -> NoAddonsEmptyState(
                     repository = repository,
@@ -272,7 +294,6 @@ fun HomeScreen(
                     // handledScrollRequest is saveable so a request fired
                     // while Home sat in the back stack is honoured once,
                     // on return, and never replayed on later visits.
-                    val homeListState = rememberLazyListState()
                     var handledScrollRequest by rememberSaveable {
                         mutableStateOf(HomeScrollSignal.requests.value)
                     }
@@ -1075,3 +1096,42 @@ private fun SetupStepRow(
     }
 }
 
+/**
+ * Cold-start skeleton (Nuvio HomeSkeletonLoading): a shimmer hero +
+ * shimmer rows in place of the old text spinner, built from the existing
+ * ShimmerPoster so the sweep matches Search's skeleton.
+ */
+@Composable
+private fun HomeSkeleton() {
+    Column(Modifier.fillMaxSize()) {
+        // Hero block: full-bleed poster shape.
+        ShimmerPoster(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(400.dp)
+        )
+        repeat(3) {
+            Spacer(Modifier.height(18.dp))
+            // Row title bar.
+            ShimmerPoster(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .width(140.dp)
+                    .height(18.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(5) {
+                    ShimmerPoster(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .height(180.dp)
+                    )
+                }
+            }
+        }
+    }
+}

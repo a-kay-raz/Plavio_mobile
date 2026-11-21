@@ -471,6 +471,16 @@ class SettingsStore(context: Context) {
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
 
+    /** Home scroll spot (Nuvio HomeScrollPosition): first visible row index, persisted so a cold start lands where the last session left off. */
+    var homeScrollIndex: Int
+        get() = prefInt(KEY_HOME_SCROLL_INDEX, 0).coerceAtLeast(0)
+        set(value) = prefs.edit().putInt(KEY_HOME_SCROLL_INDEX, value.coerceAtLeast(0)).apply()
+
+    /** Home scroll spot, pixel offset within the first visible row. */
+    var homeScrollOffset: Int
+        get() = prefInt(KEY_HOME_SCROLL_OFFSET, 0).coerceAtLeast(0)
+        set(value) = prefs.edit().putInt(KEY_HOME_SCROLL_OFFSET, value.coerceAtLeast(0)).apply()
+
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -1049,6 +1059,8 @@ class SettingsStore(context: Context) {
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
         private const val KEY_RESIZE_MODE = "resize_mode"
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
+        private const val KEY_HOME_SCROLL_INDEX = "home_scroll_index"
+        private const val KEY_HOME_SCROLL_OFFSET = "home_scroll_offset"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"
