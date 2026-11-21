@@ -1719,9 +1719,11 @@ class StreamRepository(
         // Runs after the main fetch so direct streams show first; resolved
         // streams are appended as they complete (parallel, non-blocking).
         // Only active when at least one debrid API key is configured.
-        // Per stream, providers are tried in order (TorBox → Real-Debrid)
-        // and the first success wins.
+        // Step 43: providers are tried in order — the preferred resolver
+        // first (Settings > Integrations), then the rest in canonical order
+        // (TorBox → Premiumize → Real-Debrid) — and the first success wins.
         data class DebridProvider(
+            val id: String,
             val tag: String,
             val resolve: suspend (String, Int?, String?) -> String?
         )
@@ -1729,7 +1731,7 @@ class StreamRepository(
             val torboxKey = settings.torboxApiKey
             if (!torboxKey.isNullOrBlank()) {
                 val torbox = com.pulsestream.app.data.debrid.TorBoxApi(torboxKey)
-                add(DebridProvider("⚡ TorBox") { hash, fileIdx, filePath ->
+                add(DebridProvider("torbox", "⚡ TorBox") { hash, fileIdx, filePath ->
                     val started = System.nanoTime()
                     try {
                         val result = torbox.resolveCachedDetailed(hash, fileIdx, filePath)
@@ -1749,24 +1751,57 @@ class StreamRepository(
                     }
                 })
             }
+            val premiumizeKey = settings.premiumizeApiKey
+            if (!premiumizeKey.isNullOrBlank()) {
+                val premiumize = com.pulsestream.app.data.debrid.PremiumizeApi(premiumizeKey)
+                add(DebridProvider("premiumize", "⚡ PM") { hash, fileIdx, filePath ->
+                    val started = System.nanoTime()
+                    try {
+                        val result = premiumize.resolveCachedDetailed(hash, fileIdx, filePath)
+                        val outcome = when (result) {
+                            is com.pulsestream.app.data.debrid.DebridResolveResult.Resolved -> "succeeded"
+                            is com.pulsestream.app.data.debrid.DebridResolveResult.NotCached -> "no_results"
+                            is com.pulsestream.app.data.debrid.DebridResolveResult.Error ->
+                                if (result.isAuthError) "authentication_needed" else "failed"
+                        }
+                        SourceDiagnostics.record("Premiumize", outcome, (System.nanoTime() - started) / 1_000_000)
+                        (result as? com.pulsestream.app.data.debrid.DebridResolveResult.Resolved)?.url
+                    }
+                    catch (cancel: CancellationException) { throw cancel }
+                    catch (_: Exception) {
+                        SourceDiagnostics.record("Premiumize", "failed", (System.nanoTime() - started) / 1_000_000)
+                        null
+                    }
+                })
+            }
             val rdKey = settings.realDebridApiKey
             if (!rdKey.isNullOrBlank()) {
                 val rd = com.pulsestream.app.data.debrid.RealDebridApi(rdKey)
-                add(DebridProvider("⚡ RD") { hash, fileIdx, filePath ->
+                add(DebridProvider("realdebrid", "⚡ RD") { hash, fileIdx, filePath ->
                     try { rd.resolveCachedToHttp(hash, fileIdx, filePath) }
                     catch (cancel: CancellationException) { throw cancel }
                     catch (_: Exception) { null }
                 })
             }
+        }.let { providers ->
+            // Preferred resolver first; unknown/blank preference keeps the
+            // canonical order (and falls back to the first configured).
+            val preferred = settings.preferredDebridResolver.trim().lowercase()
+            if (preferred.isBlank()) providers
+            else providers.sortedWith(compareByDescending<DebridProvider> { it.id == preferred })
         }
         if (debridProviders.isNotEmpty()) {
             val pending = mutex.withLock {
                 accStreams.filter { it.infoHash != null && it.url.startsWith("infohash:") }
             }
-            if (pending.isNotEmpty()) {
+            // Step 43 — instant-preparation limit: at most N infoHash streams
+            // are resolved per title (0 = no cap, current behaviour).
+            val prepareLimit = settings.debridInstantPrepareLimit
+            val toResolve = if (prepareLimit > 0) pending.take(prepareLimit) else pending
+            if (toResolve.isNotEmpty()) {
                 val resolveGate = Semaphore(3)
                 coroutineScope {
-                    pending.forEach { stream ->
+                    toResolve.forEach { stream ->
                         launch {
                             var resolved: Pair<String, String>? = null
                             resolveGate.acquire()

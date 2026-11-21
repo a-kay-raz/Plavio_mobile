@@ -2,6 +2,7 @@ package com.pulsestream.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.OmdbClient
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.TmdbClient
+import com.pulsestream.app.data.debrid.PremiumizeApi
 import com.pulsestream.app.data.simkl.SimklSyncEngine
 import kotlinx.coroutines.launch
 import com.pulsestream.app.ui.components.GlassCard
@@ -64,8 +67,8 @@ import com.pulsestream.app.ui.theme.TextSecondary
 /**
  * Integrations screen (v0.9.0+): third-party service connections.
  *
- * Hosts debrid integrations (TorBox, Real-Debrid): paste an API key and
- * torrent infoHash streams resolve to instant direct HTTP links.
+ * Hosts debrid integrations (TorBox, Premiumize, Real-Debrid): paste an API
+ * key and torrent infoHash streams resolve to instant direct HTTP links.
  * Debrid-only — the app never downloads torrents itself.
  */
 @Composable
@@ -115,6 +118,9 @@ fun IntegrationsScreen(
                 var showRdDialog by remember { mutableStateOf(false) }
                 var rdTick by remember { mutableIntStateOf(0) }
                 val rdConfigured = remember(rdTick) { !settings.realDebridApiKey.isNullOrBlank() }
+                var showPmDialog by remember { mutableStateOf(false) }
+                var pmTick by remember { mutableIntStateOf(0) }
+                val pmConfigured = remember(pmTick) { !settings.premiumizeApiKey.isNullOrBlank() }
                 SettingsGroup(
                     {
                         SettingsStaticRow(
@@ -138,6 +144,33 @@ fun IntegrationsScreen(
                                 }
                             },
                             onClick = { showTorboxDialog = true }
+                        )
+                    },
+                    {
+                        // Step 43 — Premiumize: same paste-a-key pattern as
+                        // TorBox; the key is verified against
+                        // /api/account/info before saving.
+                        SettingsStaticRow(
+                            icon = Icons.Filled.Bolt,
+                            title = "Premiumize",
+                            subtitle = if (pmConfigured) "API key saved" else "Add your API key for cached streams",
+                            trailing = {
+                                if (pmConfigured) {
+                                    Text(
+                                        "Saved",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = LocalPalette.current.accent
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = "Configure Premiumize",
+                                        tint = TextSecondary
+                                    )
+                                }
+                            },
+                            onClick = { showPmDialog = true }
                         )
                     },
                     {
@@ -186,6 +219,102 @@ fun IntegrationsScreen(
                         enabled = false,
                         onSave = { settings.realDebridApiKey = it; rdTick++ },
                         onDismiss = { showRdDialog = false }
+                    )
+                }
+                if (showPmDialog) {
+                    ApiKeyDialog(
+                        title = "Premiumize API Key",
+                        keyLinkText = "Get your API key at premiumize.me/account",
+                        keyLinkUrl = "https://www.premiumize.me/account",
+                        currentKey = settings.premiumizeApiKey,
+                        enabled = true,
+                        helpText = "Paste your Premiumize API key and tap Save. The key is checked before saving — an invalid key won't save. To remove it, clear the field and save.",
+                        validate = { PremiumizeApi.validateApiKey(it) },
+                        onSave = { settings.premiumizeApiKey = it; pmTick++ },
+                        onDismiss = { showPmDialog = false }
+                    )
+                }
+            }
+
+            // Step 43 — Debrid options: preferred resolver (tried first) and
+            // the instant-preparation limit (how many cached streams resolve
+            // per title; All = no cap).
+            item(key = "debrid_options") {
+                var showResolverDialog by remember { mutableStateOf(false) }
+                var resolverTick by remember { mutableIntStateOf(0) }
+                val resolverLabel = remember(resolverTick) {
+                    when (settings.preferredDebridResolver) {
+                        "torbox" -> "TorBox"
+                        "premiumize" -> "Premiumize"
+                        "realdebrid" -> "Real-Debrid"
+                        else -> "Automatic"
+                    }
+                }
+                var showPrepareDialog by remember { mutableStateOf(false) }
+                var prepareTick by remember { mutableIntStateOf(0) }
+                val prepareLabel = remember(prepareTick) {
+                    val limit = settings.debridInstantPrepareLimit
+                    if (limit <= 0) "All (no limit)" else "$limit per title"
+                }
+                SettingsGroup(
+                    {
+                        SettingsStaticRow(
+                            icon = Icons.Filled.Bolt,
+                            title = "Preferred resolver",
+                            subtitle = "Tried first when resolving cached torrents — $resolverLabel",
+                            trailing = {
+                                Icon(
+                                    Icons.Filled.ChevronRight,
+                                    contentDescription = "Choose preferred resolver",
+                                    tint = TextSecondary
+                                )
+                            },
+                            onClick = { showResolverDialog = true }
+                        )
+                    },
+                    {
+                        SettingsStaticRow(
+                            icon = Icons.Filled.Bolt,
+                            title = "Instant preparation",
+                            subtitle = "Cached streams resolved per title — $prepareLabel",
+                            trailing = {
+                                Icon(
+                                    Icons.Filled.ChevronRight,
+                                    contentDescription = "Choose instant preparation limit",
+                                    tint = TextSecondary
+                                )
+                            },
+                            onClick = { showPrepareDialog = true }
+                        )
+                    }
+                )
+                if (showResolverDialog) {
+                    ChoiceDialog(
+                        title = "Preferred resolver",
+                        options = listOf(
+                            "" to "Automatic (TorBox first)",
+                            "torbox" to "TorBox",
+                            "premiumize" to "Premiumize",
+                            "realdebrid" to "Real-Debrid",
+                        ),
+                        selected = settings.preferredDebridResolver,
+                        onSelect = { settings.preferredDebridResolver = it; resolverTick++ },
+                        onDismiss = { showResolverDialog = false }
+                    )
+                }
+                if (showPrepareDialog) {
+                    ChoiceDialog(
+                        title = "Instant preparation",
+                        options = listOf(
+                            "0" to "All (no limit)",
+                            "1" to "1 per title",
+                            "2" to "2 per title",
+                            "3" to "3 per title",
+                            "5" to "5 per title",
+                        ),
+                        selected = settings.debridInstantPrepareLimit.toString(),
+                        onSelect = { settings.debridInstantPrepareLimit = it.toIntOrNull() ?: 0; prepareTick++ },
+                        onDismiss = { showPrepareDialog = false }
                     )
                 }
             }
@@ -319,7 +448,7 @@ fun IntegrationsScreen(
                         Spacer(Modifier.height(6.dp))
                         Text(
                             "Cached torrents stream instantly without using download slots. " +
-                                "When both are connected, TorBox is tried first, then Real-Debrid.",
+                                "Providers are tried in order — the preferred resolver first, then the rest.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
@@ -706,4 +835,49 @@ private fun LibrarySyncRow(repository: StreamRepository) {
                 .padding(start = 56.dp, end = 16.dp, top = 2.dp, bottom = 8.dp)
         )
     }
+}
+
+/** Single-choice radio dialog (Step 43: preferred resolver, instant-preparation limit). */
+@Composable
+private fun ChoiceDialog(
+    title: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, color = TextPrimary) },
+        text = {
+            Column {
+                options.forEach { (value, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(value)
+                                onDismiss()
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = value == selected,
+                            onClick = {
+                                onSelect(value)
+                                onDismiss()
+                            }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(label, color = TextPrimary, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
