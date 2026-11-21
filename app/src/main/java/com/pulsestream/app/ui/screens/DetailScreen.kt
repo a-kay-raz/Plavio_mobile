@@ -1904,7 +1904,13 @@ private fun DetailContent(
             metaId = if (meta.type == "series") meta.id else "",
             seriesName = meta.name,
             season = vm.selectedVideo?.season ?: 0,
-            episode = vm.selectedVideo?.episode ?: 0
+            episode = vm.selectedVideo?.episode ?: 0,
+            // Step 46: subtitles + offline show meta.
+            subtitles = streamsContent?.subtitles ?: emptyList(),
+            posterUrl = meta.poster,
+            description = meta.description,
+            genres = meta.genres,
+            videos = meta.videos
         )
     }
 

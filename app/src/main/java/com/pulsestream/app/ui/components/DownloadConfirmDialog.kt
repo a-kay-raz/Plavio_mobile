@@ -10,8 +10,11 @@ import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.HlsQualityResolver
 import com.pulsestream.app.data.HlsQualityVariant
 import com.pulsestream.app.data.StreamItem
+import com.pulsestream.app.data.Subtitle
+import com.pulsestream.app.data.Video
 import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.data.download.DownloadService
+import com.pulsestream.app.data.download.OfflineShowMetadata
 import com.pulsestream.app.data.pickClosestVariant
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
@@ -32,7 +35,14 @@ fun DownloadConfirmDialog(
     metaId: String = "",
     seriesName: String? = null,
     season: Int = 0,
-    episode: Int = 0
+    episode: Int = 0,
+    // Step 46: subtitle URLs captured for this title (fetched into sidecars
+    // after the download completes) + art/meta cached for offline browsing.
+    subtitles: List<Subtitle> = emptyList(),
+    posterUrl: String? = null,
+    description: String? = null,
+    genres: List<String> = emptyList(),
+    videos: List<Video> = emptyList()
 ) {
     val context = LocalContext.current
     val manager = remember { DownloadManager.get(context) }
@@ -205,14 +215,26 @@ fun DownloadConfirmDialog(
                                 // download the chosen variant's playlist.
                                 // Step 36: show-key plumbing for grouping.
                                 manager.setDownloadPreferredResolution(resolution)
-                                manager.startDownload(
+                                val downloadId = manager.startDownload(
                                     url = downloadUrl,
                                     title = displayTitle,
                                     headers = stream.headers,
                                     showKey = metaId,
                                     seriesName = seriesName ?: title,
                                     season = season,
-                                    episode = episode
+                                    episode = episode,
+                                    // Step 46: subtitles + offline show meta.
+                                    subtitles = subtitles
+                                )
+                                OfflineShowMetadata.save(
+                                    context = context,
+                                    key = metaId.ifEmpty { downloadId },
+                                    title = seriesName ?: displayTitle,
+                                    type = if (metaId.isNotEmpty()) "series" else "movie",
+                                    posterUrl = posterUrl,
+                                    description = description,
+                                    genres = genres,
+                                    videos = videos
                                 )
                                 DownloadService.start(context)
                                 onStarted()

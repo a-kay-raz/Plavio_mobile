@@ -5189,7 +5189,10 @@ fun PlayerScreen(
                 metaId = if (!currentRequest.isMovie) currentRequest.metaId else "",
                 seriesName = currentRequest.seriesName,
                 season = currentRequest.season,
-                episode = currentRequest.episode
+                episode = currentRequest.episode,
+                // Step 46: subtitles + offline poster.
+                subtitles = currentRequest.subtitles,
+                posterUrl = currentRequest.poster
             )
         }
 

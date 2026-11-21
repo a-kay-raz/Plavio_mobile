@@ -50,6 +50,19 @@ object BatchDownloadQueuer {
     ) {
         val appContext = context.applicationContext
         val manager = DownloadManager.get(appContext)
+        // Step 46: cache the show art/meta once for the whole batch so
+        // Downloads/Library can browse the show offline.
+        OfflineShowMetadata.save(
+            context = appContext,
+            key = meta.id,
+            title = meta.name ?: "Series",
+            type = "series",
+            posterUrl = meta.poster,
+            backgroundUrl = meta.background,
+            description = meta.description,
+            genres = meta.genres,
+            videos = meta.videos,
+        )
         scope.launch {
             val completed = runCatching {
                 manager.observeAll().first()
@@ -94,9 +107,11 @@ object BatchDownloadQueuer {
     ): Boolean {
         // Latest emission within the bound, or null when nothing arrived.
         var latest: List<com.pulsestream.app.data.StreamItem>? = null
+        var latestSubtitles: List<com.pulsestream.app.data.Subtitle> = emptyList()
         withTimeoutOrNull(PER_EPISODE_TIMEOUT_MS) {
             repository.streamResultsFlow(meta.type, episode.id).collect { result ->
                 latest = result.streams
+                latestSubtitles = result.subtitles
             }
         }
         val streams = latest.orEmpty()
@@ -126,6 +141,9 @@ object BatchDownloadQueuer {
             seriesName = meta.name ?: "",
             season = season,
             episode = episode.episode,
+            // Step 46: this episode's subtitles, fetched into sidecars
+            // once the download completes.
+            subtitles = latestSubtitles,
         )
         DownloadService.start(context)
         return true

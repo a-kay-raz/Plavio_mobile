@@ -1216,15 +1216,31 @@ private fun PulseNavGraph(
                 android.widget.Toast.LENGTH_LONG
             ).show()
         } else {
-            playRequest(
-                PlaybackRequest(
-                    streamUrl = if (isContent) filePath else "file://$filePath",
-                    title = title,
-                    poster = null,
-                    videoId = "download_${filePath.hashCode()}",
-                    isMovie = true
+            // Step 46: attach the download's subtitle sidecars + cached
+            // poster (looked up by file path, best-effort — playback never
+            // waits on a missing row).
+            navScope.launch {
+                val manager = com.pulsestream.app.data.download.DownloadManager.get(appContext)
+                val item = runCatching { manager.getByFilePath(filePath) }.getOrNull()
+                val subtitles = item?.let {
+                    com.pulsestream.app.data.download.DownloadSubtitles.localSubtitles(appContext, it.id)
+                } ?: emptyList()
+                val poster = item?.let {
+                    com.pulsestream.app.data.download.OfflineShowMetadata.posterFile(
+                        appContext, it.showKey.ifEmpty { it.id }
+                    )
+                }?.let { "file://${it.absolutePath}" }
+                playRequest(
+                    PlaybackRequest(
+                        streamUrl = if (isContent) filePath else "file://$filePath",
+                        title = title,
+                        poster = poster,
+                        videoId = "download_${filePath.hashCode()}",
+                        subtitles = subtitles,
+                        isMovie = true
+                    )
                 )
-            )
+            }
         }
     }
     NavHost(navController = navController, startDestination = Routes.SPLASH) {

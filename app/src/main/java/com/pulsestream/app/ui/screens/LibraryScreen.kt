@@ -443,6 +443,15 @@ private fun DownloadCard(
     onClick: () -> Unit
 ) {
     val palette = LocalPalette.current
+    // Step 46: cached poster for offline browsing (movies: the meta key is
+    // the item id; series episodes: the show key). Falls back to the
+    // first-letter tile when nothing was cached.
+    val context = LocalContext.current
+    val poster = remember(item.id) {
+        com.pulsestream.app.data.download.OfflineShowMetadata.posterFile(
+            context, item.showKey.ifEmpty { item.id }
+        )
+    }
     Column(
         modifier = Modifier
             .width(104.dp)
@@ -458,12 +467,20 @@ private fun DownloadCard(
                 .background(Color.White.copy(alpha = 0.05f)),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                item.title.take(1).uppercase(),
-                color = TextSecondary,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.ExtraBold
-            )
+            if (poster != null) {
+                SafePosterImage(
+                    model = poster,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    item.title.take(1).uppercase(),
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
