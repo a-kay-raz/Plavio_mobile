@@ -15,7 +15,6 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -36,8 +35,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -52,8 +53,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.StayCurrentLandscape
+import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
@@ -74,7 +79,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SettingsBrightness
-import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VolumeUp
@@ -86,13 +90,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
@@ -137,6 +138,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -752,9 +754,15 @@ fun PlayerScreen(
         playerView?.let { applySubtitleStyle(it) }
     }
     var locked by remember { mutableStateOf(false) }
+    // Nuvio legacy locked overlay: shown on lock, auto-hides after 3.5s,
+    // revealed again by tapping while locked.
+    var lockedOverlayVisible by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
+    // Nuvio legacy: the total time pill toggles elapsed / remaining on tap.
+    var showRemainingTime by remember { mutableStateOf(false) }
     var volumePercent by remember { mutableIntStateOf(0) }
     // Volume boost (past 100%): a LoudnessEnhancer on the player's audio
     // session adds up to +10 dB on top of the system max. volumeBoost is
@@ -985,6 +993,20 @@ fun PlayerScreen(
     fun togglePlay() {
         val c = player
         if (c.isPlaying) c.pause() else c.play()
+    }
+
+    /** Shared by the header and pill PiP buttons. */
+    fun enterPip() {
+        if (!settings.pipEnabled) return
+        val act = activity as? MainActivity ?: return
+        val vs = player.videoSize
+        if (vs.width > 0 && vs.height > 0) {
+            MainActivity.pipVideoW = vs.width
+            MainActivity.pipVideoH = vs.height
+        }
+        act.enterPictureInPictureMode(
+            MainActivity.buildPipParams(act, player.isPlaying)
+        )
     }
 
     // TV remote fallback: MainActivity.onKeyDown forwards Left/Right/FF/RW
@@ -1930,9 +1952,9 @@ fun PlayerScreen(
      */
     fun Modifier.videoGestures(): Modifier = this.pointerInput(player, locked) {
         if (locked) {
-            detectTapGestures(onTap = {
-                pokeIndicator(PlayerIndicator.Message("Locked — tap the lock icon to unlock"))
-            })
+            // Nuvio legacy: a tap while locked reveals the locked overlay
+            // (which auto-hides again after 3.5s).
+            detectTapGestures(onTap = { lockedOverlayVisible = true })
             return@pointerInput
         }
         var lastTapUpMs = 0L
@@ -2148,6 +2170,7 @@ fun PlayerScreen(
             val c = player
             positionMs = c.currentPosition
             durationMs = c.duration.takeIf { it > 0 } ?: 0L
+            bufferedMs = c.bufferedPosition.takeIf { it > 0 } ?: 0L
             isPlaying = c.isPlaying
             if (c.isPlaying) hasStartedPlayback = true
             isBuffering = c.playbackState == Player.STATE_BUFFERING ||
@@ -2204,6 +2227,15 @@ fun PlayerScreen(
         if (showControls && !locked) {
             delay(3500)
             showControls = false
+        }
+    }
+
+    // Nuvio legacy locked overlay auto-hides after 3.5s (reveal again by
+    // tapping while locked).
+    LaunchedEffect(locked, lockedOverlayVisible) {
+        if (locked && lockedOverlayVisible) {
+            delay(3500)
+            lockedOverlayVisible = false
         }
     }
     // (The indicator's hide lives with its show animation below —
@@ -2393,11 +2425,18 @@ fun PlayerScreen(
 
     val req = currentRequest
     val headerTitle = req.seriesName ?: req.title
+    // Nuvio legacy episode format: "S1 E2 · Title".
     val episodeLine = if (!req.isMovie) {
-        "S${req.season}E${req.episode}" + (req.episodeTitle?.let { " • $it" } ?: "")
+        "S${req.season} E${req.episode}" + (req.episodeTitle?.let { " · $it" } ?: "")
     } else null
-    val sourceLine = listOfNotNull(req.streamLabel, req.sourceName)
-        .joinToString(" • ").takeIf { it.isNotBlank() }
+    // Nuvio legacy meta row: stream title + provider name (italic) as two
+    // separate texts, not one joined line.
+    val streamLabelText = req.streamLabel
+    val sourceNameText = req.sourceName
+    // Nuvio legacy "Ends at HH:MM" label, speed-adjusted.
+    val endsAtText = remember(positionMs, durationMs, speed) {
+        endsAtLabel(positionMs, durationMs, speed)
+    }
 
     // ---- Android TV D-pad: works when the touch gestures can't. ----
     val playPauseFocus = remember { FocusRequester() }
@@ -2709,109 +2748,73 @@ fun PlayerScreen(
             indicator = null
         }
         indicator?.let { ind ->
-            val accentNow = LocalPalette.current.accent
-            val volTint = when {
-                ind is PlayerIndicator.Volume && ind.percent <= 0 -> Color(0xFFF87171)
-                ind is PlayerIndicator.Volume && ind.percent > 100 -> Color(0xFFFBBF24)
-                else -> accentNow
+            // Nuvio legacy GestureFeedbackPill: top-center, 24dp radius
+            // liquid glass, 28dp icon circle + message. No level bar (the
+            // side bars are the new layout's feedback, not legacy's).
+            val isBoostedVolume = ind is PlayerIndicator.Volume && ind.percent > 100
+            val isMuted = ind is PlayerIndicator.Volume && ind.percent <= 0
+            val iconBoxColor = when {
+                isMuted -> Color(0xFFFF8A80).copy(alpha = 0.22f)
+                isBoostedVolume -> Color(0xFFFF5252).copy(alpha = 0.22f)
+                else -> Color.White.copy(alpha = 0.15f)
             }
-            val levelFraction = when (ind) {
-                is PlayerIndicator.Volume ->
-                    if (ind.percent > 100) ind.percent / 200f else ind.percent / 100f
-                is PlayerIndicator.Brightness -> ind.percent.coerceIn(0, 100) / 100f
-                else -> null
-            }
-            // The level bar tracks the finger: a short tween, not a
-            // spring — during a swipe the value changes continuously
-            // and a spring lags and wobbles behind it (flicker fix).
-            val levelAnim by animateFloatAsState(
-                targetValue = levelFraction ?: 0f,
-                animationSpec = tween(70),
-                label = "indicatorLevel"
-            )
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.62f),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = indScale.value
-                        scaleY = indScale.value
-                        alpha = indAlpha.value
-                    }
-                ) {
-                    Column(
-                        Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            when (ind) {
-                                is PlayerIndicator.Volume -> {
-                                    Icon(
-                                        if (ind.percent <= 0) Icons.Filled.VolumeOff
-                                        else Icons.Filled.VolumeUp,
-                                        null,
-                                        tint = volTint
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "Volume ${ind.percent}%",
-                                        color = volTint,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                is PlayerIndicator.Brightness -> {
-                                    Icon(Icons.Filled.SettingsBrightness, null, tint = accentNow)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "Brightness ${ind.percent}%",
-                                        color = TextPrimary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                is PlayerIndicator.Seek -> {
-                                    Text(
-                                        ind.text,
-                                        color = TextPrimary,
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                is PlayerIndicator.Speed -> {
-                                    Text(
-                                        "Speed ${ind.label}",
-                                        color = TextPrimary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                is PlayerIndicator.Message -> {
-                                    Text(
-                                        ind.text,
-                                        color = TextPrimary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
+            Box(
+                Modifier.fillMaxSize().padding(top = 40.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Box(
+                    Modifier
+                        .liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
+                        .graphicsLayer {
+                            scaleX = indScale.value
+                            scaleY = indScale.value
+                            alpha = indAlpha.value
                         }
-                        if (levelFraction != null) {
-                            Spacer(Modifier.height(8.dp))
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val indIcon: ImageVector? = when (ind) {
+                            is PlayerIndicator.Volume ->
+                                if (ind.percent <= 0) Icons.Filled.VolumeOff
+                                else Icons.Filled.VolumeUp
+                            is PlayerIndicator.Brightness -> Icons.Filled.SettingsBrightness
+                            is PlayerIndicator.Seek ->
+                                if (ind.text.startsWith("+")) Icons.Filled.FastForward
+                                else Icons.Filled.FastRewind
+                            is PlayerIndicator.Speed -> Icons.Filled.Speed
+                            is PlayerIndicator.Message -> null
+                        }
+                        if (indIcon != null) {
                             Box(
                                 Modifier
-                                    .width(120.dp)
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(Color.White.copy(alpha = 0.25f))
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(iconBoxColor),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth(levelAnim.coerceIn(0f, 1f))
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(
-                                            if (ind is PlayerIndicator.Volume) volTint else accentNow
-                                        )
+                                Icon(
+                                    indIcon, null,
+                                    tint = if (isMuted) Color(0xFFFFC1C1) else Color.White,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
+                        Text(
+                            when (ind) {
+                                is PlayerIndicator.Volume -> "Volume ${ind.percent}%"
+                                is PlayerIndicator.Brightness -> "Brightness ${ind.percent}%"
+                                is PlayerIndicator.Seek -> ind.text
+                                is PlayerIndicator.Speed -> "Speed ${ind.label}"
+                                is PlayerIndicator.Message -> ind.text
+                            },
+                            // Nuvio legacy: boosted volume reads red + Bold.
+                            color = if (isBoostedVolume) Color(0xFFFF5252) else Color.White,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isBoostedVolume) FontWeight.Bold else FontWeight.SemiBold
+                        )
                     }
                 }
             }
@@ -2819,14 +2822,14 @@ fun PlayerScreen(
 
         // Hold-for-speed pill: pinned top-center only while the hold boost
         // is active, showing the current step (2x..5x); never consumes touches.
+        // Nuvio legacy feedback sits top-center at 40dp in a glass pill.
         if (holdSpeedActive) {
             Box(
-                Modifier.fillMaxSize().padding(top = 24.dp),
+                Modifier.fillMaxSize().padding(top = 40.dp),
                 contentAlignment = Alignment.TopCenter
             ) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.62f),
-                    shape = RoundedCornerShape(50)
+                Box(
+                    Modifier.liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
                 ) {
                     Row(
                         Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -2875,21 +2878,81 @@ fun PlayerScreen(
             }
         }
 
-        // Unlock affordance while locked (controls stay hidden).
-        if (locked) {
-            IconButton(
-                onClick = {
-                    locked = false
-                    showControls = true
-                    controlsTick++
-                    pokeIndicator(PlayerIndicator.Message("Controls unlocked"))
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
-            ) {
-                Icon(Icons.Filled.Lock, "Unlock controls", tint = LocalPalette.current.accent)
+        // Locked overlay — Nuvio legacy: full-screen, bottom scrim 220dp,
+        // center glass lock circle (72dp, icon 34dp) + "Tap to unlock",
+        // disabled slider + time pills below. Tap the circle to unlock.
+        if (locked && lockedOverlayVisible) {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
+                            )
+                        )
+                )
+                Column(
+                    Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable {
+                            locked = false
+                            showControls = true
+                            controlsTick++
+                            pokeIndicator(PlayerIndicator.Message("Controls unlocked"))
+                        }
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        Modifier
+                            .size(72.dp)
+                            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Lock,
+                            "Unlock controls",
+                            tint = Color.White,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Tap to unlock",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.95f)
+                    )
+                }
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 16.dp)
+                ) {
+                    LegacySeekBar(
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        bufferedMs = bufferedMs,
+                        onSeek = {},
+                        enabled = false,
+                        isTv = isTv
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TimeChip(formatMs(positionMs))
+                        TimeChip(formatMs(durationMs))
+                    }
+                }
             }
         }
 
@@ -2901,194 +2964,293 @@ fun PlayerScreen(
         ) {
             Box(Modifier.fillMaxSize().tapGestures()
                 .then(if (isTv) Modifier.onFocusChanged { transportFocused = it.hasFocus } else Modifier)) {
-                // ---- Top: title block + icon cluster ----
+                // Scrims (Nuvio legacy: top 160dp, bottom 220dp, black 0.35
+                // with glass controls) — behind the controls, fading with them.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent)
+                            )
+                        )
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))
+                            )
+                        )
+                )
+                // ---- Top: title block + icon cluster (Nuvio legacy
+                // PlayerHeader — no container; title sits on the scrim) ----
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .liquidGlass(RoundedCornerShape(20.dp), frost = 0.12f, darken = 0.03f)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.Top
+                        .statusBarsPadding()
+                        .padding(top = 8.dp, start = 20.dp, end = 20.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(Modifier.weight(1f).padding(top = 2.dp)) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp, top = 2.dp)) {
                         Text(
                             headerTitle,
-                            color = TextPrimary,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            maxLines = 1,
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            lineHeight = 21.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                         if (episodeLine != null) {
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 episodeLine,
-                                color = TextSecondary,
-                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        if (sourceLine != null) {
+                        if (streamLabelText != null || sourceNameText != null) {
                             Spacer(Modifier.height(2.dp))
-                            Text(
-                                sourceLine,
-                                color = TextSecondary.copy(alpha = 0.8f),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                streamLabelText?.let {
+                                    Text(
+                                        it,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 12.sp,
+                                        lineHeight = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                sourceNameText?.let {
+                                    Text(
+                                        it,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 12.sp,
+                                        lineHeight = 15.sp,
+                                        fontStyle = FontStyle.Italic,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Top-right trio (owner's order 2026-10-25):
-                        // Lock, Rotate, External player — icons only,
-                        // moved out of the bottom pill bar. External
-                        // wears a new icon (ExitToApp); the old
-                        // OpenInNew was rejected as ugly.
-                        IconButton(
-                            onClick = {
-                                locked = !locked
-                                if (locked) {
-                                    showControls = false
-                                    pokeIndicator(PlayerIndicator.Message("Controls locked"))
-                                } else {
-                                    showControls = true
-                                    controlsTick++
-                                    pokeIndicator(PlayerIndicator.Message("Controls unlocked"))
-                                }
-                            },
-                            modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
+                    // Top-right cluster, Nuvio legacy order (only the actions
+                    // Plavio has — no cast/party/engine-switch/rate/info;
+                    // video settings is iOS-only in Nuvio). Back is last.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PlayerHeaderButton(
+                            Icons.Filled.ExitToApp, "Open in external player"
                         ) {
-                            Icon(
-                                if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen,
-                                if (locked) "Unlock controls" else "Lock controls",
-                                tint = TextPrimary
-                            )
+                            val ctx = activity ?: return@PlayerHeaderButton
+                            // Protected links warn once (owner's order
+                            // 2026-10-26) instead of the old hard block;
+                            // normal links open at once.
+                            if (ExternalPlayer.needsWarning(ctx, req)) {
+                                externalWarningHide = false
+                                externalWarningReq = req
+                            } else {
+                                ExternalPlayer.play(ctx, req)
+                            }
                         }
-                        IconButton(
-                            onClick = {
-                                isPortrait = !isPortrait
-                                activity?.requestedOrientation = if (isPortrait)
-                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                else
-                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                            },
-                            modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
+                        if (settings.pipEnabled) {
+                            PlayerHeaderButton(
+                                Icons.Filled.PictureInPicture, "Picture in picture"
+                            ) { enterPip() }
+                        }
+                        PlayerHeaderButton(
+                            if (isPortrait) Icons.Filled.StayCurrentLandscape
+                            else Icons.Filled.StayCurrentPortrait,
+                            "Rotate"
                         ) {
-                            Icon(Icons.Filled.ScreenRotation, "Rotate", tint = TextPrimary)
+                            isPortrait = !isPortrait
+                            activity?.requestedOrientation = if (isPortrait)
+                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            else
+                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                         }
-                        IconButton(
-                            onClick = {
-                                val ctx = activity ?: return@IconButton
-                                // Protected links warn once (owner's
-                                // order 2026-10-26) instead of the old
-                                // hard block; normal links open at once.
-                                if (ExternalPlayer.needsWarning(ctx, req)) {
-                                    externalWarningHide = false
-                                    externalWarningReq = req
-                                } else {
-                                    ExternalPlayer.play(ctx, req)
-                                }
-                            },
-                            modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
+                        PlayerHeaderButton(
+                            Icons.Filled.LockOpen, "Lock controls"
                         ) {
-                            Icon(Icons.Filled.ExitToApp, "Open in external player", tint = TextPrimary)
+                            locked = true
+                            showControls = false
+                            lockedOverlayVisible = true
+                            pokeIndicator(PlayerIndicator.Message("Controls locked"))
                         }
-                        IconButton(
-                            onClick = onBack,
+                        PlayerHeaderButton(
+                            Icons.Filled.ArrowBack, "Back",
                             modifier = Modifier.then(act("back") { onBack() })
-                            .tvFocusRing(RoundedCornerShape(50))
-                        ) {
-                            Icon(Icons.Filled.ArrowBack, "Back", tint = TextPrimary)
-                        }
+                        ) { onBack() }
                     }
                 }
 
-                // ---- Center transport ----
+                // ---- Center transport (Nuvio legacy: 56dp gap, 10dp lift,
+                // 34dp play icon in a glass circle, 34dp skip icons) ----
                 Row(
-                    Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(36.dp),
+                    Modifier.align(Alignment.Center).padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(56.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Live channel zap — no Nuvio legacy equivalent (its
+                    // channels live in a panel); kept so live keeps working.
                     if (canZap()) {
-                        IconButton(
-                            onClick = { zapDelta(-1) },
-                            enabled = !zapping,
-                            modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
-                        ) {
-                            Icon(
-                                Icons.Filled.SkipPrevious, "Previous channel",
-                                tint = TextPrimary, modifier = Modifier.size(48.dp)
-                            )
-                        }
+                        CenterControlButton(
+                            Icons.Filled.SkipPrevious, "Previous channel",
+                            onClick = { zapDelta(-1) }, enabled = !zapping
+                        )
                     }
                     if (!currentRequest.isLive) {
-                        IconButton(
+                        CenterControlButton(
+                            Icons.Filled.Replay10, "Back 10 seconds",
                             onClick = { seekByWithFeedback(-10_000) },
                             modifier = Modifier.then(act("rew") { seekByWithFeedback(-10_000) })
-                                .tvFocusRing(RoundedCornerShape(50))
-                        ) {
-                            Icon(
-                                Icons.Filled.Replay10, "Back 10 seconds",
-                                tint = TextPrimary, modifier = Modifier.size(56.dp)
-                            )
-                        }
+                        )
                     }
                     Box(
                         modifier = Modifier
-                            .liquidGlass(RoundedCornerShape(50), frost = 0.12f, darken = 0.03f)
-                            .padding(8.dp),
+                            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+                            .clip(CircleShape)
+                            .clickable(onClick = { togglePlay() })
+                            .focusRequester(playPauseFocus)
+                            .then(act("play") { togglePlay() })
+                            .tvFocusRing(CircleShape)
+                            .padding(13.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        IconButton(
-                            onClick = { togglePlay() },
-                            modifier = Modifier
-                                .focusRequester(playPauseFocus)
-                                .then(act("play") { togglePlay() })
-                                .tvFocusRing(RoundedCornerShape(50))
-                        ) {
+                        // Nuvio legacy: a loading spinner replaces the icon
+                        // while buffering.
+                        if (isBuffering) {
+                            OrbitDots(Modifier.size(34.dp))
+                        } else {
                             Icon(
                                 if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 if (isPlaying) "Pause" else "Play",
-                                tint = TextPrimary, modifier = Modifier.size(76.dp)
+                                tint = Color.White, modifier = Modifier.size(34.dp)
                             )
                         }
                     }
                     if (!currentRequest.isLive) {
-                        IconButton(
+                        CenterControlButton(
+                            Icons.Filled.Forward10, "Forward 10 seconds",
                             onClick = { seekByWithFeedback(10_000) },
                             modifier = Modifier.then(act("fwd") { seekByWithFeedback(10_000) })
-                                .tvFocusRing(RoundedCornerShape(50))
-                        ) {
-                            Icon(
-                                Icons.Filled.Forward10, "Forward 10 seconds",
-                                tint = TextPrimary, modifier = Modifier.size(56.dp)
-                            )
-                        }
+                        )
                     }
                     if (canZap()) {
-                        IconButton(
-                            onClick = { zapDelta(1) },
-                            enabled = !zapping,
-                            modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
+                        CenterControlButton(
+                            Icons.Filled.SkipNext, "Next channel",
+                            onClick = { zapDelta(1) }, enabled = !zapping
+                        )
+                    }
+                }
+
+                // The action pill is shared by the live and on-demand
+                // bottom blocks — Nuvio legacy order: PiP, Quality, Subs,
+                // Audio, Resize, Speed, Sources, Episodes. (No Chapters /
+                // Live-channels buttons: Plavio has no chapters panel and
+                // no channels panel in the player.)
+                val actionPill: @Composable () -> Unit = {
+                    Box(
+                        Modifier.liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Filled.SkipNext, "Next channel",
-                                tint = TextPrimary, modifier = Modifier.size(48.dp)
+                            if (settings.pipEnabled) {
+                                PillBarButton(
+                                    icon = Icons.Filled.PictureInPicture,
+                                    label = "PiP",
+                                    onClick = { enterPip() }
+                                )
+                            }
+                            PillBarButton(
+                                icon = Icons.Filled.HighQuality,
+                                label = streamLabelText ?: "Quality",
+                                onClick = {
+                                    // Plavio has no separate quality picker:
+                                    // quality changes by picking another
+                                    // stream, so this opens Sources.
+                                    refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
+                                    sourcesOpen = true
+                                }
                             )
+                            PillBarButton(
+                                icon = Icons.Filled.ClosedCaption,
+                                label = "Subs",
+                                onClick = {
+                                    trackTick++
+                                    tracksMode = "subs"
+                                    tracksOpen = true
+                                }
+                            )
+                            PillBarButton(
+                                icon = Icons.Filled.Audiotrack,
+                                label = "Audio",
+                                onClick = { trackTick++; tracksMode = "audio"; tracksOpen = true }
+                            )
+                            PillBarButton(
+                                icon = Icons.Filled.AspectRatio,
+                                label = aspectLabel,
+                                onClick = { cycleAspect() }
+                            )
+                            SpeedMenuButton(
+                                speed = speed,
+                                menuOpen = speedMenuOpen,
+                                onOpenMenu = { speedMenuOpen = true },
+                                onDismissMenu = { speedMenuOpen = false },
+                                onSpeedSelected = { s ->
+                                    speed = s
+                                    player.setPlaybackSpeed(s)
+                                    speedMenuOpen = false
+                                    pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
+                                }
+                            )
+                            PillBarButton(
+                                icon = Icons.Filled.CloudDownload,
+                                label = "Sources",
+                                onClick = {
+                                    // Fresh fetch when opening Sources — ensures full list, not stale partial
+                                    refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
+                                    sourcesOpen = true
+                                }
+                            )
+                            if (!req.isMovie && req.episodes.isNotEmpty()) {
+                                PillBarButton(
+                                    icon = Icons.Filled.VideoLibrary,
+                                    label = "Episodes",
+                                    onClick = { episodesOpen = true }
+                                )
+                            }
                         }
                     }
                 }
 
-                // ---- Bottom: seekbar, time chips, pill toolbar ----
+                // ---- Bottom: end-time row, seek bar, time pills + action
+                // pill (Nuvio legacy ProgressControls — no container) ----
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .liquidGlass(RoundedCornerShape(20.dp), frost = 0.12f, darken = 0.03f)
                         .padding(horizontal = 20.dp)
-                        .padding(bottom = 14.dp)
+                        .padding(bottom = 16.dp)
                 ) {
                     if (currentRequest.isLive) {
                         Row(
@@ -3110,7 +3272,7 @@ fun PlayerScreen(
                             }
                             Text(
                                 currentRequest.title,
-                                color = TextPrimary,
+                                color = Color.White,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -3119,102 +3281,57 @@ fun PlayerScreen(
                             )
                             Text(
                                 when { switchingMedia -> "Switching…"; isBuffering -> "Buffering…"; else -> "On air" },
-                                color = TextSecondary,
+                                color = Color.White.copy(alpha = 0.7f),
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            actionPill()
+                        }
                     } else {
-                        SlimSeekBar(
+                        // Chapter + end-time row (no chapters in Plavio —
+                        // end-time only, right-aligned).
+                        Row(
+                            Modifier.fillMaxWidth().offset(y = (-19).dp).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            endsAtText?.let {
+                                Text(
+                                    it,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 12.sp,
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        LegacySeekBar(
                             positionMs = positionMs,
                             durationMs = durationMs,
+                            bufferedMs = bufferedMs,
                             onSeek = { player.seekTo(it) },
+                            modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
                             isTv = isTv,
                             onSeekDelta = { seekByWithFeedback(it) },
                             onFocusChanged = { seekbarFocused = it }
                         )
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TimeChip(formatMs(positionMs))
-                            TimeChip(formatMs(durationMs))
-                        }
-                        Spacer(Modifier.height(10.dp))
-                    }
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Box(
-                            modifier = Modifier.liquidGlass(RoundedCornerShape(50), frost = 0.12f, darken = 0.03f)
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Speed control.
-                                PillBarButton(
-                                    icon = Icons.Filled.AspectRatio,
-                                    label = aspectLabel,
-                                    onClick = { cycleAspect() }
-                                )
-                                PillBarButton(
-                                    icon = Icons.Filled.PictureInPicture,
-                                    label = "PiP",
-                                    onClick = {
-                                        if (!settings.pipEnabled) return@PillBarButton
-                                        val act = activity as? MainActivity ?: return@PillBarButton
-                                        val vs = player.videoSize
-                                        if (vs.width > 0 && vs.height > 0) {
-                                            MainActivity.pipVideoW = vs.width
-                                            MainActivity.pipVideoH = vs.height
-                                        }
-                                        act.enterPictureInPictureMode(
-                                            MainActivity.buildPipParams(act, player.isPlaying)
-                                        )
-                                    }
-                                )
-                                SpeedMenuButton(
-                                    speed = speed,
-                                    menuOpen = speedMenuOpen,
-                                    onOpenMenu = { speedMenuOpen = true },
-                                    onDismissMenu = { speedMenuOpen = false },
-                                    onSpeedSelected = { s ->
-                                        speed = s
-                                        player.setPlaybackSpeed(s)
-                                        speedMenuOpen = false
-                                        pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
-                                    }
-                                )
-                                PillBarButton(
-                                    icon = Icons.Filled.ClosedCaption,
-                                    label = "Subs",
-                                    onClick = {
-                                        trackTick++
-                                        tracksMode = "subs"
-                                        tracksOpen = true
-                                    }
-                                )
-                                PillBarButton(
-                                    icon = Icons.Filled.Audiotrack,
-                                    label = "Audio",
-                                    onClick = { trackTick++; tracksMode = "audio"; tracksOpen = true }
-                                )
-                                PillBarButton(
-                                    icon = Icons.Filled.CloudDownload,
-                                    label = "Sources",
-                                    onClick = {
-                                        // Fresh fetch when opening Sources — ensures full list, not stale partial
-                                        // Fresh fetch when opening Sources — ensures full list, not stale partial
-                                        refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                                        sourcesOpen = true
-                                    }
-                                )
-                                if (!req.isMovie && req.episodes.isNotEmpty()) {
-                                    PillBarButton(
-                                        icon = Icons.Filled.VideoLibrary,
-                                        label = "Episodes",
-                                        onClick = { episodesOpen = true }
-                                    )
-                                }
+                        // Time pills on the outer edges (lined up with the
+                        // seek bar's ends), action pill in the middle.
+                        Box(Modifier.fillMaxWidth()) {
+                            TimeChip(
+                                formatMs(positionMs),
+                                modifier = Modifier.align(Alignment.TopStart).offset(y = (-17).dp)
+                            )
+                            TimeChip(
+                                if (showRemainingTime) formatRemainingMs(positionMs, durationMs)
+                                else formatMs(durationMs),
+                                onClick = { showRemainingTime = !showRemainingTime },
+                                modifier = Modifier.align(Alignment.TopEnd).offset(y = (-17).dp)
+                            )
+                            Box(Modifier.align(Alignment.TopCenter)) {
+                                actionPill()
                             }
                         }
                     }

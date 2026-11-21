@@ -48,7 +48,24 @@ internal fun formatMs(ms: Long): String {
     val h = s / 3600
     val m = (s % 3600) / 60
     val sec = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+    // Nuvio legacy formatPlaybackTime: MM:SS zero-padded, H:MM:SS past an hour.
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
+}
+
+/** Nuvio legacy: the total pill shows "−MM:SS" when remaining-time mode is on. */
+internal fun formatRemainingMs(positionMs: Long, durationMs: Long): String {
+    val remaining = (durationMs - positionMs).coerceAtLeast(0L)
+    return "−" + formatMs(remaining)
+}
+
+/** Nuvio legacy end-time label: "Ends at HH:MM", remaining time divided by
+ * playback speed. Null when there is no duration (e.g. live). */
+internal fun endsAtLabel(positionMs: Long, durationMs: Long, speed: Float): String? {
+    if (durationMs <= 0L || speed <= 0f) return null
+    val remainingMs = ((durationMs - positionMs).coerceAtLeast(0L) / speed).toLong()
+    val ends = java.time.LocalTime.now()
+        .plus(remainingMs, java.time.temporal.ChronoUnit.MILLIS)
+    return "Ends at " + ends.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 }
 
 /** ISO 639-2/B (and -1) codes seen in the wild → display names. */

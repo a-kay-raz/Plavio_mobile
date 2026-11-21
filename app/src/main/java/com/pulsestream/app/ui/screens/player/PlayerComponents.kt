@@ -1,12 +1,11 @@
 package com.pulsestream.app.ui.screens.player
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,11 +13,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,20 +29,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import com.pulsestream.app.ui.tv.tvFocusRing
 
 @Composable
@@ -81,12 +80,106 @@ internal fun TrackRow(
     }
 }
 
+/** Small time pill shown under the seekbar — Nuvio legacy TimePill: liquid
+ * glass, white text. The total pill is clickable (toggles elapsed/remaining). */
 @Composable
-internal fun SlimSeekBar(
+internal fun TimeChip(text: String, onClick: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .liquidGlass(RoundedCornerShape(50))
+            .then(if (onClick != null) Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick) else Modifier)
+    ) {
+        Text(
+            text,
+            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White
+        )
+    }
+}
+
+/** One icon+label button in the bottom action pill — Nuvio legacy
+ * PlayerActionPillButton: horizontal icon + label, 18dp white icon,
+ * 12dp/12dp padding, white labelSm text. */
+@Composable
+internal fun PillBarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick)
+            .tvFocusRing(RoundedCornerShape(22.dp))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(icon, label, tint = Color.White, modifier = Modifier.size(18.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            maxLines = 1
+        )
+    }
+}
+
+/** Nuvio legacy header button: 36dp liquid-glass circle, 20dp white icon. */
+@Composable
+internal fun PlayerHeaderButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier
+            .size(36.dp)
+            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .tvFocusRing(CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, label, tint = Color.White, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** Nuvio legacy center transport button (skip back/forward): glass circle,
+ * 10dp padding, 34dp white icon. */
+@Composable
+internal fun CenterControlButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Box(
+        modifier
+            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .tvFocusRing(CircleShape)
+            .padding(10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, label, tint = Color.White, modifier = Modifier.size(34.dp))
+    }
+}
+
+/** Nuvio legacy seek bar: Material3 Slider + thumb, 22dp touch height at
+ * 0.82 scaleY, base track white 0.20, buffered white 0.40, played accent.
+ * Drag scrubs (seek commits on release); tap seeks. TV: D-pad Left/Right
+ * seeks ±10s while focused. Disabled (locked overlay): white thumb/track,
+ * inactive white 0.28, no input. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LegacySeekBar(
     positionMs: Long,
     durationMs: Long,
+    bufferedMs: Long,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     isTv: Boolean = false,
     onSeekDelta: ((Long) -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null
@@ -94,10 +187,9 @@ internal fun SlimSeekBar(
     var dragFrac by remember { mutableStateOf<Float?>(null) }
     val frac = (dragFrac ?: if (durationMs > 0) positionMs.toFloat() / durationMs else 0f)
         .coerceIn(0f, 1f)
-    val density = LocalDensity.current
-    val progressColor = LocalPalette.current.accent
-    // TV: the seekbar is a D-pad stop with the green ring; Left/Right seeks
-    // ±10s while focused, Up/Down moves to the other control rows.
+    val bufferedFrac =
+        if (durationMs > 0) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val accent = LocalPalette.current.accent
     val tvModifier = if (isTv) {
         Modifier
             .focusable()
@@ -112,92 +204,63 @@ internal fun SlimSeekBar(
                 }
             }
     } else Modifier
-    Canvas(
-        modifier
+    Slider(
+        value = frac,
+        onValueChange = { if (enabled) dragFrac = it },
+        onValueChangeFinished = {
+            dragFrac?.let { onSeek((it * durationMs).toLong()) }
+            dragFrac = null
+        },
+        valueRange = 0f..1f,
+        enabled = enabled && durationMs > 0,
+        modifier = modifier
             .fillMaxWidth()
-            .height(30.dp)
-            .then(tvModifier)
-            .pointerInput(durationMs) {
-                detectTapGestures(onTap = { offset ->
-                    onSeek(((offset.x / size.width).coerceIn(0f, 1f) * durationMs).toLong())
-                })
-            }
-            .pointerInput(durationMs) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        dragFrac = (offset.x / size.width).coerceIn(0f, 1f)
-                    },
-                    onDrag = { change, _ ->
-                        dragFrac = (change.position.x / size.width).coerceIn(0f, 1f)
-                    },
-                    onDragEnd = {
-                        dragFrac?.let { onSeek((it * durationMs).toLong()) }
-                        dragFrac = null
-                    },
-                    onDragCancel = { dragFrac = null }
+            .height(22.dp)
+            .graphicsLayer(scaleY = 0.82f)
+            .then(tvModifier),
+        colors = SliderDefaults.colors(
+            thumbColor = Color.White,
+            activeTrackColor = if (enabled) accent else Color.White,
+            inactiveTrackColor = Color.Transparent,
+            disabledThumbColor = Color.White,
+            disabledActiveTrackColor = Color.White,
+            disabledInactiveTrackColor = Color.Transparent
+        ),
+        track = {
+            // The whole track is drawn by hand (base + buffered + played)
+            // so the buffered segment stays visible between the played head
+            // and the buffered head — the same picture as Nuvio's
+            // PlayerProgressTrack, without depending on the experimental
+            // SliderDefaults.Track overload.
+            Canvas(Modifier.fillMaxSize()) {
+                val trackH = 4.dp.toPx()
+                val cy = size.height / 2f
+                val baseColor = if (enabled) Color.White.copy(alpha = 0.20f)
+                else Color.White.copy(alpha = 0.28f)
+                val playedColor = if (enabled) accent else Color.White
+                drawRoundRect(
+                    color = baseColor,
+                    topLeft = Offset(0f, cy - trackH / 2f),
+                    size = Size(size.width, trackH),
+                    cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
                 )
+                if (enabled && bufferedFrac > frac) {
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.40f),
+                        topLeft = Offset(size.width * frac, cy - trackH / 2f),
+                        size = Size(size.width * (bufferedFrac - frac), trackH),
+                        cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                    )
+                }
+                if (frac > 0f) {
+                    drawRoundRect(
+                        color = playedColor,
+                        topLeft = Offset(0f, cy - trackH / 2f),
+                        size = Size(size.width * frac, trackH),
+                        cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                    )
+                }
             }
-    ) {
-        val trackH = with(density) { 4.dp.toPx() }
-        val handle = with(density) { 14.dp.toPx() }
-        val cy = size.height / 2f
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.28f),
-            topLeft = Offset(0f, cy - trackH / 2f),
-            size = Size(size.width, trackH),
-            cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
-        )
-        val pw = size.width * frac
-        if (pw > 1f) {
-            drawRoundRect(
-                color = progressColor,
-                topLeft = Offset(0f, cy - trackH / 2f),
-                size = Size(pw, trackH),
-                cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
-            )
         }
-        val hx = (pw - handle / 2f).coerceIn(0f, size.width - handle)
-        drawRoundRect(
-            color = Color.White,
-            topLeft = Offset(hx, cy - handle / 2f),
-            size = Size(handle, handle),
-            cornerRadius = CornerRadius(handle / 2f, handle / 2f)
-        )
-    }
-}
-
-/** Small time pill shown under the seekbar. */
-@Composable
-internal fun TimeChip(text: String) {
-    Box(
-        modifier = Modifier.liquidGlass(RoundedCornerShape(50))
-    ) {
-        Text(
-            text,
-            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = TextPrimary
-        )
-    }
-}
-
-/** One icon+label button in the bottom pill toolbar. */
-@Composable
-internal fun PillBarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Column(
-        Modifier
-            .clickable(onClick = onClick)
-            .tvFocusRing(RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(icon, label, tint = TextPrimary, modifier = Modifier.size(21.dp))
-        Spacer(Modifier.height(2.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = TextSecondary,
-            maxLines = 1
-        )
-    }
+    )
 }
