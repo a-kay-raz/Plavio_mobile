@@ -18,6 +18,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Card
+import com.pulsestream.app.data.DetailSectionAvailability
+import com.pulsestream.app.data.DetailSectionKey
+import com.pulsestream.app.data.DetailSectionSettings
+import com.pulsestream.app.data.itemCount
+import com.pulsestream.app.data.loadDetailSections
+import com.pulsestream.app.data.scrollIndexFor
+import com.pulsestream.app.data.visibleOrdered
 import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.ui.components.OrbitDots
 import androidx.compose.material3.CardDefaults
@@ -38,6 +45,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -86,6 +95,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -914,203 +925,37 @@ private fun DetailContent(
         }
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .layout { measurable, constraints ->
-                val placeable = measurable.measure(
-                    constraints.copy(
-                        minHeight = constraints.maxHeight + detailStatusPx,
-                        maxHeight = constraints.maxHeight + detailStatusPx
-                    )
-                )
-                layout(placeable.width, placeable.height) {
-                    placeable.place(0, -detailStatusPx)
-                }
-            },
-        contentPadding = PaddingValues(bottom = 24.dp)
-    ) {
-        item {
-            // D-A hero (owner's pick 2026-10-24, replacing Sample A):
-            // the BACKDROP leads, edge-to-edge at 51% of the screen;
-            // the poster rests as a small card on the fade at the
-            // bottom-left, with title, facts line and genres beside it.
-            // The stream-data pills live below the hero now, in a
-            // fixed-height slot, so Watch Now never shifts. The action
-            // row (back / watchlist / add-to-list) floats over the top,
-            // unchanged. The fade keeps the cinematic navy of the
-            // shipped heroes — it is what makes the white overlay text
-            // read in both theme modes. No backdrop -> the poster itself
-            // is the hero art and no small card is drawn.
-            val heroHeight = (LocalConfiguration.current.screenHeightDp * 0.51f).dp
-            val heroArt = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster
-            val hasBackdrop = !meta.background.isNullOrBlank()
-            val trailerUrl = heroTrailerUrl
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(heroHeight)
-            ) {
-                SafePosterImage(
-                    model = heroArt,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                // Hero trailer (Nuvio D2): once resolved, the trailer plays
-                // over the backdrop and fades in when ready; the fade below
-                // stays on top so the title text keeps reading.
-                if (trailerUrl != null && !heroTrailerFinished) {
-                    val trailerAlpha by animateFloatAsState(
-                        targetValue = if (heroTrailerReady) 1f else 0f,
-                        label = "heroTrailerAlpha"
-                    )
-                    Box(
-                        Modifier.fillMaxSize().graphicsLayer { alpha = trailerAlpha }
-                    ) {
-                        HeroTrailerPlayer(
-                            videoUrl = trailerUrl,
-                            audioUrl = heroTrailerAudioUrl,
-                            muted = heroMuted,
-                            onReady = { heroTrailerReady = true },
-                            onEnded = { heroTrailerFinished = true },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                }
-                // The fade: clear until ~40%, then cinematic navy, so
-                // the overlaid text reads in both theme modes.
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            0.40f to Color.Transparent,
-                            1.0f to Color(0xFF060B16).copy(alpha = 0.95f)
-                        )
-                    )
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp + detailStatusDp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
-                    ) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster, com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo))
-                            }
-                        },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
-                    ) {
-                        Icon(
-                            if (watchItem != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                            contentDescription = if (watchItem != null) "Remove from watchlist" else "Add to watchlist",
-                            tint = Color.White
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    // Hero trailer mute toggle: only while the trailer is
-                    // playing in the hero.
-                    if (trailerUrl != null && !heroTrailerFinished && heroTrailerReady) {
-                        IconButton(
-                            onClick = { heroMuted = !heroMuted },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
-                        ) {
-                            Icon(
-                                if (heroMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
-                                contentDescription = if (heroMuted) "Unmute trailer" else "Mute trailer",
-                                tint = Color.White
-                            )
-                        }
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    IconButton(
-                        onClick = { showAddToList = true },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
-                    ) {
-                        Icon(
-                            Icons.Filled.PlaylistAdd,
-                            contentDescription = "Add to list",
-                            tint = Color.White
-                        )
-                    }
-                }
-                Row(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    // The poster rests as a small card on the fade's
-                    // bottom-left — only when the hero art is the
-                    // backdrop; in the poster fallback the hero IS the
-                    // poster, so no card is drawn.
-                    if (hasBackdrop && !meta.poster.isNullOrBlank()) {
-                        SafePosterImage(
-                            model = meta.poster,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .width(74.dp)
-                                .aspectRatio(2f / 3f)
-                                .shadow(12.dp, RoundedCornerShape(10.dp))
-                                .clip(RoundedCornerShape(10.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(Modifier.width(12.dp))
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            meta.name,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        val factsLine = buildList {
-                            meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(formatEpisodeDate(it)) }
-                            formatRuntimeForDisplay(meta.runtime)?.let { add(it) }
-                            meta.imdbRating?.takeIf { it.isNotBlank() }?.let { add("★ $it") }
-                        }.joinToString("  •  ")
-                        if (factsLine.isNotBlank()) {
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                com.pulsestream.app.ui.components.accentStarText(factsLine, LocalPalette.current.accent),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFC7D2DE),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        if (meta.genres.isNotEmpty()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                meta.genres.take(3).joinToString(", "),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF8FA2B5),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        // Ratings row (Nuvio DetailRatingsRow): provider scores +
-                        // your stars; tap opens the breakdown + Rate sheet.
-                        Spacer(Modifier.height(6.dp))
-                        DetailRatingsRow(
-                            ratings = providerRatings,
-                            userStars = userStars,
-                            onClick = { ratingsSheetOpen = true }
-                        )
-                    }
-                }
-            }
-        }
+    // Step 57: section order/visibility/tab layout. The four vals
+    // below used to live inside the LazyColumn; they are hoisted here
+    // so the section lambdas (and the availability) can share them.
+    val productionRows = listOfNotNull(
+        meta.director.takeIf { it.isNotEmpty() }?.let {
+            (if (it.size > 1) "Directors" else "Director") to it.joinToString(", ")
+        },
+        meta.writer.takeIf { it.isNotEmpty() }?.let {
+            (if (it.size > 1) "Writers" else "Writer") to it.joinToString(", ")
+        },
+        meta.network?.takeIf { it.isNotBlank() }?.let { "Network" to it }
+    )
+    val collectionSection = tmdbCollection
+    val commentsPage = traktComments
+    val detailTiles = buildDetailTiles(meta)
+    val detailSections = loadDetailSections(settings.detailSectionsJson)
+    val detailAvailability = DetailSectionAvailability(
+        hasOverview = !meta.description.isNullOrBlank(),
+        hasTrailers = meta.trailerStreams.isNotEmpty(),
+        hasCast = meta.cast.isNotEmpty(),
+        hasProduction = productionRows.isNotEmpty(),
+        hasCollection = collectionSection != null,
+        hasComments = commentsPage != null && commentsPage.items.isNotEmpty(),
+        isSeries = isSeries,
+        hasDetails = detailTiles.size >= 2,
+        relatedCount = vm.relatedState.size
+    )
+    val orderedDetailSections = detailSections.visibleOrdered(detailAvailability)
+    // Section bodies as lambdas (moved verbatim from the LazyColumn
+    // below): the loop after the hero emits them in settings order.
+    val actionsBlock: LazyListScope.() -> Unit = {
         item {
           Column {
             // D-A: the stream-data pills sit directly below the hero in
@@ -1199,7 +1044,9 @@ private fun DetailContent(
             }
           }
         }
-        if (!meta.description.isNullOrBlank()) {
+    }
+
+    val overviewBlock: LazyListScope.() -> Unit = {
             item {
                 Column {
                     // Nuvio ExpandableDescription: 4 lines collapsed, expands in place.
@@ -1228,9 +1075,10 @@ private fun DetailContent(
                     }
                 }
             }
-        }
+    }
+
+    val trailersBlock: LazyListScope.() -> Unit = {
         // Trailers section: horizontal cards like "You May Like"
-        if (meta.trailerStreams.isNotEmpty()) {
             item(key = "trailers") {
                 Text(
                     "Trailers",
@@ -1334,9 +1182,10 @@ private fun DetailContent(
                     }
                 }
             }
-        }
+    }
+
+    val castBlock: LazyListScope.() -> Unit = {
         // Only actors with a TMDB person id navigate (keyless mode has names only).
-        if (meta.cast.isNotEmpty()) {
             item(key = "cast") {
                 Text(
                     "Cast",
@@ -1388,22 +1237,14 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-        }
+    }
+
+    val productionBlock: LazyListScope.() -> Unit = {
         // Production (Nuvio DetailProductionSection): what the meta
         // actually carries — Director (PlavioMeta + Cinemeta), Writer
         // (Cinemeta only; PlavioMeta serves none), Network (series).
         // Nuvio's version is TMDB production-company logo chips; the
         // meta addons carry no companies, so no logos here.
-        val productionRows = listOfNotNull(
-            meta.director.takeIf { it.isNotEmpty() }?.let {
-                (if (it.size > 1) "Directors" else "Director") to it.joinToString(", ")
-            },
-            meta.writer.takeIf { it.isNotEmpty() }?.let {
-                (if (it.size > 1) "Writers" else "Writer") to it.joinToString(", ")
-            },
-            meta.network?.takeIf { it.isNotBlank() }?.let { "Network" to it }
-        )
-        if (productionRows.isNotEmpty()) {
             item(key = "production") {
                 Text(
                     "Production",
@@ -1436,12 +1277,12 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-        }
+    }
+
+    val collectionBlock: LazyListScope.() -> Unit = {
         // Step 51: TMDB collection (Nuvio belongsToCollection) — "Part of
         // the <name>" with the collection's movies. Movies only; needs a
         // TMDB key, silent otherwise.
-        val collectionSection = tmdbCollection
-        if (collectionSection != null) {
             item(key = "tmdb_collection") {
                 Text(
                     "Part of the ${collectionSection.first.name}",
@@ -1463,11 +1304,11 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-        }
+    }
+
+    val commentsBlock: LazyListScope.() -> Unit = {
         // Trakt comments (Step 33, Nuvio TraktCommentsRepository): most-liked
         // first, spoiler-safe. Shows 3, expands to 20, then loads more pages.
-        val commentsPage = traktComments
-        if (commentsPage != null && commentsPage.items.isNotEmpty()) {
             item(key = "trakt_comments") {
                 Text(
                     "Trakt comments (${commentsPage.itemCount})",
@@ -1525,22 +1366,9 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-        }
-        // ("You May Like" rail removed, owner's pick 2026-10-24:
-        // PlavioMeta's "More like this" rows below replace it —
-        // they work for every user, not only TMDB-key holders.)
-        // (Available Streams button removed — long-press Play opens the source picker.)
-        item {
-            if (vm.streamsState is StreamsUiState.Error) {
-                Text(
-                    (vm.streamsState as StreamsUiState.Error).message,
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
-        }
-        if (isSeries) {
+    }
+
+    val episodesBlock: LazyListScope.() -> Unit = {
             item(key = "seasons") {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1811,11 +1639,11 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-        }
+    }
+
+    val detailsBlock: LazyListScope.() -> Unit = {
         // Show Details — glass fact tiles (owner's Sample A pick, 2026-10-24).
         // Only facts the meta actually carries are shown.
-        val detailTiles = buildDetailTiles(meta)
-        if (detailTiles.size >= 2) {
             item(key = "show_details") {
                 Column {
                     Text(
@@ -1863,8 +1691,9 @@ private fun DetailContent(
                     Spacer(Modifier.height(8.dp))
                 }
             }
-        }
+    }
 
+    val relatedBlock: LazyListScope.() -> Unit = {
         // "More like this" + "More from <actor>" rows from PlavioMeta.
         // Quietly absent when the endpoint has nothing (e.g. keyless mode).
         vm.relatedState.forEach { section ->
@@ -1889,6 +1718,247 @@ private fun DetailContent(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(
+                    constraints.copy(
+                        minHeight = constraints.maxHeight + detailStatusPx,
+                        maxHeight = constraints.maxHeight + detailStatusPx
+                    )
+                )
+                layout(placeable.width, placeable.height) {
+                    placeable.place(0, -detailStatusPx)
+                }
+            },
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        item {
+            // D-A hero (owner's pick 2026-10-24, replacing Sample A):
+            // the BACKDROP leads, edge-to-edge at 51% of the screen;
+            // the poster rests as a small card on the fade at the
+            // bottom-left, with title, facts line and genres beside it.
+            // The stream-data pills live below the hero now, in a
+            // fixed-height slot, so Watch Now never shifts. The action
+            // row (back / watchlist / add-to-list) floats over the top,
+            // unchanged. The fade keeps the cinematic navy of the
+            // shipped heroes — it is what makes the white overlay text
+            // read in both theme modes. No backdrop -> the poster itself
+            // is the hero art and no small card is drawn.
+            val heroHeight = (LocalConfiguration.current.screenHeightDp * 0.51f).dp
+            val heroArt = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster
+            val hasBackdrop = !meta.background.isNullOrBlank()
+            val trailerUrl = heroTrailerUrl
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(heroHeight)
+            ) {
+                SafePosterImage(
+                    model = heroArt,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                // Hero trailer (Nuvio D2): once resolved, the trailer plays
+                // over the backdrop and fades in when ready; the fade below
+                // stays on top so the title text keeps reading.
+                if (trailerUrl != null && !heroTrailerFinished) {
+                    val trailerAlpha by animateFloatAsState(
+                        targetValue = if (heroTrailerReady) 1f else 0f,
+                        label = "heroTrailerAlpha"
+                    )
+                    Box(
+                        Modifier.fillMaxSize().graphicsLayer { alpha = trailerAlpha }
+                    ) {
+                        HeroTrailerPlayer(
+                            videoUrl = trailerUrl,
+                            audioUrl = heroTrailerAudioUrl,
+                            muted = heroMuted,
+                            onReady = { heroTrailerReady = true },
+                            onEnded = { heroTrailerFinished = true },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+                // The fade: clear until ~40%, then cinematic navy, so
+                // the overlaid text reads in both theme modes.
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            0.40f to Color.Transparent,
+                            1.0f to Color(0xFF060B16).copy(alpha = 0.95f)
+                        )
+                    )
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp + detailStatusDp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    ) {
+                        Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster, com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo))
+                            }
+                        },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    ) {
+                        Icon(
+                            if (watchItem != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = if (watchItem != null) "Remove from watchlist" else "Add to watchlist",
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    // Hero trailer mute toggle: only while the trailer is
+                    // playing in the hero.
+                    if (trailerUrl != null && !heroTrailerFinished && heroTrailerReady) {
+                        IconButton(
+                            onClick = { heroMuted = !heroMuted },
+                            modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                        ) {
+                            Icon(
+                                if (heroMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                                contentDescription = if (heroMuted) "Unmute trailer" else "Mute trailer",
+                                tint = Color.White
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    IconButton(
+                        onClick = { showAddToList = true },
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    ) {
+                        Icon(
+                            Icons.Filled.PlaylistAdd,
+                            contentDescription = "Add to list",
+                            tint = Color.White
+                        )
+                    }
+                }
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    // The poster rests as a small card on the fade's
+                    // bottom-left — only when the hero art is the
+                    // backdrop; in the poster fallback the hero IS the
+                    // poster, so no card is drawn.
+                    if (hasBackdrop && !meta.poster.isNullOrBlank()) {
+                        SafePosterImage(
+                            model = meta.poster,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .width(74.dp)
+                                .aspectRatio(2f / 3f)
+                                .shadow(12.dp, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            meta.name,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val factsLine = buildList {
+                            meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(formatEpisodeDate(it)) }
+                            formatRuntimeForDisplay(meta.runtime)?.let { add(it) }
+                            meta.imdbRating?.takeIf { it.isNotBlank() }?.let { add("★ $it") }
+                        }.joinToString("  •  ")
+                        if (factsLine.isNotBlank()) {
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                com.pulsestream.app.ui.components.accentStarText(factsLine, LocalPalette.current.accent),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFC7D2DE),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (meta.genres.isNotEmpty()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                meta.genres.take(3).joinToString(", "),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF8FA2B5),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        // Ratings row (Nuvio DetailRatingsRow): provider scores +
+                        // your stars; tap opens the breakdown + Rate sheet.
+                        Spacer(Modifier.height(6.dp))
+                        DetailRatingsRow(
+                            ratings = providerRatings,
+                            userStars = userStars,
+                            onClick = { ratingsSheetOpen = true }
+                        )
+                    }
+                }
+            }
+        }
+        // ("You May Like" rail removed, owner's pick 2026-10-24:
+        // PlavioMeta's "More like this" rows below replace it —
+        // they work for every user, not only TMDB-key holders.)
+        // (Available Streams button removed — long-press Play opens the source picker.)
+        item {
+            if (vm.streamsState is StreamsUiState.Error) {
+                Text(
+                    (vm.streamsState as StreamsUiState.Error).message,
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
+        if (detailSections.tabLayout) {
+            stickyHeader(key = "section_tabs") {
+                DetailSectionTabRow(
+                    settings = detailSections,
+                    availability = detailAvailability,
+                    listState = listState,
+                    onTabClick = { key ->
+                        detailSections.scrollIndexFor(key, detailAvailability)?.let { index ->
+                            scope.launch { listState.scrollToItem(index) }
+                        }
+                    }
+                )
+            }
+        }
+        for (key in orderedDetailSections) {
+            when (key) {
+                DetailSectionKey.ACTIONS -> actionsBlock()
+                DetailSectionKey.OVERVIEW -> overviewBlock()
+                DetailSectionKey.PRODUCTION -> productionBlock()
+                DetailSectionKey.CAST -> castBlock()
+                DetailSectionKey.COMMENTS -> commentsBlock()
+                DetailSectionKey.TRAILERS -> trailersBlock()
+                DetailSectionKey.EPISODES -> episodesBlock()
+                DetailSectionKey.DETAILS -> detailsBlock()
+                DetailSectionKey.COLLECTION -> collectionBlock()
+                DetailSectionKey.MORE_LIKE_THIS -> relatedBlock()
             }
         }
     }
@@ -3576,6 +3646,50 @@ private fun EpisodeCardA(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Step 57: the tab row for tab layout — one tab per visible tabbable
+ * section; the selected tab follows the scroll position, and tapping
+ * a tab scrolls to its section.
+ */
+@Composable
+private fun DetailSectionTabRow(
+    settings: DetailSectionSettings,
+    availability: DetailSectionAvailability,
+    listState: LazyListState,
+    onTabClick: (DetailSectionKey) -> Unit
+) {
+    val ordered = settings.visibleOrdered(availability)
+    val tabs = ordered.filter { it.canBeTabbed }
+    if (tabs.isEmpty()) return
+    // Selected tab follows the scroll position: the section whose item
+    // range holds the first visible item.
+    val firstVisible = listState.firstVisibleItemIndex
+    val selected = remember(firstVisible, ordered) {
+        var index = 1 + if (settings.tabLayout) 1 else 0
+        var current: DetailSectionKey? = tabs.firstOrNull()
+        for (key in ordered) {
+            val count = key.itemCount(availability)
+            if (firstVisible in index until index + count && key in tabs) current = key
+            index += count
+        }
+        current ?: tabs.first()
+    }
+    ScrollableTabRow(
+        selectedTabIndex = tabs.indexOf(selected).coerceAtLeast(0),
+        edgePadding = 16.dp,
+        containerColor = LocalPalette.current.background,
+        contentColor = TextPrimary
+    ) {
+        tabs.forEach { key ->
+            Tab(
+                selected = key == selected,
+                onClick = { onTabClick(key) },
+                text = { Text(key.title) }
+            )
         }
     }
 }

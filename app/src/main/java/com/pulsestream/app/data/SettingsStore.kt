@@ -1200,6 +1200,11 @@ class SettingsStore(
         else putSecret(KEY_MEDIA_SERVERS, com.pulsestream.app.data.servers.encodeServers(servers))
     }
 
+    /** Step 57: Detail section order/visibility/tab layout, one JSON blob. */
+    var detailSectionsJson: String
+        get() = prefs.getString(KEY_DETAIL_SECTIONS, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_DETAIL_SECTIONS, value).apply()
+
     /** Stable per-install device id for server auth headers. */
     var mediaServerDeviceId: String
         get() = prefs.getString(KEY_MEDIA_SERVER_DEVICE_ID, null)
@@ -2005,6 +2010,7 @@ class SettingsStore(
         private const val KEY_MDBLIST_REFRESH_TOKEN = "mdblist_refresh_token"
         private const val KEY_MDBLIST_TOKEN_EXPIRES_AT = "mdblist_token_expires_at"
         private const val KEY_MEDIA_SERVERS = "media_servers"
+        private const val KEY_DETAIL_SECTIONS = "detail_sections"
         private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
