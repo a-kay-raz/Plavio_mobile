@@ -4,6 +4,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,6 +41,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Swipe
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -46,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,7 +67,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.AUDIO_LANGUAGE_OPTIONS
+import com.pulsestream.app.data.BUFFER_BACK_OPTIONS_S
+import com.pulsestream.app.data.BUFFER_MAX_OPTIONS_S
+import com.pulsestream.app.data.BUFFER_MIN_OPTIONS_S
 import com.pulsestream.app.data.BUFFER_PRESETS
+import com.pulsestream.app.data.BUFFER_REBUFFER_OPTIONS_MS
+import com.pulsestream.app.data.BUFFER_START_OPTIONS_MS
 import com.pulsestream.app.data.DISK_CACHE_OPTIONS
 import com.pulsestream.app.data.PlayerChoice
 import com.pulsestream.app.data.SettingsStore
@@ -106,6 +116,10 @@ fun PlaybackSettingsScreen(
     var secondaryAudioLangPickerOpen by remember { mutableStateOf(false) }
     var bufferPresetOpen by remember { mutableStateOf(false) }
     var diskCacheOpen by remember { mutableStateOf(false) }
+    // Step 39: custom per-second buffer values + auto-size disk cache.
+    var customBuffers by remember { mutableStateOf(settings.customPlaybackBuffersEnabled) }
+    var bufferFineOpen by remember { mutableStateOf(false) }
+    var diskCacheAutoSize by remember { mutableStateOf(settings.diskCacheAutoSize) }
     var watchedThresholdOpen by remember { mutableStateOf(false) }
     var skipBackOpen by remember { mutableStateOf(false) }
     var skipForwardOpen by remember { mutableStateOf(false) }
@@ -298,10 +312,37 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
+                        // Step 39: per-second buffer tuning instead of presets only.
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Tune,
+                            title = "Custom buffer values",
+                            subtitle = "Fine-tune min / max / start / rebuffer / back buffer per second",
+                            checked = customBuffers,
+                            onCheckedChange = {
+                                customBuffers = it
+                                settings.customPlaybackBuffersEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        if (customBuffers) {
+                            SettingsNavRow(
+                                icon = Icons.Filled.Tune,
+                                title = "Fine-tune buffers",
+                                subtitle = "${settings.bufferMinMs / 1000}s min · ${settings.bufferMaxMs / 1000}s max · starts after ${settings.bufferForPlaybackMs / 1000.0}s · rebuffer ${settings.bufferRebufferMs / 1000}s · back ${settings.bufferBackBufferMs / 1000}s",
+                                onClick = { bufferFineOpen = true }
+                            )
+                        }
+                    },
+                    {
                         SettingsNavRow(
                             icon = Icons.Filled.Storage,
                             title = "Disk cache",
-                            subtitle = "Cache played media on device: ${diskCacheName(settings.diskCacheMb)}",
+                            subtitle = when {
+                                settings.diskCacheMb <= 0 -> "Cache played media on device: Off"
+                                diskCacheAutoSize -> "Cache played media on device: Auto-size (1/5 of free space)"
+                                else -> "Cache played media on device: ${diskCacheName(settings.diskCacheMb)}"
+                            },
                             onClick = { diskCacheOpen = true }
                         )
                     },
@@ -456,11 +497,23 @@ fun PlaybackSettingsScreen(
         )
     }
 
+    if (bufferFineOpen) {
+        BufferFineDialog(
+            settings = settings,
+            onDismiss = { bufferFineOpen = false },
+            onDone = { bufferFineOpen = false; bufferUiTick++ }
+        )
+    }
+
     if (diskCacheOpen) {
         DiskCacheDialog(
             settings = settings,
             onDismiss = { diskCacheOpen = false },
-            onDone = { diskCacheOpen = false; bufferUiTick++ }
+            onDone = {
+                diskCacheOpen = false
+                diskCacheAutoSize = settings.diskCacheAutoSize
+                bufferUiTick++
+            }
         )
     }
 
@@ -1173,6 +1226,8 @@ fun DiskCacheDialog(
     onDone: () -> Unit
 ) {
     var selected by remember { mutableStateOf(settings.diskCacheMb) }
+    // Step 39: auto-size from free space (1/5 of free, 256 MB – 10 GB).
+    var autoSize by remember { mutableStateOf(settings.diskCacheAutoSize) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Disk cache", color = TextPrimary) },
@@ -1183,6 +1238,25 @@ fun DiskCacheDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-size from free space", color = TextPrimary)
+                        Text(
+                            "Use 1/5 of free space (256 MB – 10 GB) instead of a fixed size",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
+                    Switch(
+                        checked = autoSize,
+                        onCheckedChange = { autoSize = it },
+                        enabled = selected > 0,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
                     items(DISK_CACHE_OPTIONS, key = { it.first }) { (mb, label) ->
@@ -1211,6 +1285,7 @@ fun DiskCacheDialog(
         confirmButton = {
             TextButton(onClick = {
                 settings.diskCacheMb = selected
+                settings.diskCacheAutoSize = autoSize
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
@@ -1710,4 +1785,96 @@ fun SubtitlePreview(
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
+}
+
+/**
+ * Step 39 — per-second buffer fine-tuning (Nuvio's custom buffer seconds).
+ * Min / max / start / rebuffer / back-buffer, each as a chip row. On Done
+ * the values are clamped so ExoPlayer's LoadControl rules hold
+ * (min <= max, start/rebuffer <= min); applies to the next title played.
+ */
+@Composable
+fun BufferFineDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var minS by remember { mutableStateOf(settings.bufferMinMs / 1000) }
+    var maxS by remember { mutableStateOf(settings.bufferMaxMs / 1000) }
+    var startMs by remember { mutableStateOf(settings.bufferForPlaybackMs) }
+    var rebufferMs by remember { mutableStateOf(settings.bufferRebufferMs) }
+    var backS by remember { mutableStateOf(settings.bufferBackBufferMs / 1000) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Fine-tune buffers", color = TextPrimary) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "Per-second buffer values. Higher = fewer stalls on slow networks, more RAM used. Applies to the next title you play.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+                Text("Minimum buffer", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = BUFFER_MIN_OPTIONS_S.map { "${it}s" },
+                    selected = "${minS}s",
+                    onSelect = { minS = it.removeSuffix("s").toInt() },
+                )
+                Text("Maximum buffer", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = BUFFER_MAX_OPTIONS_S.map { "${it}s" },
+                    selected = "${maxS}s",
+                    onSelect = { maxS = it.removeSuffix("s").toInt() },
+                )
+                Text("Start playback after", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = BUFFER_START_OPTIONS_MS.map { if (it % 1000 == 0) "${it / 1000}s" else "${it / 1000.0}s" },
+                    selected = if (startMs % 1000 == 0) "${startMs / 1000}s" else "${startMs / 1000.0}s",
+                    onSelect = { label ->
+                        startMs = BUFFER_START_OPTIONS_MS.first {
+                            (if (it % 1000 == 0) "${it / 1000}s" else "${it / 1000.0}s") == label
+                        }
+                    },
+                )
+                Text("Resume after stall", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = BUFFER_REBUFFER_OPTIONS_MS.map { if (it % 1000 == 0) "${it / 1000}s" else "${it / 1000.0}s" },
+                    selected = if (rebufferMs % 1000 == 0) "${rebufferMs / 1000}s" else "${rebufferMs / 1000.0}s",
+                    onSelect = { label ->
+                        rebufferMs = BUFFER_REBUFFER_OPTIONS_MS.first {
+                            (if (it % 1000 == 0) "${it / 1000}s" else "${it / 1000.0}s") == label
+                        }
+                    },
+                )
+                Text("Keep back buffer", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = BUFFER_BACK_OPTIONS_S.map { if (it == 0) "Off" else "${it}s" },
+                    selected = if (backS == 0) "Off" else "${backS}s",
+                    onSelect = { backS = if (it == "Off") 0 else it.removeSuffix("s").toInt() },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val minMs = (minS * 1000).coerceAtMost(maxS * 1000)
+                val maxMs = (maxS * 1000).coerceAtLeast(minMs)
+                settings.bufferMinMs = minMs
+                settings.bufferMaxMs = maxMs
+                settings.bufferForPlaybackMs = startMs.coerceAtMost(minMs)
+                settings.bufferRebufferMs = rebufferMs.coerceAtMost(minMs)
+                settings.bufferBackBufferMs = backS * 1000
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
 }

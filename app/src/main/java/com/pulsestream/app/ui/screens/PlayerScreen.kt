@@ -519,8 +519,12 @@ fun PlayerScreen(
         val dataSourceFactory = buildPlaybackDataSourceFactory(playbackHeaders, req.hlsMasterUrl ?: req.streamUrl)
         val cacheMb = settings.diskCacheMb
         return if (cacheMb > 0) {
+            // Step 39: auto-size uses 1/5 of free space (256 MB – 10 GB)
+            // instead of the fixed size.
+            val maxBytes = if (settings.diskCacheAutoSize) PlaybackCache.autoSizeBytes(context)
+                else cacheMb * 1024L * 1024L
             val cacheDataSourceFactory = CacheDataSource.Factory()
-                .setCache(PlaybackCache.get(context, cacheMb * 1024L * 1024L))
+                .setCache(PlaybackCache.get(context, maxBytes))
                 .setUpstreamDataSourceFactory(dataSourceFactory)
             DefaultMediaSourceFactory(cacheDataSourceFactory)
         } else {
@@ -577,13 +581,19 @@ fun PlayerScreen(
         val minBufferMs = if (lowMemory) minOf(settings.bufferMinMs, 15_000) else settings.bufferMinMs
         val maxBufferMs = if (lowMemory) minOf(settings.bufferMaxMs, 30_000) else settings.bufferMaxMs
         val forPlaybackMs = if (lowMemory) minOf(settings.bufferForPlaybackMs, 2_500) else settings.bufferForPlaybackMs
+        // Step 39: custom mode uses the fine rebuffer + back-buffer values;
+        // otherwise rebuffer is derived (2x start) and no back buffer is kept.
+        val rebufferMs = if (settings.customPlaybackBuffersEnabled) settings.bufferRebufferMs
+            else (forPlaybackMs * 2).coerceAtMost(30_000)
+        val backBufferMs = if (settings.customPlaybackBuffersEnabled) settings.bufferBackBufferMs else 0
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs = */ minBufferMs,
                 /* maxBufferMs = */ maxBufferMs,
                 /* bufferForPlaybackMs = */ forPlaybackMs,
-                /* bufferForPlaybackAfterRebufferMs = */ (forPlaybackMs * 2).coerceAtMost(30_000)
+                /* bufferForPlaybackAfterRebufferMs = */ rebufferMs
             )
+            .setBackBufferDurationMs(backBufferMs)
             .build()
         val mediaSourceFactory = playbackMediaSourceFactory(req)
         return ExoPlayer.Builder(context)
