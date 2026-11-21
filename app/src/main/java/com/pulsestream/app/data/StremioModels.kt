@@ -181,6 +181,9 @@ data class CachedMeta(
     val meta: MetaPreview
 )
 
+/** Result of a search plus its failure signal (Nuvio SearchEmptyStateReason.RequestFailed). */
+data class SearchOutcome(val results: List<CachedMeta>, val remoteFailed: Boolean)
+
 /** Everything the player needs, passed in-memory via the repository. */
 data class PlaybackRequest(
     val streamUrl: String,

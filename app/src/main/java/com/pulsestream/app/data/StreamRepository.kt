@@ -1064,6 +1064,15 @@ class StreamRepository(
      * listed 1930s titles before Salman Khan's Sultan, 2016).
      */
     suspend fun searchAll(query: String, type: String? = null): List<CachedMeta> =
+        searchAllWithStatus(query, type).results
+
+    /**
+     * searchAll plus whether the remote leg failed: when results are
+     * empty AND remoteFailed, the screen shows "search failed" instead
+     * of "no results" (the remote failure may have hidden matches).
+     * Local results are never wiped out by a remote failure.
+     */
+    suspend fun searchAllWithStatus(query: String, type: String? = null): SearchOutcome =
         withContext(Dispatchers.IO) {
             // Warm the in-memory search cache from the DB when Home hasn't
             // loaded it yet this session (e.g. the user opened the Search
@@ -1077,11 +1086,12 @@ class StreamRepository(
             // A remote failure must never wipe out local results. Server-side
             // search first; the per-addon fan-out is the fallback for when
             // the backend itself is unreachable.
+            var remoteFailed = false
             val remote = try {
                 searchServer(query, type) ?: searchRemote(query, type)
-            } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { emptyList() }
+            } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { remoteFailed = true; emptyList() }
             val merged = local + remote.filter { seen.add(it.addonId + it.meta.id) }
-            rankSearchResults(merged, query)
+            SearchOutcome(rankSearchResults(merged, query), remoteFailed)
         }
 
     /**
