@@ -66,6 +66,7 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
@@ -89,6 +90,7 @@ import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.AlertDialog
 import com.pulsestream.app.ui.components.OrbitDots
+import com.pulsestream.app.ui.components.PosterCard
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Button
@@ -260,7 +262,8 @@ import kotlin.math.roundToInt
 @Composable
 fun PlayerScreen(
     repository: StreamRepository,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -955,6 +958,32 @@ fun PlayerScreen(
     // file itself (ExoPlayer's Matroska extractor skips them).
     var chapters by remember { mutableStateOf<List<PlayerChapter>>(emptyList()) }
     var chaptersOpen by remember { mutableStateOf(false) }
+
+    // Next-episode countdown card (Nuvio NextEpisodeCard): the resolved
+    // next episode + the live countdown; Cancel marks the episode handled
+    // so the silent end-of-playback advance never fires for it.
+    var nextEpisodeCard by remember { mutableStateOf<Video?>(null) }
+    var nextEpisodeCountdown by remember { mutableStateOf<Int?>(null) }
+    var nextEpisodeDismissedFor by remember { mutableStateOf<String?>(null) }
+
+    // Movie recommendations (Nuvio MovieRecommendationCard): "More like
+    // this" after a movie ends, loaded once per title.
+    var movieRecs by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
+    var movieRecsLoadedFor by remember { mutableStateOf<String?>(null) }
+    var movieRecsAddonId by remember { mutableStateOf<String?>(null) }
+    var movieRecsDismissed by remember { mutableStateOf(false) }
+    var movieRecsAutoHidden by remember { mutableStateOf(false) }
+
+    // A new episode/movie clears the end-of-playback cards.
+    LaunchedEffect(currentRequest.videoId) {
+        nextEpisodeCard = null
+        nextEpisodeCountdown = null
+        movieRecs = emptyList()
+        movieRecsLoadedFor = null
+        movieRecsAddonId = null
+        movieRecsDismissed = false
+        movieRecsAutoHidden = false
+    }
 
     // Subtitle search
     var subSearchOpen by remember { mutableStateOf(false) }
@@ -2277,6 +2306,34 @@ fun PlayerScreen(
     // Poll position / duration / playing / buffering / volume for the UI,
     // and track the active skip-segment window.
     var endedHandledFor by remember { mutableStateOf<String?>(null) }
+
+    // Countdown driver: 10…1, one tick a second, then play the next
+    // episode. Cancels when the card closes (dismiss, seek-back, new
+    // episode). The advance marks the episode handled so the silent
+    // end-of-playback block never fires for it too.
+    LaunchedEffect(nextEpisodeCard) {
+        val next = nextEpisodeCard ?: return@LaunchedEffect
+        for (sec in NEXT_EPISODE_COUNTDOWN_SECONDS downTo 1) {
+            nextEpisodeCountdown = sec
+            delay(1000)
+        }
+        nextEpisodeCountdown = null
+        nextEpisodeCard = null
+        endedHandledFor = currentRequest.videoId
+        playEpisode(next)
+    }
+
+    // Movie recommendations auto-hide 10s after appearing while the
+    // controls are hidden; showing the controls brings them back.
+    LaunchedEffect(movieRecs, showControls) {
+        if (movieRecs.isNotEmpty() && !showControls) {
+            delay(10_000)
+            movieRecsAutoHidden = true
+        } else {
+            movieRecsAutoHidden = false
+        }
+    }
+
     LaunchedEffect(player) {
         while (true) {
             val c = player
@@ -2300,31 +2357,86 @@ fun PlayerScreen(
             activeSegment = if (settings.showSkipButton) {
                 skipSegments.firstOrNull { positionMs >= it.startMs && positionMs <= it.endMs }
             } else null
+            // Next-episode countdown card (Nuvio NextEpisodeCard): when
+            // the threshold is crossed, the card appears and counts down
+            // instead of the silent immediate advance. Seeking back below
+            // the threshold hides it again.
+            val nextEp = if (
+                settings.autoPlayNext &&
+                !currentRequest.isMovie &&
+                !currentRequest.isTrailer &&
+                currentRequest.episodes.isNotEmpty()
+            ) {
+                resolveNextEpisode(
+                    currentRequest.episodes,
+                    currentRequest.season,
+                    currentRequest.episode,
+                    currentRequest.videoId,
+                    settings.shuffleEpisodes
+                )
+            } else null
+            if (nextEp != null && nextEpisodeCard == null &&
+                nextEpisodeDismissedFor != currentRequest.videoId &&
+                shouldShowNextEpisodeCard(
+                    positionMs, durationMs, skipSegments,
+                    settings.nextEpisodeThresholdMode,
+                    settings.nextEpisodeThresholdPercent,
+                    settings.nextEpisodeThresholdMinutes
+                )
+            ) {
+                nextEpisodeCard = nextEp
+            } else if (nextEpisodeCard != null && !shouldShowNextEpisodeCard(
+                    positionMs, durationMs, skipSegments,
+                    settings.nextEpisodeThresholdMode,
+                    settings.nextEpisodeThresholdPercent,
+                    settings.nextEpisodeThresholdMinutes
+                )
+            ) {
+                // Sought back below the threshold: hide the card; the
+                // countdown effect cancels with it.
+                nextEpisodeCard = null
+                nextEpisodeCountdown = null
+            }
             // Auto-play next episode: when a series episode ends and the
-            // setting is on, advance to the next episode automatically.
+            // setting is on, advance automatically — unless the countdown
+            // card is showing (it advances itself) or was cancelled.
             if (c.playbackState == Player.STATE_ENDED &&
                 settings.autoPlayNext &&
                 !currentRequest.isMovie &&
                 !currentRequest.isTrailer &&
                 currentRequest.episodes.isNotEmpty() &&
+                nextEpisodeCard == null &&
                 endedHandledFor != currentRequest.videoId
             ) {
                 endedHandledFor = currentRequest.videoId
-                val eps = currentRequest.episodes.sortedWith(
-                    compareBy({ it.season }, { it.episode })
-                )
-                // v0.9.0: shuffle mode picks a random episode instead of the
-                // sequential next one (never the just-finished episode itself).
-                val next = if (settings.shuffleEpisodes) {
-                    eps.filter { it.id != currentRequest.videoId }.randomOrNull()
-                        ?: eps.randomOrNull()
-                } else {
-                    val idx = eps.indexOfFirst { it.id == currentRequest.videoId }
-                    if (idx >= 0) eps.getOrNull(idx + 1) else null
-                }
-                if (next != null) {
+                if (nextEp != null) {
                     pokeIndicator(PlayerIndicator.Message("Playing next episode…"))
-                    playEpisode(next)
+                    playEpisode(nextEp)
+                }
+            }
+            // Movie recommendations (Nuvio MovieRecommendationCard):
+            // once per movie, when it ends, load "More like this".
+            if (c.playbackState == Player.STATE_ENDED &&
+                currentRequest.isMovie &&
+                !currentRequest.isTrailer &&
+                movieRecsLoadedFor != currentRequest.videoId
+            ) {
+                movieRecsLoadedFor = currentRequest.videoId
+                val req = currentRequest
+                ioScope.launch {
+                    val sections = runCatching {
+                        repository.getRelated(req.type, req.metaId.substringBefore(":"))
+                    }.getOrDefault(emptyList())
+                    val recs = sections.flatMap { it.metas }.distinctBy { it.id }.take(10)
+                    val addonId = runCatching {
+                        repository.metaAddonsFor(req.type).firstOrNull()?.id
+                    }.getOrNull()
+                    withContext(Dispatchers.Main) {
+                        if (movieRecsLoadedFor == req.videoId) {
+                            movieRecs = recs
+                            movieRecsAddonId = addonId
+                        }
+                    }
                 }
             }
             if (!currentRequest.isTrailer) {
@@ -3007,27 +3119,150 @@ fun PlayerScreen(
             }
         }
 
+        // An end card (next-episode countdown / movie recommendations)
+        // owns the bottom-end slot while it shows — the skip button
+        // hides under it (Play now does the same job).
+        val endCardVisible = nextEpisodeCard != null ||
+            (movieRecs.isNotEmpty() && !movieRecsDismissed && !movieRecsAutoHidden)
         // Skip intro / recap / outro button (IntroDB).
-        activeSegment?.let { seg ->
+        if (!endCardVisible) {
+            activeSegment?.let { seg ->
+                Box(
+                    Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
+                    contentAlignment = Alignment.BottomEnd
+                ) {
+                    TextButton(
+                        onClick = {
+                            player.seekTo(seg.endMs + 400)
+                            activeSegment = null
+                        },
+                        modifier = Modifier.background(
+                            Color.Black.copy(alpha = 0.72f),
+                            RoundedCornerShape(10.dp)
+                        )
+                    ) {
+                        Text(
+                            seg.type.buttonLabel(),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // Next-episode countdown card (Nuvio NextEpisodeCard): bottom-end,
+        // above the controls. Counts 10…1, then plays the next episode;
+        // Cancel stops the auto-advance for this episode.
+        nextEpisodeCard?.let { next ->
             Box(
                 Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
-                TextButton(
-                    onClick = {
-                        player.seekTo(seg.endMs + 400)
-                        activeSegment = null
-                    },
-                    modifier = Modifier.background(
-                        Color.Black.copy(alpha = 0.72f),
-                        RoundedCornerShape(10.dp)
-                    )
+                Column(
+                    Modifier
+                        .widthIn(max = 320.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .padding(14.dp)
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Up next",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = {
+                                nextEpisodeDismissedFor = currentRequest.videoId
+                                endedHandledFor = currentRequest.videoId
+                                nextEpisodeCard = null
+                                nextEpisodeCountdown = null
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Filled.Close, "Cancel", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                        }
+                    }
                     Text(
-                        seg.type.buttonLabel(),
+                        "S${next.season}E${next.episode} · ${next.title}",
                         color = TextPrimary,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = {
+                                endedHandledFor = currentRequest.videoId
+                                nextEpisodeCard = null
+                                nextEpisodeCountdown = null
+                                playEpisode(next)
+                            }
+                        ) {
+                            Text("Play now")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Playing in ${nextEpisodeCountdown ?: NEXT_EPISODE_COUNTDOWN_SECONDS}s",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+
+        // Movie recommendations card (Nuvio MovieRecommendationCard):
+        // "More like this" posters after a movie ends. Auto-hides 10s
+        // after appearing while the controls are hidden; showing the
+        // controls brings it back.
+        if (movieRecs.isNotEmpty() && !movieRecsDismissed && !movieRecsAutoHidden) {
+            Box(
+                Modifier.fillMaxSize().padding(bottom = 170.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "More like this",
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = { movieRecsDismissed = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Filled.Close, "Dismiss", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(movieRecs, key = { it.id }) { meta ->
+                            PosterCard(
+                                meta = meta,
+                                onClick = {
+                                    val addonId = movieRecsAddonId ?: return@PosterCard
+                                    onOpenDetail(addonId, meta.type, meta.id)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
