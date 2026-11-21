@@ -24,11 +24,17 @@ data class UpdateInfo(
 
 /**
  * Checks the stable pointer (stable.json in the repo) for a version newer
- * than the installed one. Only versions Najam marks "stable" notify users —
- * dev releases pushed to GitLab stay silent. Silent on any failure.
+ * than the installed one. Only versions marked "stable" in the fork's own
+ * stable.json notify users — dev builds stay silent (same version name,
+ * installed by hand from GitHub). Silent on any failure.
  */
 object UpdateChecker {
-    private const val STABLE_URL = "https://gitlab.com/KotlinJS5/plavio/-/raw/main/stable.json"
+    // Fork's own pointer: the stable.json at this repo's root, served by
+    // raw.githubusercontent. It used to point at upstream's GitLab pointer,
+    // which offered upstream builds (v0.14.27, major) — signed with
+    // upstream's key, so they fail to install over the fork and would
+    // replace it with stock Plavio.
+    private const val STABLE_URL = "https://raw.githubusercontent.com/a-kay-raz/Plavio_mobile/main/stable.json"
     private const val PREFS = "pulse_update"
     private const val KEY_LAST_CHECK = "last_check_ms"
     private const val KEY_SKIPPED = "skipped_version"
