@@ -24,12 +24,12 @@ data class RelatedSection(
 
 /**
  * PlavioMeta related-content endpoint.
- * GET https://plaviometa.vercel.app/related/:type/:ttid.json
+ * GET https://meta.plavio.site/related/:type/:ttid.json
  *   -> { sections: [{ id, title, metas: [{ id, type, name, poster }] }] }
  * Keyless mode returns { sections: [] } — the UI just shows nothing.
  */
 object RelatedContent {
-    private const val BASE = "https://plaviometa.vercel.app"
+    private const val BASE = "https://meta.plavio.site"
 
     private val client = OkHttpClient.Builder()
         .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
