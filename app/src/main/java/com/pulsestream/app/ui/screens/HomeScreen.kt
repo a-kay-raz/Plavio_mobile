@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
@@ -231,7 +230,6 @@ fun HomeScreen(
     onPlayServerItem: (PlaybackRequest) -> Unit = {},
     onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit = { _, _ -> },
     onGoToDownloads: () -> Unit = {},
-    onGoToLive: () -> Unit = {},
 ) {
     val vm: HomeViewModel = viewModel(factory = vmFactory { HomeViewModel(repository) })
 
@@ -752,72 +750,6 @@ fun HomeScreen(
                 }
             }
 
-            // Top-right of Home: the Live pill alone now (the old
-            // floating Saved/bookmark button was removed 2026-10-24 —
-            // Watchlist + My Lists live in the Library tab).
-            Row(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Live pill (owner's order 2026-10-24): Live left the
-                // dock for the Library tab — it lives here now, at
-                // Home's top-right. Real glass (owner's device verdict
-                // 2026-10-26: the plain liquidGlass call read as a solid
-                // pill) — the dock's exact treatment: a fitted backing
-                // pill behind glass with explicit frost/darken.
-                Box(Modifier.height(42.dp)) {
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (LocalPalette.current.light) {
-                                    Color.White.copy(alpha = 0.82f)
-                                } else {
-                                    Color.Black.copy(alpha = 0.48f)
-                                },
-                                RoundedCornerShape(50)
-                            )
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxHeight()
-                            .liquidGlass(
-                                RoundedCornerShape(50),
-                                frost = 0.12f,
-                                darken = 0.03f
-                            )
-                            .clickable { onGoToLive() }
-                            .padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier
-                                .size(7.dp)
-                                .background(Color(0xFFFF4D5E), CircleShape)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Filled.LiveTv,
-                            contentDescription = null,
-                            tint = TextPrimary,
-                            modifier = Modifier.size(17.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Live",
-                            color = TextPrimary,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    }
-                }
-            }
         }
     }
 

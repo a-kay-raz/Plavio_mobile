@@ -722,6 +722,7 @@ private fun DarkVideoSurface(content: @Composable () -> Unit) {
 private fun appTabs() = listOf(
     Tab(Routes.HOME, stringResource(R.string.nav_home), Icons.Filled.Home),
     Tab(Routes.LIBRARY, stringResource(R.string.nav_library), Icons.Filled.MenuBook),
+    Tab(Routes.LIVE, stringResource(R.string.nav_live), Icons.Filled.LiveTv),
     Tab(Routes.SEARCH, stringResource(R.string.nav_search), Icons.Filled.Search),
     Tab(Routes.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings)
 )
@@ -1095,10 +1096,9 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                                 val selected =
                                     currentDestination?.hierarchy?.any { it.route == tab.route } == true
                                 val isHome = tab.route == Routes.HOME
-                                // All four tabs stay, always (v0.12.7;
-                                // dock cut to four in v0.12.28 — Live moved
-                                // to a Home top-right pill and Downloads
-                                // into Settings, owner's orders 2026-10-24):
+                                // All five tabs stay, always (v0.12.7;
+                                // Live is back in the dock 2026-11-22, owner's
+                                // order — the floating Home pill is gone):
                                 // the shrink only eats the names — no tab
                                 // ever melts away or folds into a pill.
                                 DockItem(
@@ -1424,7 +1424,6 @@ private fun PulseNavGraph(
                     navController.navigate(Routes.serverLibrary(serverId, libraryId))
                 },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
-                onGoToLive = { navController.navigate(Routes.LIVE) },
             )
         }
         composable(Routes.LIVE) {
