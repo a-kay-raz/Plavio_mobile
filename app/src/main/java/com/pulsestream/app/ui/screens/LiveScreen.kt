@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import com.pulsestream.app.ui.components.OrbitDots
@@ -77,7 +78,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pulsestream.app.data.CatalogRow
+import com.pulsestream.app.data.currentProgram
 import com.pulsestream.app.data.isPlayableLiveStreamUrl
+import com.pulsestream.app.data.nextProgram
 import com.pulsestream.app.data.LIVE_SOURCE_RESOLUTION_TIMEOUT_MS
 import com.pulsestream.app.data.liveResolutionFailureMessage
 import com.pulsestream.app.data.liveResourceType
@@ -111,7 +114,11 @@ internal sealed interface LiveUiState {
         val rows: List<CatalogRow>,
         val m3uRows: List<CatalogRow>,
         val playlists: List<String>,
-        val m3uErrors: List<String> = emptyList()
+        val m3uErrors: List<String> = emptyList(),
+        /** Now/next programmes by Live tab channel key ("addonId|metaId"). */
+        val epgByKey: Map<String, List<com.pulsestream.app.data.LiveTvEpgProgram>> = emptyMap(),
+        /** Provider load failures, named (channels from the working providers still show). */
+        val providerErrors: List<String> = emptyList()
     ) : LiveUiState
     data class Error(val message: String) : LiveUiState
     data object Empty : LiveUiState
@@ -123,6 +130,14 @@ internal class LiveViewModel(
     var uiState: LiveUiState by mutableStateOf(LiveUiState.Loading)
         private set
     private var loadJob: Job? = null
+    /** Provider channels behind the provider rows (with epgId) — for EPG matching + playback. */
+    private var providerChannels: List<com.pulsestream.app.data.LiveTvChannel> = emptyList()
+    /** M3U channels synthesized for EPG matching (id "m3u|<url>", name only). */
+    private var m3uChannelsForEpg: List<com.pulsestream.app.data.LiveTvChannel> = emptyList()
+    /** Provider rows cache: same 15-min TTL as the addon TV rows. */
+    private var providerCache: Pair<Long, Pair<List<CatalogRow>, List<String>>>? = null
+    private var providerCacheSignature: String? = null
+    private var epgJob: Job? = null
 
     init {
         load()
@@ -137,22 +152,35 @@ internal class LiveViewModel(
                 val cached = repository.loadTvRowsCached()
                 val playlists = repository.settings.m3uPlaylists
                 if (cached.isNotEmpty()) {
-                    uiState = LiveUiState.Content(cached, previous?.m3uRows.orEmpty(), playlists)
+                    uiState = LiveUiState.Content(
+                        cached, previous?.m3uRows.orEmpty(), playlists,
+                        previous?.m3uErrors.orEmpty(), previous?.epgByKey.orEmpty(), previous?.providerErrors.orEmpty()
+                    )
                 } else if (previous == null) {
                     uiState = LiveUiState.Loading
                 }
-                val (rows, m3u) = coroutineScope {
+                val (rows, m3u, provider) = coroutineScope {
                     val addonRows = async { repository.loadTvRows() }
                     val playlistRows = async { repository.loadM3uRows() }
-                    addonRows.await() to playlistRows.await()
+                    val providerRows = async { loadProviderRows() }
+                    Triple(addonRows.await(), playlistRows.await(), providerRows.await())
                 }
-                uiState = if (rows.isEmpty() && m3u.rows.isEmpty()) {
+                m3uChannelsForEpg = m3u.rows.flatMap { row ->
+                    row.items.map { meta ->
+                        com.pulsestream.app.data.LiveTvChannel(id = "m3u|${meta.id}", name = meta.name, streamUrl = meta.id)
+                    }
+                }
+                uiState = if (rows.isEmpty() && m3u.rows.isEmpty() && provider.first.isEmpty()) {
                     // A failed playlist must say so, not show the generic
                     // "no live TV" empty state.
                     if (m3u.errors.isNotEmpty()) LiveUiState.Error(m3u.errors.joinToString("\n"))
+                    else if (provider.second.isNotEmpty()) LiveUiState.Error(provider.second.joinToString("\n"))
                     else LiveUiState.Empty
                 } else {
-                    LiveUiState.Content(rows, m3u.rows, playlists, m3u.errors)
+                    LiveUiState.Content(
+                        rows + provider.first, m3u.rows, playlists, m3u.errors,
+                        (uiState as? LiveUiState.Content)?.epgByKey.orEmpty(), provider.second
+                    )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -162,10 +190,156 @@ internal class LiveViewModel(
                     m3uErrors = saved.m3uErrors + "Live refresh failed; showing saved channels. Retry to refresh."
                 ) else LiveUiState.Error("Couldn't load live channels. Please retry.")
             }
+            if (uiState is LiveUiState.Content) refreshEpg()
+        }
+    }
+
+    /**
+     * Xtream + Stalker channels as catalog rows, grouped by provider and
+     * category (like the M3U rows). Cached 15 minutes; a settings change
+     * busts the cache immediately. Failures are reported per provider and
+     * never hide the other provider's channels.
+     */
+    private suspend fun loadProviderRows(): Pair<List<CatalogRow>, List<String>> {
+        val settings = repository.settings
+        val signature = listOf(
+            settings.liveTvXtreamServerUrl, settings.liveTvXtreamUsername,
+            settings.liveTvXtreamPassword.orEmpty(), settings.liveTvXtreamEnabled,
+            settings.liveTvStalkerPortalUrl, settings.liveTvStalkerMac,
+            settings.liveTvStalkerUsername, settings.liveTvStalkerPassword.orEmpty(),
+            settings.liveTvStalkerEnabled
+        ).joinToString("|")
+        val now = System.currentTimeMillis()
+        providerCache?.let { (ts, cached) ->
+            if (signature == providerCacheSignature && now - ts < 15L * 60L * 1000L) {
+                return cached
+            }
+        }
+        val channels = mutableListOf<com.pulsestream.app.data.LiveTvChannel>()
+        val errors = mutableListOf<String>()
+        coroutineScope {
+            val xtream = async {
+                val s = settings.liveTvXtreamSettings()
+                if (s.isConfigured && s.isEnabled) runCatching { com.pulsestream.app.data.fetchXtreamChannels(s) }
+                else null
+            }
+            val stalker = async {
+                val s = settings.liveTvStalkerSettings()
+                if (s.isConfigured && s.isEnabled) runCatching { com.pulsestream.app.data.fetchStalkerChannels(s) }
+                else null
+            }
+            xtream.await()?.fold(
+                onSuccess = { channels += it },
+                onFailure = { errors += "Xtream: ${it.message ?: "couldn't connect"}" }
+            )
+            stalker.await()?.fold(
+                onSuccess = { channels += it },
+                onFailure = { errors += "Stalker Portal: ${it.message ?: "couldn't connect"}" }
+            )
+        }
+        providerChannels = channels
+        val rows = channels.groupBy { it.playlistName ?: "Live" }
+            .flatMap { (provider, providerChannels) ->
+                val addonId = if (provider == "Xtream") "xtream" else "stalker"
+                providerChannels.groupBy { it.group?.takeIf { g -> g.isNotBlank() } ?: "Channels" }
+                    .map { (group, groupChannels) ->
+                        CatalogRow(
+                            addonId = addonId,
+                            addonName = provider,
+                            baseUrl = "",
+                            catalogName = "$provider — $group",
+                            type = "tv",
+                            catalogId = "$addonId-${group.lowercase().replace(" ", "-")}",
+                            items = groupChannels.map { ch ->
+                                MetaPreview(
+                                    id = ch.id,
+                                    type = "tv",
+                                    name = ch.name,
+                                    poster = ch.logoUrl,
+                                    logo = ch.logoUrl
+                                )
+                            }
+                        )
+                    }
+            }
+        val result = rows to errors
+        providerCache = now to result
+        providerCacheSignature = signature
+        return result
+    }
+
+    /**
+     * EPG refresh (Nuvio refreshEpg, simplified): guides load AFTER the
+     * channels publish, so a slow XMLTV feed never blocks the channel
+     * list. Sources: Xtream xmltv.php + Stalker get_epg_info + M3U
+     * x-tvg-url headers (auto-detect) + manual guide sources. Best
+     * effort — a failed guide just leaves its channels without now/next.
+     */
+    private fun refreshEpg() {
+        epgJob?.cancel()
+        epgJob = viewModelScope.launch {
+            try {
+                val settings = repository.settings
+                val now = System.currentTimeMillis()
+                val guides = mutableListOf<com.pulsestream.app.data.LiveTvEpgGuide>()
+                val xtream = settings.liveTvXtreamSettings()
+                if (settings.liveTvEpgAutoDetect && xtream.isConfigured && xtream.isEnabled) {
+                    runCatching {
+                        com.pulsestream.app.data.fetchXmltvGuide(
+                            com.pulsestream.app.data.xtreamEpgUrl(xtream), now
+                        )
+                    }.onSuccess { guides += it }
+                }
+                val stalker = settings.liveTvStalkerSettings()
+                if (stalker.isConfigured && stalker.isEnabled) {
+                    runCatching {
+                        com.pulsestream.app.data.fetchStalkerEpgGuide(
+                            stalker,
+                            now - com.pulsestream.app.data.LIVE_TV_EPG_PAST_WINDOW_MILLIS,
+                            now + com.pulsestream.app.data.LIVE_TV_EPG_FUTURE_WINDOW_MILLIS
+                        )
+                    }.onSuccess { guides += it }
+                }
+                val epgUrls = mutableListOf<String>()
+                if (settings.liveTvEpgAutoDetect) {
+                    settings.m3uPlaylists.forEach { url ->
+                        epgUrls += com.pulsestream.app.data.fetchM3uEpgUrls(url)
+                    }
+                }
+                epgUrls += settings.liveTvEpgSources.filter { it.isEnabled }.map { it.url }
+                epgUrls.distinct().forEach { url ->
+                    runCatching { com.pulsestream.app.data.fetchXmltvGuide(url, now) }
+                        .onSuccess { guides += it }
+                }
+                if (guides.isEmpty()) return@launch
+                val matched = com.pulsestream.app.data.matchEpgToChannels(
+                    providerChannels + m3uChannelsForEpg, guides
+                )
+                // Key by the Live tab's channelKey ("addonId|metaId"):
+                // provider ids are "xtream:123" / "stalker:5", M3U ids are
+                // already "m3u|<url>".
+                val byKey = matched.mapKeys { (channelId, _) ->
+                    when {
+                        channelId.startsWith("xtream:") -> "xtream|$channelId"
+                        channelId.startsWith("stalker:") -> "stalker|$channelId"
+                        else -> channelId
+                    }
+                }
+                val current = uiState as? LiveUiState.Content ?: return@launch
+                uiState = current.copy(epgByKey = byKey)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // EPG is best-effort: channels stay, the guide just stays empty.
+            }
         }
     }
 
     fun toggleFavorite(key: String) = repository.toggleLiveFavorite(key)
+
+    /** Provider channel by its id ("xtream:123" / "stalker:5"), for playback. */
+    fun providerChannel(id: String): com.pulsestream.app.data.LiveTvChannel? =
+        providerChannels.firstOrNull { it.id == id }
 }
 
 private fun channelKey(row: CatalogRow, meta: MetaPreview) = "${row.addonId}|${meta.id}"
@@ -180,7 +354,8 @@ private fun channelKey(row: CatalogRow, meta: MetaPreview) = "${row.addonId}|${m
 fun LiveScreen(
     onPlay: (PlaybackRequest) -> Unit,
     onGoToAddons: () -> Unit,
-    repository: com.pulsestream.app.data.StreamRepository
+    repository: com.pulsestream.app.data.StreamRepository,
+    onGoToLiveTvSettings: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val vm: LiveViewModel = viewModel(factory = remember {
@@ -255,6 +430,13 @@ fun LiveScreen(
             )
             return
         }
+        // Provider channels (Xtream / Stalker): the stream URL is already
+        // known — no addon resolution. Stalker resolves its real URL via
+        // create_link at play time.
+        if (row.addonId == "xtream" || row.addonId == "stalker") {
+            playProviderChannel(row, meta)
+            return
+        }
         val key = channelKey(row, meta)
         resolvingKey = key
         val channel = channelRef(row, meta)
@@ -324,6 +506,82 @@ fun LiveScreen(
         }
     }
 
+    /**
+     * Provider channel playback (Xtream / Stalker): the channel's stream
+     * URL + headers are already known, so there is no addon resolution.
+     * Xtream plays directly; Stalker resolves its real URL via create_link
+     * first. NOTE: provider channels are deliberately left out of the zap
+     * list — the player resolves zap targets through addons, which provider
+     * ids can't use (follow-up).
+     */
+    fun playProviderChannel(row: CatalogRow, meta: MetaPreview) {
+        resolvingJob?.cancel()
+        resolvingJob = null
+        val generation = ++resolveGeneration
+        resolvingKey = null
+        resolveError = null
+        val key = channelKey(row, meta)
+        val channel = vm.providerChannel(meta.id)
+        if (channel == null) {
+            resolveError = "Channel is no longer in the provider list. Reopen the Live tab to refresh."
+            return
+        }
+        if (row.addonId == "xtream") {
+            repository.pushLiveRecent(key)
+            favVersion++
+            onPlay(
+                PlaybackRequest(
+                    streamUrl = channel.streamUrl,
+                    headers = channel.headers,
+                    title = channel.name,
+                    poster = channel.logoUrl,
+                    type = "tv",
+                    videoId = channel.id,
+                    streamLabel = "LIVE",
+                    sourceName = "Xtream",
+                    liveChannel = channelRef(row, meta)
+                )
+            )
+            return
+        }
+        // Stalker: resolve the real stream URL via create_link first.
+        resolvingKey = key
+        resolvingJob = scope.launch {
+            try {
+                val resolved = com.pulsestream.app.data.preparePortalChannelForPlayback(
+                    channel, repository.settings.liveTvStalkerSettings()
+                )
+                if (generation != resolveGeneration) return@launch
+                repository.pushLiveRecent(key)
+                favVersion++
+                onPlay(
+                    PlaybackRequest(
+                        streamUrl = resolved.streamUrl,
+                        headers = resolved.headers,
+                        title = resolved.name,
+                        poster = resolved.logoUrl,
+                        type = "tv",
+                        videoId = resolved.id,
+                        streamLabel = "LIVE",
+                        sourceName = "Stalker Portal",
+                        liveChannel = channelRef(row, meta)
+                    )
+                )
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                if (generation == resolveGeneration) {
+                    resolveError = liveResolutionFailureMessage(meta.name)
+                }
+            } finally {
+                if (generation == resolveGeneration) {
+                    resolvingJob = null
+                    resolvingKey = null
+                }
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         // ---- Header ----
         Row(
@@ -344,6 +602,13 @@ fun LiveScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = onGoToLiveTvSettings) {
+                Icon(
+                    Icons.Filled.Settings,
+                    "Live TV settings",
+                    tint = TextSecondary
+                )
+            }
             IconButton(onClick = { showSearch = !showSearch }) {
                 Icon(
                     if (showSearch) Icons.Filled.Close else Icons.Filled.Search,
@@ -373,7 +638,8 @@ fun LiveScreen(
                 title = "No live TV yet",
                 message = "Plavio doesn't bundle any channels. Install a live TV addon " +
                     "with its manifest URL — or import an M3U playlist from the top-right " +
-                    "button — and its channels will appear here.",
+                    "button — and its channels will appear here. IPTV providers (Xtream / " +
+                    "Stalker) are added from the gear icon at the top.",
                 actionLabel = "Add an addon",
                 onAction = onGoToAddons
             )
@@ -417,10 +683,13 @@ fun LiveScreen(
                     }.distinctBy { (row, meta) -> channelKey(row, meta) }
                 }
                 // Flat visible list for the player zapping handoff.
+                // Provider rows stay out: the player resolves zap targets
+                // through addons, which provider ids can't use.
                 val flatList = remember(visibleRows, favorites, recents) {
                     (favorites + recents + visibleRows.flatMap { row ->
                         row.items.map { row to it }
                     }).distinctBy { (row, meta) -> channelKey(row, meta) }
+                        .filter { (row, _) -> row.addonId != "xtream" && row.addonId != "stalker" }
                         .map { (row, meta) -> channelRef(row, meta) }
                 }
 
@@ -507,6 +776,36 @@ fun LiveScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                        // EPG now/next (Nuvio LiveTvEpgUi): the programme
+                        // on now, with a progress bar. Only when a guide
+                        // matched this channel.
+                        val nowProgram = state.epgByKey[key]?.currentProgram(System.currentTimeMillis())
+                        if (nowProgram != null) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                nowProgram.title,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.White.copy(alpha = 0.12f))
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth(nowProgram.progressAt(System.currentTimeMillis()))
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(LocalPalette.current.accent)
+                                )
+                            }
                         }
                     }
                 }
@@ -618,6 +917,26 @@ fun LiveScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            // EPG now/next on the featured card.
+                            val featuredEpg = state.epgByKey[channelKey(row, meta)]
+                            val featuredNow = featuredEpg?.currentProgram(System.currentTimeMillis())
+                            val featuredNext = featuredEpg?.nextProgram(System.currentTimeMillis())
+                            if (featuredNow != null || featuredNext != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    buildString {
+                                        featuredNow?.let { append("Now: ${it.title}") }
+                                        featuredNext?.let {
+                                            if (isNotEmpty()) append("  ·  ")
+                                            append("Next: ${it.title}")
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         if (busy) {
                             OrbitDots(modifier = Modifier.align(Alignment.Center).padding(8.dp).size(32.dp))
@@ -635,6 +954,25 @@ fun LiveScreen(
                 }
                 // Failed playlists are named, not silently dropped.
                 state.m3uErrors.forEach { err ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "⚠ $err",
+                            color = Color(0xFFFFB74D),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { vm.load() }) {
+                            Text("Retry", color = LocalPalette.current.accent)
+                        }
+                    }
+                }
+                // Failed providers are named the same way.
+                state.providerErrors.forEach { err ->
                     Row(
                         Modifier
                             .fillMaxWidth()
