@@ -14,7 +14,6 @@
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
 
-    <string name="settings_section_playback">Playback</string>
     <string name="settings_playback_title">Playback</string>
     <string name="settings_playback_sub">Autoplay, next episode, screen, skip intro, audio</string>
     <string name="settings_streams_title">Streams</string>
@@ -22,7 +21,6 @@
     <string name="settings_subtitles_title">Subtitles</string>
     <string name="settings_subtitles_sub">Preferred languages and appearance</string>
 
-    <string name="settings_section_content">Content</string>
     <string name="settings_addons_title">Manage addons</string>
     <string name="settings_addons_sub">%1$d installed • %2$d enabled</string>
     <string name="settings_home_catalogs_title">Home catalogs</string>
@@ -35,11 +33,11 @@
     <string name="notif_new_episode_text">New episode available: %1$s</string>
     <string name="notif_new_episode_text_titled">New episode: %1$s — %2$s</string>
 
-    <string name="settings_section_appearance">Appearance</string>
     <string name="settings_appearance_title">Appearance</string>
     <string name="settings_appearance_sub">Accent color and AMOLED black</string>
 
-    <string name="settings_section_account">Account</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_section_advanced">Advanced</string>
     <string name="settings_account_title">Account</string>
     <string name="settings_account_sub">Backup &amp; sync with your Google account</string>
     <string name="settings_backup_title">Backup &amp; Restore</string>
