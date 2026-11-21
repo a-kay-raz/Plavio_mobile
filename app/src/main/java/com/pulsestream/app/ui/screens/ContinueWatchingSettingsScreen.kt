@@ -141,7 +141,7 @@ fun ContinueWatchingSettingsScreen(
                         SettingsToggleRow(
                             icon = Icons.Filled.PlayArrow,
                             title = "Resume prompt on launch",
-                            subtitle = "Offer the latest title when the app opens",
+                            subtitle = "Ask to resume when the app was closed while playing",
                             checked = resumePrompt,
                             onCheckedChange = {
                                 resumePrompt = it

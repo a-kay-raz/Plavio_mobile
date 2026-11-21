@@ -1015,10 +1015,25 @@ class SettingsStore(
         get() = prefs.getString(KEY_CW_CLICK_ACTION, "stream") ?: "stream"
         set(value) = prefs.edit().putString(KEY_CW_CLICK_ACTION, value).apply()
 
-    /** Resume prompt on launch (Nuvio showResumePromptOnLaunch): offer the latest title when the app opens. */
+    /** Resume prompt on launch (Nuvio showResumePromptOnLaunch): offer to resume when the app reopens after being closed mid-playback. */
     var continueWatchingResumePrompt: Boolean
         get() = prefs.getBoolean(KEY_CW_RESUME_PROMPT, true)
         set(value) = prefs.edit().putBoolean(KEY_CW_RESUME_PROMPT, value).apply()
+
+    /**
+     * Resume-prompt state (Nuvio ResumePromptRepository, scoped port):
+     * armed with the playing video id when the player opens, cleared
+     * when the player is left normally. A set flag at launch means the
+     * last session ended inside the player — the only case that prompts.
+     */
+    var resumePromptWasInPlayer: Boolean
+        get() = prefs.getBoolean(KEY_RESUME_PROMPT_WAS_IN_PLAYER, false)
+        set(value) = prefs.edit().putBoolean(KEY_RESUME_PROMPT_WAS_IN_PLAYER, value).apply()
+
+    /** Video id of the title playing when [resumePromptWasInPlayer] was armed ("" = none). */
+    var resumePromptLastVideoId: String
+        get() = prefs.getString(KEY_RESUME_PROMPT_LAST_VIDEO_ID, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_RESUME_PROMPT_LAST_VIDEO_ID, value).apply()
 
     /** Skip-button offset (Nuvio skipIntroOffsetSeconds): shifts when the intro skip button appears, seconds, -60..60, default 0. Positive = later into the intro. */
     var skipIntroOffsetSeconds: Int
@@ -1972,6 +1987,8 @@ class SettingsStore(
         private const val KEY_CW_SORT_MODE = "continue_watching_sort_mode"
         private const val KEY_CW_CLICK_ACTION = "continue_watching_click_action"
         private const val KEY_CW_RESUME_PROMPT = "continue_watching_resume_prompt"
+        private const val KEY_RESUME_PROMPT_WAS_IN_PLAYER = "resume_prompt_was_in_player"
+        private const val KEY_RESUME_PROMPT_LAST_VIDEO_ID = "resume_prompt_last_video_id"
         private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
         private const val KEY_AUTO_SKIP_SEGMENT_TYPES = "auto_skip_segment_types"
         private const val KEY_SEASON_VIEW_MODE = "season_view_mode"
