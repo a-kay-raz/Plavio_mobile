@@ -54,7 +54,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -1308,6 +1309,34 @@ fun PlayerScreen(
         applySubtitleTiming()
     }
 
+    /** Sync by ear (Nuvio SubtitleSyncByEarCard): the playback position
+     *  captured when the user hears a line / sees its subtitle. */
+    var syncByEarHeardMs by remember { mutableStateOf<Long?>(null) }
+    var syncByEarSawMs by remember { mutableStateOf<Long?>(null) }
+
+    fun captureSyncByEarHeard() {
+        syncByEarHeardMs = player.currentPosition.coerceAtLeast(0L)
+        applySyncByEarIfReady()
+    }
+
+    fun captureSyncByEarSaw() {
+        syncByEarSawMs = player.currentPosition.coerceAtLeast(0L)
+        applySyncByEarIfReady()
+    }
+
+    /** Both taps captured: shift the delay by (heard − saw) — heard
+     *  before seen means the subtitles are late, so the delay drops —
+     *  persist it per video via setSubtitleDelay, then clear the
+     *  captures so the user can measure again. */
+    fun applySyncByEarIfReady() {
+        val heard = syncByEarHeardMs ?: return
+        val saw = syncByEarSawMs ?: return
+        syncByEarHeardMs = null
+        syncByEarSawMs = null
+        setSubtitleDelay(subOffsetOverrideMs + heard - saw)
+        pokeIndicator(PlayerIndicator.Message("Subtitles synced: ${panelDelayLabel(effectiveSubOffsetMs())}"))
+    }
+
     /** Auto Sync > Reload: drop the cached downloads + shifted copies
      *  and re-resolve every subtitle fresh from its source. */
     fun reloadPanelSubtitles() {
@@ -1397,6 +1426,9 @@ fun PlayerScreen(
     // not discard the user's delay.
     LaunchedEffect(currentRequest.metaId, currentRequest.videoId, currentRequest.season, currentRequest.episode) {
         subOffsetOverrideMs = settings.subtitleDelayMsFor(currentRequest.videoId)
+        // A new title invalidates any half-finished sync-by-ear capture.
+        syncByEarHeardMs = null
+        syncByEarSawMs = null
         if (rawResolvedSubs.isNotEmpty()) applySubtitleTiming()
     }
 
@@ -3856,6 +3888,49 @@ fun PlayerScreen(
                                         )
                                     }
                                     Spacer(Modifier.height(10.dp))
+                                    // 1b. Sync by ear (Nuvio SubtitleSyncByEarCard):
+                                    // tap when you hear a line, tap when its
+                                    // subtitle shows — the offset is computed
+                                    // and applied as the per-video delay.
+                                    StyleSectionLabel("Sync by ear")
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "Tap when you hear a line and when its subtitle shows, in either order.",
+                                        color = TextSecondary,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SyncByEarButton(
+                                            modifier = Modifier.weight(1f),
+                                            icon = Icons.Filled.Hearing,
+                                            label = "Heard",
+                                            captured = syncByEarHeardMs != null,
+                                            onClick = { captureSyncByEarHeard() }
+                                        )
+                                        SyncByEarButton(
+                                            modifier = Modifier.weight(1f),
+                                            icon = Icons.Filled.Visibility,
+                                            label = "Saw",
+                                            captured = syncByEarSawMs != null,
+                                            onClick = { captureSyncByEarSaw() }
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = when {
+                                            syncByEarHeardMs != null -> "Heard captured. Tap Saw when its subtitle shows."
+                                            syncByEarSawMs != null -> "Saw captured. Tap Heard when you hear the line."
+                                            subOffsetOverrideMs == 0L -> "Now: In sync"
+                                            else -> "Now: ${panelDelayLabel(effectiveSubOffsetMs())}"
+                                        },
+                                        color = if (syncByEarHeardMs != null || syncByEarSawMs != null) LocalPalette.current.accent else TextSecondary,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                    Spacer(Modifier.height(10.dp))
                                     // 2. Font Size
                                     StyleSectionLabel("Font Size")
                                     Spacer(Modifier.height(6.dp))
@@ -4510,8 +4585,53 @@ private fun StyleSectionLabel(text: String) {
     )
 }
 
-/** One 40dp rounded square stepper button (white 8% background). */
+/** Sync-by-ear tap button (Nuvio SyncByEarButton): accent-filled while
+ *  its tap is captured, white 10% background otherwise. */
 @Composable
+private fun SyncByEarButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    captured: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(14.dp)
+    // Text on the accent fill: black on light accents (White, Ocean,
+    // Amber…), white on dark ones (Weave) — computed, not assumed.
+    val accent = LocalPalette.current.accent
+    val contentColor = if (captured) {
+        if (accent.luminance() > 0.5f) Color.Black else Color.White
+    } else TextPrimary
+    Row(
+        modifier = modifier
+            .clip(shape)
+            .background(if (captured) LocalPalette.current.accent else Color.White.copy(alpha = 0.1f))
+            .border(
+                width = 1.dp,
+                color = if (captured) Color.Transparent else Color.White.copy(alpha = 0.08f),
+                shape = shape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            label,
+            color = contentColor,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+/** One 40dp rounded square stepper button (white 8% background). */@Composable
 private fun StyleStepperButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
