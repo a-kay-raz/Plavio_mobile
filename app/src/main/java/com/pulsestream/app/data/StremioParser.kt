@@ -140,7 +140,8 @@ object StremioParser {
             description = obj.str("description"),
             releaseInfo = obj.str("releaseInfo"),
             imdbRating = obj.str("imdbRating"),
-            genres = obj.strList("genres")
+            genres = obj.strList("genres"),
+            language = obj.str("originalLanguage") ?: obj.str("language")
         )
     }
 
