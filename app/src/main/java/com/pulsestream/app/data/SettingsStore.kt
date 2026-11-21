@@ -960,6 +960,17 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_LIVE_TV_XTREAM_SERVER, "") ?: ""
         set(value) = prefs.edit().putString(KEY_LIVE_TV_XTREAM_SERVER, value.trim()).apply()
 
+    // ---- Simkl sync engine (Step 34) ----
+    // Raw JSON snapshot + pending mutation queue; the engine owns the shape.
+    // Plain prefs, not secrets — they hold IMDb ids and statuses only.
+    var simklSyncSnapshot: String
+        get() = prefs.getString(KEY_SIMKL_SYNC_SNAPSHOT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_SIMKL_SYNC_SNAPSHOT, value).apply()
+
+    var simklSyncMutations: String
+        get() = prefs.getString(KEY_SIMKL_SYNC_MUTATIONS, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_SIMKL_SYNC_MUTATIONS, value).apply()
+
     /** Xtream Codes username. */
     var liveTvXtreamUsername: String
         get() = prefs.getString(KEY_LIVE_TV_XTREAM_USERNAME, "") ?: ""
@@ -1312,6 +1323,8 @@ class SettingsStore(context: Context) {
         private const val KEY_LIVE_RECENT = "live_recent"
         private const val KEY_M3U_LISTS = "m3u_playlists"
         private const val KEY_LIVE_TV_XTREAM_SERVER = "live_tv_xtream_server"
+        private const val KEY_SIMKL_SYNC_SNAPSHOT = "simkl_sync_snapshot"
+        private const val KEY_SIMKL_SYNC_MUTATIONS = "simkl_sync_mutations"
         private const val KEY_LIVE_TV_XTREAM_USERNAME = "live_tv_xtream_username"
         private const val KEY_LIVE_TV_XTREAM_PASSWORD = "xtream_password"
         private const val KEY_LIVE_TV_XTREAM_ENABLED = "live_tv_xtream_enabled"

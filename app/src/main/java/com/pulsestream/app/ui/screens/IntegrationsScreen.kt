@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableIntStateOf
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.OmdbClient
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.TmdbClient
+import com.pulsestream.app.data.simkl.SimklSyncEngine
 import kotlinx.coroutines.launch
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
@@ -632,6 +634,10 @@ private fun LibrarySyncRow(repository: StreamRepository) {
     var busy by remember { mutableStateOf(false) }
     val linked = remember(tick) { repository.librarySyncLinked() }
     val lastResult = remember(tick) { settings.librarySyncLastResult }
+    // Step 34: Simkl sync engine diagnostics (snapshot counts, pending
+    // mutations, last error) — visible under the sync row when Simkl is linked.
+    val simklLinked = remember(tick) { !settings.simklToken.isNullOrBlank() }
+    val simklDiag by SimklSyncEngine.diagnostics.collectAsState()
 
     fun runSync() {
         if (busy || !linked) return
@@ -676,4 +682,28 @@ private fun LibrarySyncRow(repository: StreamRepository) {
         },
         onClick = { runSync() }
     )
+    // Step 34: Simkl sync diagnostics line.
+    if (simklLinked) {
+        val diag = simklDiag
+        val syncedAt = if (diag.lastSyncedAtMs > 0) {
+            java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm")
+                .withZone(java.time.ZoneId.systemDefault())
+                .format(java.time.Instant.ofEpochMilli(diag.lastSyncedAtMs))
+        } else {
+            "not synced yet"
+        }
+        Text(
+            text = buildString {
+                append("Simkl sync · $syncedAt · ${diag.entries} titles · ")
+                append("${diag.watchedMovies} movies + ${diag.watchedEpisodes} episodes watched")
+                if (diag.pendingMutations > 0) append(" · ${diag.pendingMutations} changes waiting")
+                if (diag.lastError != null) append(" · error: ${diag.lastError}")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 56.dp, end = 16.dp, top = 2.dp, bottom = 8.dp)
+        )
+    }
 }
