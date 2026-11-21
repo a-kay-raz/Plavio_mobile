@@ -1,0 +1,105 @@
+# Android release draft, owner only.
+#
+# Manual dispatch only. Builds the mobile release APK (arm64-only, see
+# ndk abiFilters in app/build.gradle.kts) and publishes it as a DRAFT
+# GitHub release. Draft releases are visible only to repo collaborators,
+# so on this public repo the draft is effectively owner-only.
+#
+# Signing: if the owner signing secrets are configured
+# (PLAVIO_SIGNING_STORE_B64 / PLAVIO_SIGNING_STORE_PASSWORD /
+# PLAVIO_SIGNING_KEY_ALIAS / PLAVIO_SIGNING_KEY_PASSWORD) the APK is
+# owner-signed, like mobile-release-check.yml. Otherwise it falls back
+# to a throwaway debug keystore, so the APK still installs for testing
+# (debug-signed, NOT for distribution).
+#
+# Deliberately NOT run here:
+# - scripts/check-native-alignment.py / verify-release.sh: the bundled
+#   arm64 libffmpegJNI.so is 4K-aligned, not 16K, so that gate already
+#   fails on main (pre-existing, needs a 16K rebuild of the .so).
+#   verify-release.sh would also reject a debug signer.
+# - lint: the release build already runs lintVital (checkReleaseBuilds).
+
+name: Android release draft (owner only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Source credential gate
+        run: python3 scripts/scan-source-secrets.py
+
+      - name: Prepare signing
+        env:
+          SIGNING_STORE_B64: ${{ secrets.PLAVIO_SIGNING_STORE_B64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.PLAVIO_SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.PLAVIO_SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.PLAVIO_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -n "$SIGNING_STORE_B64" ]; then
+            umask 077
+            printf '%s' "$SIGNING_STORE_B64" | base64 --decode > "$RUNNER_TEMP/owner.jks"
+            {
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE=$RUNNER_TEMP/owner.jks"
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE_PASSWORD=$SIGNING_STORE_PASSWORD"
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_ALIAS=$SIGNING_KEY_ALIAS"
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_PASSWORD=$SIGNING_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "Signing with owner key."
+          else
+            keytool -genkeypair -keystore "$RUNNER_TEMP/debug.jks" \
+              -alias androiddebugkey -storepass android -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug, O=Android, C=US"
+            {
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE=$RUNNER_TEMP/debug.jks"
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE_PASSWORD=android"
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_ALIAS=androiddebugkey"
+              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_PASSWORD=android"
+            } >> "$GITHUB_ENV"
+            echo "No owner signing secrets: debug-signed test APK."
+          fi
+
+      - name: Build mobile release
+        run: ./gradlew --no-daemon :app:testMobileDebugUnitTest :app:assembleMobileRelease
+
+      - name: Create draft release (owner only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)"
+          tag="v${version}-dev-${{ github.run_number }}"
+          apk="app/build/outputs/apk/mobile/release/app-mobile-release.apk"
+          asset="Plavio-v${version}-arm64.apk"
+          test -f "$apk" || { echo "Missing release APK: $apk" >&2; exit 1; }
+          cp "$apk" "$asset"
+          gh release create "$tag" --draft \
+            --title "Plavio v${version} dev build ${{ github.run_number }} (arm64)" \
+            --notes "Draft release, owner only. Android arm64-only build." \
+            "$asset"
+
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/owner.jks" "$RUNNER_TEMP/debug.jks"
