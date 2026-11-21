@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -20,16 +22,21 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.WatchProgressPull
+import com.pulsestream.app.data.WatchProgressPullResult
+import com.pulsestream.app.data.WatchProgressSource
 import com.pulsestream.app.data.tracking.TrackingLibrarySource
 import com.pulsestream.app.data.tracking.TrackingProgressSource
 import com.pulsestream.app.data.tracking.TrackingRatingsSource
@@ -43,6 +50,7 @@ import com.pulsestream.app.data.tracking.isTraktLinked
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 /**
  * Step 52: tracking settings page (Nuvio settings/TrackingSettingsPage.kt,
@@ -63,6 +71,13 @@ fun TrackingSettingsScreen(
     var libraryPickerOpen by remember { mutableStateOf(false) }
     var progressPickerOpen by remember { mutableStateOf(false) }
     var ratingsPickerOpen by remember { mutableStateOf(false) }
+    // Step 62: resume-position source + manual pull.
+    var resumePickerOpen by remember { mutableStateOf(false) }
+    val watchProgressPull = remember { WatchProgressPull(settings) }
+    val remotePoints by watchProgressPull.points.collectAsState()
+    val scope = rememberCoroutineScope()
+    var pulling by remember { mutableStateOf(false) }
+    var pullMessage by remember { mutableStateOf<String?>(null) }
 
     val traktLinked = remember(tick) { settings.isTraktLinked() }
     val simklLinked = remember(tick) { settings.isSimklLinked() }
@@ -80,6 +95,11 @@ fun TrackingSettingsScreen(
         TrackingRatingsSource.fromStored(settings.trackingRatingsSource)
     }
     val effectiveRatings = remember(tick) { settings.effectiveRatingsSource() }
+    // Step 62: resume-position source (local / Trakt / Simkl).
+    val resumeSource = remember(tick) {
+        WatchProgressSource.fromStored(settings.watchProgressSource)
+    }
+    val lastPullMs = remember(tick) { settings.lastWatchProgressPullMs }
 
     fun linkedNote(source: String, linked: Boolean, fallback: String): String? =
         if (source != "all" && source != "local" && !linked) {
@@ -187,6 +207,72 @@ fun TrackingSettingsScreen(
                         )
                     }
                 }
+                // Step 62: resume-position source — where in-progress
+                // playback positions come from when this device has none.
+                item {
+                    TrackingPickerRow(
+                        title = "Resume position source",
+                        subtitle = "Pull in-progress positions from another device; local progress always wins when it exists",
+                        valueLabel = resumeSource.label,
+                        note = when (resumeSource) {
+                            WatchProgressSource.TRAKT -> linkedNote("trakt", traktLinked, "local positions only")
+                            WatchProgressSource.SIMKL -> linkedNote("simkl", simklLinked, "local positions only")
+                            else -> null
+                        },
+                        onClick = { resumePickerOpen = true }
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (pulling) return@Button
+                                pulling = true
+                                pullMessage = null
+                                scope.launch {
+                                    val result = watchProgressPull.pullNow()
+                                    pulling = false
+                                    pullMessage = when (result) {
+                                        is WatchProgressPullResult.Success ->
+                                            "Pulled ${result.count} in-progress titles from ${result.source.label}."
+                                        is WatchProgressPullResult.Error -> result.message
+                                    }
+                                    tick++
+                                }
+                            },
+                            enabled = !pulling && resumeSource != WatchProgressSource.LOCAL
+                        ) {
+                            Text("Pull now")
+                        }
+                        if (pulling) {
+                            CircularProgressIndicator(modifier = Modifier.padding(start = 12.dp))
+                        }
+                    }
+                    Text(
+                        text = if (lastPullMs > 0) {
+                            val whenText = java.time.Instant.ofEpochMilli(lastPullMs)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm"))
+                            "Last pull: $whenText · ${remotePoints.size} in-progress titles stored"
+                        } else if (remotePoints.isNotEmpty()) {
+                            "${remotePoints.size} in-progress titles stored"
+                        } else {
+                            "Never pulled yet."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    pullMessage?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
             }
         }
     }
@@ -228,6 +314,35 @@ fun TrackingSettingsScreen(
                 ratingsPickerOpen = false
             },
             onDismiss = { ratingsPickerOpen = false }
+        )
+    }
+    if (resumePickerOpen) {
+        TrackingSingleSelectDialog(
+            title = "Resume position source",
+            options = WatchProgressSource.entries.map { it.stored to it.label },
+            selected = resumeSource.stored,
+            onSelect = {
+                settings.watchProgressSource = it
+                tick++
+                resumePickerOpen = false
+                // Switching to a remote source pulls immediately so the
+                // positions are there when the next title plays.
+                if (it != WatchProgressSource.LOCAL.stored) {
+                    pulling = true
+                    pullMessage = null
+                    scope.launch {
+                        val result = watchProgressPull.pullNow()
+                        pulling = false
+                        pullMessage = when (result) {
+                            is WatchProgressPullResult.Success ->
+                                "Pulled ${result.count} in-progress titles from ${result.source.label}."
+                            is WatchProgressPullResult.Error -> result.message
+                        }
+                        tick++
+                    }
+                }
+            },
+            onDismiss = { resumePickerOpen = false }
         )
     }
 }

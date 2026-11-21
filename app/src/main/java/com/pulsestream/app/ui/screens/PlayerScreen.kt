@@ -2961,6 +2961,43 @@ fun PlayerScreen(
         saveLinkForReuse(req)
     }
 
+    // Step 62: cross-device resume — when the resume source is Trakt or
+    // Simkl and this device has no local progress for the title, jump to
+    // the pulled position once the player reports a real duration.
+    // Trakt/Simkl return a percent, not milliseconds, so the seek waits
+    // for duration (max ~30s) and only fires while playback is still
+    // near the start. Local progress always wins; Play from start and
+    // live never take the remote position.
+    val watchProgressPull = remember { com.pulsestream.app.data.WatchProgressPull(settings) }
+    LaunchedEffect(initialRequest.videoId, initialRequest.season, initialRequest.episode) {
+        if (initialRequest.playFromStart || initialRequest.isLive) return@LaunchedEffect
+        if (settings.watchProgressSource == "local") return@LaunchedEffect
+        val identity = watchProgressPull.identityFor(
+            initialRequest.imdbId, initialRequest.metaId,
+            initialRequest.season, initialRequest.episode
+        )
+        val pct = watchProgressPull.resumePercentFor(identity) ?: return@LaunchedEffect
+        if (pct < 1.0 || pct >= 95.0) return@LaunchedEffect
+        val localMs = runCatching { repository.getSavedPosition(initialRequest.streamUrl) }.getOrDefault(0L)
+        if (localMs > 0) return@LaunchedEffect
+        var waited = 0
+        while (waited < 30_000) {
+            if (disposed.get()) return@LaunchedEffect
+            val p = latestPlayer.value
+            val duration = runCatching { p.duration }.getOrDefault(-1L)
+            if (duration > 0) {
+                val target = (duration * pct / 100.0).toLong()
+                val pos = runCatching { p.currentPosition }.getOrDefault(0L)
+                if (pos < 10_000 && target > 10_000) {
+                    runCatching { p.seekTo(target) }
+                }
+                return@LaunchedEffect
+            }
+            delay(500)
+            waited += 500
+        }
+    }
+
     // An early Play action may hand off only the first addon's results. Always finish
     // the same title's complete addon flow; a source switch alone does not restart it.
     LaunchedEffect(currentRequest.type, currentRequest.videoId, currentRequest.liveChannel) {
