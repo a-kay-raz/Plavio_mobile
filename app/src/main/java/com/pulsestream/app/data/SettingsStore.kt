@@ -3,6 +3,8 @@
 package com.pulsestream.app.data
 
 import android.content.Context
+import com.pulsestream.app.player.CENTER_MIX_LEVEL_MAX_DB
+import com.pulsestream.app.player.CENTER_MIX_LEVEL_MIN_DB
 import kotlin.math.roundToInt
 import java.io.File
 import android.content.SharedPreferences
@@ -843,6 +845,26 @@ class SettingsStore(
     var audioBoostDb: Int
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
+
+    /** Step 66: downmix surround to stereo/mono (default off). */
+    var downmixEnabled: Boolean
+        get() = prefs.getBoolean(KEY_DOWNMIX_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_DOWNMIX_ENABLED, value).apply()
+
+    /** Step 66: downmix target channel count (1 = mono, 2 = stereo). */
+    var downmixTargetChannels: Int
+        get() = prefInt(KEY_DOWNMIX_TARGET_CHANNELS, 2).coerceIn(1, 2)
+        set(value) = prefs.edit().putInt(KEY_DOWNMIX_TARGET_CHANNELS, value.coerceIn(1, 2)).apply()
+
+    /** Step 66: centre-channel level in the downmix, dB (Nuvio -10..+30). */
+    var centerMixLevelDb: Int
+        get() = prefInt(KEY_CENTER_MIX_LEVEL_DB, 0).coerceIn(CENTER_MIX_LEVEL_MIN_DB, CENTER_MIX_LEVEL_MAX_DB)
+        set(value) = prefs.edit().putInt(KEY_CENTER_MIX_LEVEL_DB, value.coerceIn(CENTER_MIX_LEVEL_MIN_DB, CENTER_MIX_LEVEL_MAX_DB)).apply()
+
+    /** Step 66: keep original levels in the downmix (no normalisation). */
+    var maintainOriginalAudioOnDownmix: Boolean
+        get() = prefs.getBoolean(KEY_MAINTAIN_ORIGINAL_AUDIO_DOWNMIX, true)
+        set(value) = prefs.edit().putBoolean(KEY_MAINTAIN_ORIGINAL_AUDIO_DOWNMIX, value).apply()
 
     /** Step 65: audio delay (lip-sync), ms, +/-60s. One value for the device. */
     var audioDelayMs: Int
@@ -1981,6 +2003,10 @@ class SettingsStore(
         private const val KEY_RESIZE_MODE = "resize_mode"
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_AUDIO_DELAY_MS = "audio_delay_ms"
+        private const val KEY_DOWNMIX_ENABLED = "downmix_enabled"
+        private const val KEY_DOWNMIX_TARGET_CHANNELS = "downmix_target_channels"
+        private const val KEY_CENTER_MIX_LEVEL_DB = "center_mix_level_db"
+        private const val KEY_MAINTAIN_ORIGINAL_AUDIO_DOWNMIX = "maintain_original_audio_on_downmix"
         private const val KEY_HOME_SCROLL_INDEX = "home_scroll_index"
         private const val KEY_HOME_SCROLL_OFFSET = "home_scroll_offset"
         private const val KEY_DISCOVER_TYPE = "discover_type"

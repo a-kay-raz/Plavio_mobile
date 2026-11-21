@@ -191,6 +191,9 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultLoadControl
+import com.pulsestream.app.player.CENTER_MIX_LEVEL_MAX_DB
+import com.pulsestream.app.player.CENTER_MIX_LEVEL_MIN_DB
+import com.pulsestream.app.player.DownmixConfig
 import com.pulsestream.app.player.PlavioAudioRenderersFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.ExoPlayer
@@ -568,6 +571,42 @@ fun PlayerScreen(
         return "$sign${absoluteMs / 1000}.${(absoluteMs % 1000).toString().padStart(3, '0')}s"
     }
 
+    // Step 66: downmix config shared with the audio processor. The
+    // processor snapshots enabled/target at configure() (next video),
+    // centre level + keep-original are read live per buffer.
+    val downmixConfig = remember {
+        DownmixConfig().apply {
+            enabled = settings.downmixEnabled
+            targetChannels = settings.downmixTargetChannels
+            centerMixDb = settings.centerMixLevelDb
+            maintainOriginal = settings.maintainOriginalAudioOnDownmix
+        }
+    }
+    var downmixOn by remember { mutableStateOf(settings.downmixEnabled) }
+    var downmixTarget by remember { mutableIntStateOf(settings.downmixTargetChannels) }
+    var centerMixDb by remember { mutableIntStateOf(settings.centerMixLevelDb) }
+    var keepOriginalLevels by remember { mutableStateOf(settings.maintainOriginalAudioOnDownmix) }
+    fun setDownmixEnabled(on: Boolean) {
+        downmixOn = on
+        settings.downmixEnabled = on
+        downmixConfig.enabled = on
+    }
+    fun setDownmixTarget(channels: Int) {
+        downmixTarget = channels.coerceIn(1, 2)
+        settings.downmixTargetChannels = downmixTarget
+        downmixConfig.targetChannels = downmixTarget
+    }
+    fun setCenterMixDb(db: Int) {
+        centerMixDb = db.coerceIn(CENTER_MIX_LEVEL_MIN_DB, CENTER_MIX_LEVEL_MAX_DB)
+        settings.centerMixLevelDb = centerMixDb
+        downmixConfig.centerMixDb = centerMixDb
+    }
+    fun setKeepOriginalLevels(keep: Boolean) {
+        keepOriginalLevels = keep
+        settings.maintainOriginalAudioOnDownmix = keep
+        downmixConfig.maintainOriginal = keep
+    }
+
     fun playbackMediaSourceFactory(req: PlaybackRequest): MediaSource.Factory {
         val playbackHeaders = PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv)
         // HLS variant temp playlists are file:// URLs — the HTTP origin is
@@ -662,7 +701,7 @@ fun PlayerScreen(
         val mediaSourceFactory = playbackMediaSourceFactory(req)
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
-            .setRenderersFactory(PlavioAudioRenderersFactory(context))
+            .setRenderersFactory(PlavioAudioRenderersFactory(context, downmixConfig))
             .setMediaSourceFactory(mediaSourceFactory)
             // Belt and suspenders: also tell the track selector the preferred
             // subtitle languages, so his languages win even if the default
@@ -4645,6 +4684,96 @@ fun PlayerScreen(
                             }
                             Text(
                                 "Shifts audio against the video. Positive = audio later.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
+                            )
+                        }
+                        // Step 66 (Nuvio downmix + centre-mix): mix
+                        // surround sound down to stereo/mono. The toggle
+                        // + target apply on the next video (the channel
+                        // count is negotiated when the player is built);
+                        // centre level + keep-original apply live.
+                        item {
+                            Text(
+                                "Downmix",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    "Mix surround down",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Switch(
+                                    checked = downmixOn,
+                                    onCheckedChange = { setDownmixEnabled(it) }
+                                )
+                            }
+                            if (downmixOn) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = downmixTarget == 2,
+                                        onClick = { setDownmixTarget(2) },
+                                        label = { Text("Stereo") }
+                                    )
+                                    FilterChip(
+                                        selected = downmixTarget == 1,
+                                        onClick = { setDownmixTarget(1) },
+                                        label = { Text("Mono") }
+                                    )
+                                }
+                                Text(
+                                    "Centre mix",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp)
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    StyleStepper(
+                                        value = if (centerMixDb > 0) "+$centerMixDb dB" else "$centerMixDb dB",
+                                        onMinus = { setCenterMixDb(centerMixDb - 1) },
+                                        onPlus = { setCenterMixDb(centerMixDb + 1) }
+                                    )
+                                    TextButton(
+                                        onClick = { setCenterMixDb(0) },
+                                        enabled = centerMixDb != 0
+                                    ) {
+                                        Text("Reset")
+                                    }
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        "Keep original levels",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextPrimary,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Switch(
+                                        checked = keepOriginalLevels,
+                                        onCheckedChange = { setKeepOriginalLevels(it) }
+                                    )
+                                }
+                            }
+                            Text(
+                                "Mixes 5.1/7.1 audio so dialogue stays clear on stereo output. Toggle + target apply on the next video; centre level applies live.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary,
                                 modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
