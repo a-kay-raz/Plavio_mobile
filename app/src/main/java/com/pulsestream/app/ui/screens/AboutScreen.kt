@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +46,8 @@ import com.pulsestream.app.ui.tv.tvFocusRing
 @Composable
 fun AboutScreen(
     onBack: () -> Unit = {},
-    onGoToLicenses: () -> Unit = {}
+    onGoToLicenses: () -> Unit = {},
+    onGoToWhatsNew: () -> Unit = {}
 ) {
     GlowBackground {
         LazyColumn(
@@ -76,8 +78,29 @@ fun AboutScreen(
             }
             item(key = "aboutCard") { AboutCard() }
             item(key = "updater") { AppUpdaterCard() }
+            item(key = "whats_new") { WhatsNewRow(onGoToWhatsNew = onGoToWhatsNew) }
             item(key = "support") { SupportRows() }
             item(key = "legal") { LegalRows(onGoToLicenses = onGoToLicenses) }
+        }
+    }
+}
+
+/**
+ * What's New row (Nuvio): opens the latest-commits screen.
+ */
+@Composable
+private fun WhatsNewRow(onGoToWhatsNew: () -> Unit = {}) {
+    val palette = LocalPalette.current
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            LegalRow(
+                icon = Icons.Filled.NewReleases,
+                title = "What's New",
+                onClick = onGoToWhatsNew,
+                palette = palette
+            )
         }
     }
 }
