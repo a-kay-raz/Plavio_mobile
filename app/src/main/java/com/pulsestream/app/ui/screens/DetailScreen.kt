@@ -937,7 +937,7 @@ private fun DetailContent(
                     IconButton(
                         onClick = {
                             scope.launch {
-                                repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster)
+                                repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster, com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo))
                             }
                         },
                         modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
@@ -1957,6 +1957,8 @@ private fun DetailContent(
             metaId = meta.id,
             name = meta.name ?: "Video",
             poster = meta.poster,
+            // Step 47: release year for the Library Saved sort.
+            year = com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo),
             onDismiss = { showAddToList = false }
         )
     }

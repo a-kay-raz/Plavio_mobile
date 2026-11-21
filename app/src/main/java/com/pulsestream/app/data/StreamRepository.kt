@@ -2016,7 +2016,9 @@ class StreamRepository(
         type: String,
         metaId: String,
         name: String,
-        poster: String?
+        poster: String?,
+        // Step 47: release year (0 = unknown) for the Library Saved sort.
+        year: Int = 0
     ) = withContext(Dispatchers.IO) {
         // Read-modify-write: serialize concurrent toggles so a double-tap
         // can't upsert after the delete.
@@ -2033,7 +2035,8 @@ class StreamRepository(
                         metaId = metaId,
                         name = name,
                         poster = poster,
-                        addedAt = System.currentTimeMillis()
+                        addedAt = System.currentTimeMillis(),
+                        year = year
                     )
                 )
             }
