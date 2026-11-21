@@ -11,10 +11,31 @@ data class CatalogRef(
      * A catalog supports the Stremio search extra only when "search" is here —
      * addons without it answer 404 to search= queries.
      */
-    val extra: List<String> = emptyList()
+    val extra: List<String> = emptyList(),
+    /** Genre options the addon declares for this catalog (manifest {name:"genre", options:[...]}). Empty when the catalog has no genre extra. */
+    val genreOptions: List<String> = emptyList()
 ) {
     val supportsSearch: Boolean get() = "search" in extra.map { it.lowercase() }
+    val supportsGenre: Boolean get() = "genre" in extra.map { it.lowercase() }
+    val supportsSkip: Boolean get() = "skip" in extra.map { it.lowercase() }
 }
+
+/** One browsable catalog for Discover (Step 20): addon + catalog identity + genre options. */
+data class DiscoverCatalog(
+    val addonId: String,
+    val addonName: String,
+    val baseUrl: String,
+    val type: String,
+    val catalogId: String,
+    val catalogName: String,
+    val genreOptions: List<String> = emptyList()
+) {
+    /** Stable key for selection persistence ("addonId|type|catalogId"). */
+    val key: String get() = "$addonId|$type|$catalogId"
+}
+
+/** One Discover page: the display items plus the raw fetched count (skip= counts raw items). */
+data class DiscoverPage(val items: List<MetaPreview>, val rawCount: Int)
 
 data class AddonManifest(
     val id: String,

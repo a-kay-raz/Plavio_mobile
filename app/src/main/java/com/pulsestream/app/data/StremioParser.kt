@@ -110,7 +110,15 @@ object StremioParser {
                     else -> null
                 }
             } ?: emptyList()
-            CatalogRef(type = type, id = cid, name = c.str("name") ?: cid, extra = extra)
+            // Genre options live on the {name:"genre", options:[...]} extra
+            // (PlavioMeta/Cinemeta declare them); kept for the Discover
+            // genre picker. Catalogs without a genre extra get none.
+            val genreOptions = (c["extra"] as? JsonArray)?.mapNotNull { x ->
+                val obj = x as? JsonObject ?: return@mapNotNull null
+                if (obj.str("name")?.lowercase() != "genre") return@mapNotNull null
+                obj.strList("options")
+            }?.firstOrNull().orEmpty()
+            CatalogRef(type = type, id = cid, name = c.str("name") ?: cid, extra = extra, genreOptions = genreOptions)
         } ?: emptyList()
         return AddonManifest(
             id = id,
