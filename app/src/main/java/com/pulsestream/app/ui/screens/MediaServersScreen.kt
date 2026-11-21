@@ -542,6 +542,7 @@ private fun SiloSignInDialog(
     onDismiss: () -> Unit,
     onSignedIn: (MediaServer) -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by remember { mutableStateOf("") }
     var deviceData by remember { mutableStateOf<SiloClient.DeviceData?>(null) }

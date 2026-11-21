@@ -15,6 +15,7 @@ import androidx.media3.common.Player
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.pulsestream.app.BackgroundAudioActionReceiver
 import com.pulsestream.app.BackgroundAudioService
 import com.pulsestream.app.MainActivity
 import com.pulsestream.app.R

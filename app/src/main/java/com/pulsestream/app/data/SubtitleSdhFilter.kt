@@ -2,7 +2,8 @@ package com.pulsestream.app.data
 
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
-import androidx.media3.common.text.TextOutput
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.text.TextOutput
 
 /**
  * Step 38 — SDH (deaf/hard-of-hearing) cue filtering (Nuvio
@@ -39,6 +40,7 @@ object SubtitleSdhFilter {
  * unchanged apart from the filtered text. When [enabled] is false the cues
  * pass through untouched.
  */
+@OptIn(UnstableApi::class)
 class SdhFilteringTextOutput(
     private val delegate: TextOutput,
     private val enabled: () -> Boolean,

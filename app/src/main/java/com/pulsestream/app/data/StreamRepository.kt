@@ -2892,7 +2892,7 @@ class StreamRepository(
             InstalledAddon(id, str(o,"name",max=512)!!, str(o,"version",false,128) ?: "",
                 str(o,"description",false,4_096) ?: "", importedUrl, str(o,"types",false,1_000) ?: "",
                 str(o,"resources",false,1_000) ?: "catalog,meta,stream", bool(o,"preinstalled",false),
-                bool(o,"enabled",true) && !encryptedUrlRequired, bool(o,"configurable",false), bool(o,"showOnHome",true),
+                bool(o,"enabled",true) && !encryptedUrlRequired, bool(o,"configurable",false), bool(o,"configurationRequired",false), bool(o,"showOnHome",true),
                 str(o,"logoUrl",false,8_192)?.let(::safeAddonAuxUrl) ?: "", num(o,"sortOrder",0).toInt(),
                 bool(o,"starred",false), num(o,"addedAt",0))
         }?.also { require(it.map(InstalledAddon::id).distinct().size == it.size) { "Duplicate addon ids." } }

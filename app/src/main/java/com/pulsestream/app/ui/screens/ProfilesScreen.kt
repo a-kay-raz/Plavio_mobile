@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -458,7 +459,7 @@ private fun ProfileEditorDialog(
                     OutlinedButton(
                         onClick = {
                             if (profile != null) photoPicker.launch(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             ) else {
                                 error = "Save the profile first, then add a photo from Edit."
                             }

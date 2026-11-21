@@ -348,7 +348,6 @@ fun TrailerPlayerScreen(
     }
 }
 
-@Composable
 /**
  * Trailer video surface. Letterbox detection (Nuvio trailer/LetterboxDetector):
  * the surface is a TextureView so frames can be sampled; once four stable
@@ -365,7 +364,11 @@ private fun TrailerVideoView(player: ExoPlayer, modifier: Modifier = Modifier) {
                 pv.player = player
                 pv.useController = false
                 pv.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                pv.setVideoSurfaceType(PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
+                // TextureView surface (Media3 1.4.1 has no setVideoSurfaceType):
+                // frames are sampled from it for letterbox detection.
+                val tv = TextureView(ctx)
+                pv.setVideoTextureView(tv)
+                textureView = tv
                 pv.layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT

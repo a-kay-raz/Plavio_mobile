@@ -83,7 +83,8 @@ fun rememberPlayerDeviceStatus(): PlayerDeviceStatus {
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                status = readPlayerDeviceStatus(context.applicationContext, intent)
+                val appCtx = context?.applicationContext ?: return
+                status = readPlayerDeviceStatus(appCtx, intent)
             }
         }
         val stickyIntent = if (Build.VERSION.SDK_INT >= 33) {

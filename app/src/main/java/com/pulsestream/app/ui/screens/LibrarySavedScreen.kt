@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,8 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.pulsestream.app.data.CustomList
-import com.pulsestream.app.data.CustomListItem
+import com.pulsestream.app.data.db.CustomList
+import com.pulsestream.app.data.db.CustomListItem
 import com.pulsestream.app.data.FavoritePerson
 import com.pulsestream.app.data.LibraryLayoutMode
 import com.pulsestream.app.data.LibrarySortOption
@@ -52,7 +53,7 @@ import com.pulsestream.app.data.LibraryWatchedFilter
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.SavedLibraryItem
 import com.pulsestream.app.data.SettingsStore
-import com.pulsestream.app.data.WatchlistItem
+import com.pulsestream.app.data.db.WatchlistItem
 import com.pulsestream.app.data.dedupeSavedItems
 import com.pulsestream.app.data.filterSavedItems
 import com.pulsestream.app.data.parseReleaseYear

@@ -191,6 +191,8 @@ import com.pulsestream.app.ui.screens.TrackingSettingsScreen
 import com.pulsestream.app.ui.screens.ListsScreen
 import com.pulsestream.app.ui.screens.ListDetailScreen
 import com.pulsestream.app.ui.screens.BackupScreen
+import com.pulsestream.app.ui.screens.MediaServersScreen
+import com.pulsestream.app.ui.screens.ServerLibraryScreen
 import com.pulsestream.app.ui.screens.IntegrationsScreen
 import com.pulsestream.app.ui.theme.AccentTheme
 import com.pulsestream.app.ui.theme.AppTheme
@@ -879,7 +881,7 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    PulseNavGraph(navController, repository, listsRepository, onThemeChanged)
+                    PulseNavGraph(navController, repository, listsRepository, onThemeChanged, collectionRepository = collectionRepository, favoritePeopleRepository = favoritePeopleRepository, streamBadgeSettings = streamBadgeSettings, profilesRepository = profilesRepository, isTv = isTv)
                 }
                 if (showBar) {
                     Box(
@@ -966,7 +968,7 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                         }
                     }
             ) {
-                PulseNavGraph(navController, repository, listsRepository, onThemeChanged, trailerMini)
+                PulseNavGraph(navController, repository, listsRepository, onThemeChanged, trailerMini, collectionRepository = collectionRepository, favoritePeopleRepository = favoritePeopleRepository, streamBadgeSettings = streamBadgeSettings, profilesRepository = profilesRepository, isTv = isTv)
             }
         // Floating dock (v0.12.10, owner's order): no longer a
         // Scaffold bottomBar — the reserved solid strip at the
@@ -1200,7 +1202,12 @@ private fun PulseNavGraph(
     repository: StreamRepository,
     listsRepository: CustomListsRepository,
     onThemeChanged: () -> Unit,
-    trailerMini: TrailerMiniController? = null
+    trailerMini: TrailerMiniController? = null,
+    collectionRepository: CollectionRepository,
+    favoritePeopleRepository: FavoritePeopleRepository,
+    streamBadgeSettings: StreamBadgeSettings,
+    profilesRepository: ProfilesRepository,
+    isTv: Boolean
 ) {
     val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
@@ -1217,21 +1224,6 @@ private fun PulseNavGraph(
     // non-null while the warning popup is up for that request.
     var externalWarnReq by remember { mutableStateOf<PlaybackRequest?>(null) }
     var externalWarnHide by remember { mutableStateOf(false) }
-
-    /**
-     * External handoff with the warning gate: protected links show the
-     * one-time warning popup first (rendered below the NavHost); a
-     * failed launch falls back to the built-in player.
-     */
-    fun playExternal(req: PlaybackRequest) {
-        val ctx = activity ?: appContext
-        if (ExternalPlayer.needsWarning(ctx, req)) {
-            externalWarnHide = false
-            externalWarnReq = req
-        } else {
-            launchExternalPrepared(ctx, req)
-        }
-    }
 
     /**
      * Step 67: external handoff with subtitles + skip segments prepared
@@ -1252,6 +1244,21 @@ private fun PulseNavGraph(
                 repository.pendingPlayback = req
                 navController.navigate(Routes.PLAYER)
             }
+        }
+    }
+
+    /**
+     * External handoff with the warning gate: protected links show the
+     * one-time warning popup first (rendered below the NavHost); a
+     * failed launch falls back to the built-in player.
+     */
+    fun playExternal(req: PlaybackRequest) {
+        val ctx = activity ?: appContext
+        if (ExternalPlayer.needsWarning(ctx, req)) {
+            externalWarnHide = false
+            externalWarnReq = req
+        } else {
+            launchExternalPrepared(ctx, req)
         }
     }
 

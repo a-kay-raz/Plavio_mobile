@@ -1173,7 +1173,6 @@ private fun PreinstalledPill() {
     }
 }
 
-@Composable
 /**
  * Nuvio's toConfigureUrl: strip any query (a normalized base URL can keep
  * one — "$base/configure" would put the path after the query and break),
@@ -1248,6 +1247,7 @@ private fun TrackingAddonConsentDialog(
     )
 }
 
+@Composable
 private fun AddAddonDialog(
     state: AddUiState,
     initialUrl: String = "",

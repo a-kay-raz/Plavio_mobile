@@ -480,6 +480,74 @@ fun LiveScreen(
         group = row.catalogName
     )
 
+    fun playProviderChannel(row: CatalogRow, meta: MetaPreview) {
+        resolvingJob?.cancel()
+        resolvingJob = null
+        val generation = ++resolveGeneration
+        resolvingKey = null
+        resolveError = null
+        val key = channelKey(row, meta)
+        val channel = vm.providerChannel(meta.id)
+        if (channel == null) {
+            resolveError = "Channel is no longer in the provider list. Reopen the Live tab to refresh."
+            return
+        }
+        if (row.addonId == "xtream") {
+            repository.pushLiveRecent(key)
+            favVersion++
+            onPlay(
+                PlaybackRequest(
+                    streamUrl = channel.streamUrl,
+                    headers = channel.headers,
+                    title = channel.name,
+                    poster = channel.logoUrl,
+                    type = "tv",
+                    videoId = channel.id,
+                    streamLabel = "LIVE",
+                    sourceName = "Xtream",
+                    liveChannel = channelRef(row, meta)
+                )
+            )
+            return
+        }
+        // Stalker: resolve the real stream URL via create_link first.
+        resolvingKey = key
+        resolvingJob = scope.launch {
+            try {
+                val resolved = com.pulsestream.app.data.preparePortalChannelForPlayback(
+                    channel, repository.settings.liveTvStalkerSettings()
+                )
+                if (generation != resolveGeneration) return@launch
+                repository.pushLiveRecent(key)
+                favVersion++
+                onPlay(
+                    PlaybackRequest(
+                        streamUrl = resolved.streamUrl,
+                        headers = resolved.headers,
+                        title = resolved.name,
+                        poster = resolved.logoUrl,
+                        type = "tv",
+                        videoId = resolved.id,
+                        streamLabel = "LIVE",
+                        sourceName = "Stalker Portal",
+                        liveChannel = channelRef(row, meta)
+                    )
+                )
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                if (generation == resolveGeneration) {
+                    resolveError = liveResolutionFailureMessage(meta.name)
+                }
+            } finally {
+                if (generation == resolveGeneration) {
+                    resolvingJob = null
+                    resolvingKey = null
+                }
+            }
+        }
+    }
+
     fun playChannel(row: CatalogRow, meta: MetaPreview, flatList: List<TvChannelRef>) {
         // Player zapping: hand over the whole visible list + this channel's
         // index BEFORE playing, so channel up/down has a valid list to work
@@ -593,73 +661,6 @@ fun LiveScreen(
      * list — the player resolves zap targets through addons, which provider
      * ids can't use (follow-up).
      */
-    fun playProviderChannel(row: CatalogRow, meta: MetaPreview) {
-        resolvingJob?.cancel()
-        resolvingJob = null
-        val generation = ++resolveGeneration
-        resolvingKey = null
-        resolveError = null
-        val key = channelKey(row, meta)
-        val channel = vm.providerChannel(meta.id)
-        if (channel == null) {
-            resolveError = "Channel is no longer in the provider list. Reopen the Live tab to refresh."
-            return
-        }
-        if (row.addonId == "xtream") {
-            repository.pushLiveRecent(key)
-            favVersion++
-            onPlay(
-                PlaybackRequest(
-                    streamUrl = channel.streamUrl,
-                    headers = channel.headers,
-                    title = channel.name,
-                    poster = channel.logoUrl,
-                    type = "tv",
-                    videoId = channel.id,
-                    streamLabel = "LIVE",
-                    sourceName = "Xtream",
-                    liveChannel = channelRef(row, meta)
-                )
-            )
-            return
-        }
-        // Stalker: resolve the real stream URL via create_link first.
-        resolvingKey = key
-        resolvingJob = scope.launch {
-            try {
-                val resolved = com.pulsestream.app.data.preparePortalChannelForPlayback(
-                    channel, repository.settings.liveTvStalkerSettings()
-                )
-                if (generation != resolveGeneration) return@launch
-                repository.pushLiveRecent(key)
-                favVersion++
-                onPlay(
-                    PlaybackRequest(
-                        streamUrl = resolved.streamUrl,
-                        headers = resolved.headers,
-                        title = resolved.name,
-                        poster = resolved.logoUrl,
-                        type = "tv",
-                        videoId = resolved.id,
-                        streamLabel = "LIVE",
-                        sourceName = "Stalker Portal",
-                        liveChannel = channelRef(row, meta)
-                    )
-                )
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (e: Exception) {
-                if (generation == resolveGeneration) {
-                    resolveError = liveResolutionFailureMessage(meta.name)
-                }
-            } finally {
-                if (generation == resolveGeneration) {
-                    resolvingJob = null
-                    resolvingKey = null
-                }
-            }
-        }
-    }
 
     /** Play a provider/M3U channel found by sports matching (Step 32). */
     fun playMatchedChannel(channel: LiveTvChannel) {

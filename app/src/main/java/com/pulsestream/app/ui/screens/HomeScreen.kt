@@ -228,7 +228,7 @@ fun HomeScreen(
     onOpenCatalog: (row: CatalogRow) -> Unit,
     onOpenCollectionFolder: (folderId: String) -> Unit = {},
     onPlayServerItem: (PlaybackRequest) -> Unit = {},
-    onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit = {},
+    onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit = { _, _ -> },
     onGoToDownloads: () -> Unit = {},
     onGoToLive: () -> Unit = {},
 ) {
@@ -1099,7 +1099,6 @@ private fun HeroCarousel(
     }
 }
 
-@Composable
 /**
  * Continue Watching order (Nuvio `applyStreamingStyleSort`, adapted to
  * Plavio's data): default = most recently watched first (the stored order);
@@ -1274,6 +1273,7 @@ private fun ReleaseRadarCard(
     }
 }
 
+@Composable
 private fun ContinueWatchingCard(
     item: PlaybackState,
     style: String = "card",
@@ -1763,7 +1763,7 @@ private fun CollectionFolderCard(
                 )
             } else {
                 Icon(
-                    androidx.compose.material.icons.Icons.Filled.Folder,
+                    Icons.Filled.Folder,
                     contentDescription = folder.title,
                     tint = TextSecondary,
                     modifier = Modifier.size(40.dp)

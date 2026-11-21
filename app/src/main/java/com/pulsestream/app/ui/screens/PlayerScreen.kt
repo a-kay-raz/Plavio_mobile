@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
@@ -103,6 +104,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -133,13 +135,14 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.onSizeChanged
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -179,6 +182,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.Tracks
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackGroup
@@ -235,6 +239,8 @@ import com.pulsestream.app.data.resolveSubtitleFiles
 import com.pulsestream.app.data.shiftSubtitles
 import com.pulsestream.app.data.formatOffsetMs
 import com.pulsestream.app.data.Video
+import com.pulsestream.app.data.ASPECT_MODES
+import com.pulsestream.app.data.IntroDbApi
 import com.pulsestream.app.data.SdhFilteringTextOutput
 import com.pulsestream.app.data.detectTrackLanguageVariant
 import com.pulsestream.app.data.subtitleLangMatches
@@ -703,10 +709,10 @@ fun PlayerScreen(
                 /* bufferForPlaybackMs = */ forPlaybackMs,
                 /* bufferForPlaybackAfterRebufferMs = */ rebufferMs
             )
-            .setBackBufferDurationMs(backBufferMs)
             .build()
         val mediaSourceFactory = playbackMediaSourceFactory(req)
         return ExoPlayer.Builder(context)
+            .setBackBufferDurationMs(backBufferMs)
             .setLoadControl(loadControl)
             .setRenderersFactory(PlavioAudioRenderersFactory(context, downmixConfig))
             .setMediaSourceFactory(mediaSourceFactory)
@@ -817,6 +823,24 @@ fun PlayerScreen(
     }
     val latestPlayer = rememberUpdatedState(player)
     val latestRequest = rememberUpdatedState(currentRequest)
+
+    // Step 38: SDH cue filtering — Media3 1.4.1 has no ExoPlayer.setTextOutput,
+    // so cues are intercepted via Player.Listener.onCues. The listener is
+    // (re)attached after PlayerView registers its own, so the filtered cues
+    // are applied last to the same SubtitleView.
+    var cueFilterListener by remember { mutableStateOf<Player.Listener?>(null) }
+    var cueFilterPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+    fun attachSdhCueFilter(targetPlayer: ExoPlayer, sv: SubtitleView) {
+        if (cueFilterPlayer === targetPlayer && cueFilterListener != null) return
+        cueFilterListener?.let { cueFilterPlayer?.removeListener(it) }
+        val output = SdhFilteringTextOutput(sv) { settings.subtitleSdhFilter }
+        val listener = object : Player.Listener {
+            override fun onCues(cueGroup: CueGroup) { output.onCues(cueGroup) }
+        }
+        targetPlayer.addListener(listener)
+        cueFilterListener = listener
+        cueFilterPlayer = targetPlayer
+    }
 
     // Step 59: seek-preview thumbnails — a second player that grabs
     // frames while the main player keeps playing. Keyed by stream URL
@@ -1705,16 +1729,6 @@ fun PlayerScreen(
     var syncByEarHeardMs by remember { mutableStateOf<Long?>(null) }
     var syncByEarSawMs by remember { mutableStateOf<Long?>(null) }
 
-    fun captureSyncByEarHeard() {
-        syncByEarHeardMs = player.currentPosition.coerceAtLeast(0L)
-        applySyncByEarIfReady()
-    }
-
-    fun captureSyncByEarSaw() {
-        syncByEarSawMs = player.currentPosition.coerceAtLeast(0L)
-        applySyncByEarIfReady()
-    }
-
     /** Both taps captured: shift the delay by (heard − saw) — heard
      *  before seen means the subtitles are late, so the delay drops —
      *  persist it per video via setSubtitleDelay, then clear the
@@ -1726,6 +1740,16 @@ fun PlayerScreen(
         syncByEarSawMs = null
         setSubtitleDelay(subOffsetOverrideMs + heard - saw)
         pokeIndicator(PlayerIndicator.Message("Subtitles synced: ${panelDelayLabel(effectiveSubOffsetMs())}"))
+    }
+
+    fun captureSyncByEarHeard() {
+        syncByEarHeardMs = player.currentPosition.coerceAtLeast(0L)
+        applySyncByEarIfReady()
+    }
+
+    fun captureSyncByEarSaw() {
+        syncByEarSawMs = player.currentPosition.coerceAtLeast(0L)
+        applySyncByEarIfReady()
     }
 
     /** Auto Sync > Reload: drop the cached downloads + shifted copies
@@ -2412,6 +2436,43 @@ fun PlayerScreen(
         }
     }
 
+    /** Play [video] with a caller-picked [stream] (per-episode stream choice, Nuvio PlayerEpisodesPanel). */
+    fun playEpisodeWithStream(
+        video: Video,
+        stream: com.pulsestream.app.data.StreamItem,
+        playableStreams: List<com.pulsestream.app.data.StreamItem>,
+        subtitles: List<Subtitle>
+    ) {
+        // #9: never start episode work on disposed state (ghost audio).
+        if (disposed.get()) return
+        episodesOpen = false
+        episodeStreamsVideo = null
+        switchingMedia = true
+        val showName = currentRequest.seriesName ?: currentRequest.title
+        availableStreams = playableStreams
+        hiddenIncompatibleCount = 0
+        replaceStream(
+            currentRequest.copy(
+                streamUrl = stream.url,
+                headers = stream.headers,
+                mimeType = stream.mimeType,
+                title = "$showName S${video.season}E${video.episode}",
+                poster = video.thumbnail ?: currentRequest.poster,
+                videoId = video.id,
+                subtitles = subtitles,
+                season = video.season,
+                episode = video.episode,
+                episodeTitle = video.title,
+                streamLabel = streamQualityLabel(stream),
+                sourceName = stream.sourceName,
+                streams = playableStreams
+            ),
+            startAtMs = 0L,
+            autoplay = true
+        )
+        switchingMedia = false
+    }
+
     fun playEpisode(video: Video) {
         // #9: never start episode work on disposed state (ghost audio).
         if (disposed.get()) return
@@ -2457,43 +2518,6 @@ fun PlayerScreen(
                 }
             }
         }
-    }
-
-    /** Play [video] with a caller-picked [stream] (per-episode stream choice, Nuvio PlayerEpisodesPanel). */
-    fun playEpisodeWithStream(
-        video: Video,
-        stream: com.pulsestream.app.data.StreamItem,
-        playableStreams: List<com.pulsestream.app.data.StreamItem>,
-        subtitles: List<Subtitle>
-    ) {
-        // #9: never start episode work on disposed state (ghost audio).
-        if (disposed.get()) return
-        episodesOpen = false
-        episodeStreamsVideo = null
-        switchingMedia = true
-        val showName = currentRequest.seriesName ?: currentRequest.title
-        availableStreams = playableStreams
-        hiddenIncompatibleCount = 0
-        replaceStream(
-            currentRequest.copy(
-                streamUrl = stream.url,
-                headers = stream.headers,
-                mimeType = stream.mimeType,
-                title = "$showName S${video.season}E${video.episode}",
-                poster = video.thumbnail ?: currentRequest.poster,
-                videoId = video.id,
-                subtitles = subtitles,
-                season = video.season,
-                episode = video.episode,
-                episodeTitle = video.title,
-                streamLabel = streamQualityLabel(stream),
-                sourceName = stream.sourceName,
-                streams = playableStreams
-            ),
-            startAtMs = 0L,
-            autoplay = true
-        )
-        switchingMedia = false
     }
 
     // Auto-select a freshly added subtitle track once ExoPlayer exposes it.
@@ -3453,9 +3477,7 @@ fun PlayerScreen(
                         // toggle is on — the delegate is the PlayerView's own
                         // SubtitleView, so rendering is otherwise unchanged.
                         pv.subtitleView?.let { sv ->
-                            player.setTextOutput(
-                                SdhFilteringTextOutput(sv) { settings.subtitleSdhFilter }
-                            )
+                            attachSdhCueFilter(player, sv)
                         }
                         pv.useController = false
                         pv.isFocusable = false
@@ -3474,9 +3496,7 @@ fun PlayerScreen(
                 update = { pv ->
                     pv.player = player
                     pv.subtitleView?.let { sv ->
-                        player.setTextOutput(
-                            SdhFilteringTextOutput(sv) { settings.subtitleSdhFilter }
-                        )
+                        attachSdhCueFilter(player, sv)
                     }
                     applySubtitleStyle(pv)
                 },

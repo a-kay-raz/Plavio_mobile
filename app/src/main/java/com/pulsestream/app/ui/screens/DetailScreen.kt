@@ -98,6 +98,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -108,6 +109,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -702,7 +704,7 @@ private fun DetailContent(
             }
         }
         when (episodeSort) {
-            "newest" -> filtered.sortedWith(compareByDescending({ it.episode }, { it.title }))
+            "newest" -> filtered.sortedWith(compareByDescending<Video> { it.episode }.thenByDescending { it.title })
             "airdate" -> filtered.sortedByDescending { it.released.orEmpty() }
             "unwatched" -> filtered.sortedWith(
                 compareBy(
@@ -1284,9 +1286,10 @@ private fun DetailContent(
         // Step 51: TMDB collection (Nuvio belongsToCollection) — "Part of
         // the <name>" with the collection's movies. Movies only; needs a
         // TMDB key, silent otherwise.
+        collectionSection?.let { section ->
             item(key = "tmdb_collection") {
                 Text(
-                    "Part of the ${collectionSection.first.name}",
+                    "Part of the ${section.first.name}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
@@ -1296,7 +1299,7 @@ private fun DetailContent(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(collectionSection.second, key = { it.id }) { preview ->
+                    items(section.second, key = { it.id }) { preview ->
                         com.pulsestream.app.ui.components.PosterCard(
                             meta = preview,
                             onClick = { onOpenDetail("", preview.type, preview.id) }
@@ -1305,29 +1308,31 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
+        }
     }
 
     val commentsBlock: LazyListScope.() -> Unit = {
         // Trakt comments (Step 33, Nuvio TraktCommentsRepository): most-liked
         // first, spoiler-safe. Shows 3, expands to 20, then loads more pages.
+        commentsPage?.let { page ->
             item(key = "trakt_comments") {
                 Text(
-                    "Trakt comments (${commentsPage.itemCount})",
+                    "Trakt comments (${page.itemCount})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
-                val shown = if (commentsExpanded) commentsPage.items.take(20)
-                    else commentsPage.items.take(3)
+                val shown = if (commentsExpanded) page.items.take(20)
+                    else page.items.take(3)
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     shown.forEach { comment -> TraktCommentCard(comment) }
-                    val canExpand = !commentsExpanded && commentsPage.items.size > 3
+                    val canExpand = !commentsExpanded && page.items.size > 3
                     val canLoadMore = commentsExpanded &&
-                        traktCommentsPage < commentsPage.pageCount
+                        traktCommentsPage < page.pageCount
                     if (canExpand || canLoadMore) {
                         TextButton(
                             onClick = {
@@ -1344,8 +1349,8 @@ private fun DetailContent(
                                         TraktApi().getComments(meta.type, imdbId, traktCommentsPage + 1)
                                     }.getOrNull()
                                     if (next != null) {
-                                        traktComments = commentsPage.copy(
-                                            items = commentsPage.items + next.items,
+                                        traktComments = page.copy(
+                                            items = page.items + next.items,
                                             page = next.page,
                                             pageCount = next.pageCount,
                                             itemCount = next.itemCount
@@ -1358,7 +1363,7 @@ private fun DetailContent(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                if (canExpand) "Show all ${commentsPage.itemCount} comments"
+                                if (canExpand) "Show all ${page.itemCount} comments"
                                 else "Load more comments",
                                 color = LocalPalette.current.accent
                             )
@@ -1367,6 +1372,7 @@ private fun DetailContent(
                 }
                 Spacer(Modifier.height(8.dp))
             }
+        }
     }
 
     val episodesBlock: LazyListScope.() -> Unit = {
@@ -3478,6 +3484,7 @@ private fun formatEpisodeDate(released: String?): String {
  * S/E chip and the WATCHED pill, words below on glass. Tap selects the
  * episode (same behavior as the old list rows).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeCardA(
     video: Video,
