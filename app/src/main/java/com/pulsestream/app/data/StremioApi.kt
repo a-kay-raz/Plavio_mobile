@@ -115,18 +115,26 @@ class StremioApi {
     /**
      * Genre-filtered catalog, e.g. {base}/catalog/movie/top/genre=Action.json.
      * Only fired at catalogs that declare the "genre" extra — others 404
-     * and the caller swallows it.
+     * and the caller swallows it. skip= pages within the genre.
      */
     suspend fun fetchCatalogGenre(
         baseUrl: String,
         type: String,
         catalogId: String,
-        genre: String
+        genre: String,
+        skip: Int = 0
     ): List<MetaPreview> =
-        StremioParser.parseCatalog(
-            get(endpoint(baseUrl, "catalog", type, catalogId, "genre=$genre")),
-            type
-        )
+        if (skip <= 0) {
+            StremioParser.parseCatalog(
+                get(endpoint(baseUrl, "catalog", type, catalogId, "genre=$genre")),
+                type
+            )
+        } else {
+            StremioParser.parseCatalog(
+                get(endpoint(baseUrl, "catalog", type, catalogId, "genre=$genre", "skip=$skip")),
+                type
+            )
+        }
 
     /**
      * Live catalog search, e.g. {base}/catalog/movie/top/search=avengers.json.

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,7 +33,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilterChip
+import com.pulsestream.app.data.DiscoverCatalog
+import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.ui.components.OrbitDots
+import com.pulsestream.app.ui.components.PosterCard
+import com.pulsestream.app.ui.components.ShimmerPoster
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -52,9 +58,15 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.snapshotFlow
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -144,6 +156,109 @@ fun SearchScreen(
     // empty when no source can supply titles (recents then stand alone).
     var popular by remember { mutableStateOf<List<CachedMeta>>(emptyList()) }
     LaunchedEffect(Unit) { popular = repository.loadPopularTitles(10) }
+
+    // ---- Discover (Nuvio SearchDiscoverContent): browse catalogs by
+    // type/catalog/genre with pagination, no query needed. Selection
+    // persists in SettingsStore across visits.
+    val settings = repository.settings
+    val scope = rememberCoroutineScope()
+    var discoverSources by remember { mutableStateOf<List<DiscoverCatalog>>(emptyList()) }
+    var discoverType by rememberSaveable { mutableStateOf(settings.discoverType) }
+    var discoverCatalogKey by rememberSaveable { mutableStateOf(settings.discoverCatalogKey) }
+    var discoverGenre by rememberSaveable { mutableStateOf(settings.discoverGenre) }
+    var discoverItems by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
+    var discoverLoading by remember { mutableStateOf(false) }
+    var discoverHasMore by remember { mutableStateOf(false) }
+    var discoverError by remember { mutableStateOf<String?>(null) }
+    var discoverNextSkip by remember { mutableStateOf<Int?>(null) }
+    // The landing column's list state (for the discover auto-load trigger).
+    val landingListState = rememberLazyListState()
+    val discoverSource = discoverSources.firstOrNull { it.key == discoverCatalogKey }
+    val discoverTypes = discoverSources.map { it.type }.distinct()
+    val discoverTypeSources = discoverSources.filter { it.type == discoverType }
+    // Genre options: the catalog's declared options when it has them,
+    // otherwise the genres of the loaded titles (same derivation as the
+    // search genre chips).
+    val discoverGenreOptions = discoverSource?.genreOptions?.takeIf { it.isNotEmpty() }
+        ?: discoverItems.flatMap { it.genres }.distinct().sorted().take(14)
+
+    // Resolve the saved selection against the loaded sources: a stale
+    // catalog (addon removed) falls back to the first catalog of the
+    // saved type, then the first catalog overall; a saved genre the
+    // catalog doesn't offer is dropped.
+    fun resolveDiscoverSelection() {
+        if (discoverType == null || discoverType !in discoverTypes) {
+            discoverType = discoverTypes.firstOrNull()
+        }
+        val picked = discoverTypeSources.firstOrNull { it.key == discoverCatalogKey }
+            ?: discoverTypeSources.firstOrNull()
+        if (picked?.key != discoverCatalogKey) {
+            discoverCatalogKey = picked?.key
+            settings.discoverCatalogKey = picked?.key
+        }
+        if (discoverType != null) settings.discoverType = discoverType
+        val options = picked?.genreOptions.orEmpty()
+        if (discoverGenre != null && options.isNotEmpty() && discoverGenre !in options) {
+            discoverGenre = null
+            settings.discoverGenre = null
+        }
+    }
+
+    suspend fun loadDiscoverPage(skip: Int) {
+        val source = discoverSource ?: return
+        if (skip == 0) {
+            discoverLoading = true
+            discoverError = null
+        }
+        val page = runCatching {
+            repository.fetchDiscoverPage(source, discoverGenre, skip)
+        }.getOrNull()
+        if (page == null) {
+            discoverError = if (skip == 0) "Couldn't load this catalog — check your connection."
+            else "Couldn't load more — check your connection."
+            discoverLoading = false
+            return
+        }
+        if (skip == 0) {
+            discoverItems = page.items
+            discoverNextSkip = if (page.rawCount >= 100) page.rawCount else null
+        } else {
+            val before = discoverItems.size
+            discoverItems = mergeMetaItems(discoverItems, page.items)
+            discoverNextSkip = when {
+                page.rawCount < 100 -> null // last page
+                discoverItems.size - before == 0 -> null // addon ignores skip
+                else -> skip + page.rawCount
+            }
+        }
+        discoverHasMore = discoverNextSkip != null
+        discoverLoading = false
+    }
+
+    LaunchedEffect(Unit) {
+        discoverSources = runCatching { repository.discoverCatalogs() }.getOrDefault(emptyList())
+        resolveDiscoverSelection()
+    }
+
+    // Load page 1 whenever the sources arrive or the selection changes.
+    LaunchedEffect(discoverSources, discoverCatalogKey, discoverGenre) {
+        if (discoverSources.isEmpty()) return@LaunchedEffect
+        loadDiscoverPage(skip = 0)
+    }
+
+    // Auto-load the next page when the landing column nears its end.
+    LaunchedEffect(landingListState) {
+        snapshotFlow { landingListState.layoutInfo }
+            .map { info ->
+                val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                last >= info.totalItemsCount - 6
+            }
+            .distinctUntilChanged()
+            .filter { nearEnd ->
+                nearEnd && query.trim().isEmpty() && discoverHasMore && !discoverLoading
+            }
+            .collect { loadDiscoverPage(discoverNextSkip ?: return@collect) }
+    }
 
     // Opening a result (title or actor) is what earns a history entry
     // (owner's spec 2026-10-26): with first-letter searching, recording
@@ -387,6 +502,7 @@ fun SearchScreen(
                     // sections fit small screens; bottom padding keeps
                     // the last row clear of the floating dock.
                     LazyColumn(
+                        state = landingListState,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(top = headerDp),
@@ -471,7 +587,176 @@ fun SearchScreen(
                                 }
                             }
                         }
-                        if ((history.isEmpty() || !historyEnabled) && popular.isEmpty()) {
+                        if (discoverSources.isNotEmpty()) {
+                            item(key = "discover_header") {
+                                Text(
+                                    "Discover",
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(
+                                        start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp
+                                    )
+                                )
+                            }
+                            // Type picker: Movies / Series.
+                            if (discoverTypes.size > 1) {
+                                item(key = "discover_type") {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(discoverTypes, key = { "dtype_$it" }) { type ->
+                                            DiscoverFilterChip(
+                                                selected = discoverType == type,
+                                                onClick = {
+                                                    discoverType = type
+                                                    settings.discoverType = type
+                                                    resolveDiscoverSelection()
+                                                },
+                                                label = discoverTypeLabel(type)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            // Catalog picker.
+                            item(key = "discover_catalog") {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(discoverTypeSources, key = { it.key }) { source ->
+                                        DiscoverFilterChip(
+                                            selected = discoverCatalogKey == source.key,
+                                            onClick = {
+                                                discoverCatalogKey = source.key
+                                                settings.discoverCatalogKey = source.key
+                                                val options = source.genreOptions
+                                                if (discoverGenre != null && options.isNotEmpty() && discoverGenre !in options) {
+                                                    discoverGenre = null
+                                                    settings.discoverGenre = null
+                                                }
+                                            },
+                                            label = source.catalogName
+                                        )
+                                    }
+                                }
+                            }
+                            // Genre picker (declared options, or the loaded titles' genres).
+                            if (discoverGenreOptions.isNotEmpty()) {
+                                item(key = "discover_genre") {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        item(key = "dgenre_all") {
+                                            DiscoverFilterChip(
+                                                selected = discoverGenre == null,
+                                                onClick = {
+                                                    discoverGenre = null
+                                                    settings.discoverGenre = null
+                                                },
+                                                label = "All genres"
+                                            )
+                                        }
+                                        items(discoverGenreOptions, key = { "dgenre_$it" }) { genre ->
+                                            DiscoverFilterChip(
+                                                selected = discoverGenre == genre,
+                                                onClick = {
+                                                    val next = if (discoverGenre == genre) null else genre
+                                                    discoverGenre = next
+                                                    settings.discoverGenre = next
+                                                },
+                                                label = genre
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            // Context line: addon + type.
+                            if (discoverSource != null) {
+                                item(key = "discover_context") {
+                                    Text(
+                                        "${discoverSource!!.addonName} • ${discoverTypeLabel(discoverSource!!.type)}",
+                                        color = TextSecondary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                                    )
+                                }
+                            }
+                            // Poster rows (Nuvio PosterGridRow shape): fixed
+                            // 128dp cards, as many columns as the width fits.
+                            val columns = maxOf(2, (LocalConfiguration.current.screenWidthDp - 32 + 12) / 140)
+                            if (discoverLoading && discoverItems.isEmpty()) {
+                                items(2, key = { "discover_skel_$it" }) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        repeat(columns) {
+                                            ShimmerPoster(
+                                                modifier = Modifier.width(128.dp).height(180.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                items(
+                                    discoverItems.chunked(columns),
+                                    key = { row -> "discover_row_${row.firstOrNull()?.id}" }
+                                ) { row ->
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        row.forEach { meta ->
+                                            PosterCard(
+                                                meta = meta,
+                                                onClick = {
+                                                    onOpenDetail(
+                                                        discoverSource?.addonId ?: "",
+                                                        meta.type,
+                                                        meta.id
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            if (discoverLoading && discoverItems.isNotEmpty()) {
+                                item(key = "discover_loading") {
+                                    Box(
+                                        Modifier.fillMaxWidth().padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        OrbitDots(modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                            }
+                            if (discoverError != null) {
+                                item(key = "discover_error") {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                                    ) {
+                                        Text(
+                                            discoverError!!,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                        TextButton(
+                                            onClick = { scope.launch { loadDiscoverPage(discoverNextSkip ?: 0) } }
+                                        ) { Text("Retry") }
+                                    }
+                                }
+                            }
+                        }
+                        if ((history.isEmpty() || !historyEnabled) && popular.isEmpty() && discoverSources.isEmpty()) {
                             item(key = "landing_hint") {
                                 Box(
                                     Modifier
@@ -890,5 +1175,46 @@ private fun GridPoster(item: CachedMeta, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/** Discover picker chip (same style as the search genre chips). */
+@Composable
+private fun DiscoverFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String
+) {
+    FilterChip(
+        modifier = Modifier.tvFocusRing(RoundedCornerShape(50)),
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+            selectedLabelColor = TextPrimary,
+            containerColor = Color.White.copy(alpha = 0.06f),
+            labelColor = TextSecondary
+        )
+    )
+}
+
+/** "movie" -> "Movies", "series" -> "Series", anything else capitalized. */
+private fun discoverTypeLabel(type: String): String = when (type.trim().lowercase()) {
+    "movie" -> "Movies"
+    "series", "tv" -> "Series"
+    else -> type.replaceFirstChar { it.uppercase() }
+}
+
+/** Merge a new page into the loaded items, deduped by id (Nuvio mergeCatalogItems). */
+private fun mergeMetaItems(
+    existing: List<MetaPreview>,
+    incoming: List<MetaPreview>
+): List<MetaPreview> {
+    if (incoming.isEmpty()) return existing
+    val seen = existing.mapTo(mutableSetOf()) { it.id }
+    return buildList(existing.size + incoming.size) {
+        addAll(existing)
+        incoming.forEach { if (seen.add(it.id)) add(it) }
     }
 }

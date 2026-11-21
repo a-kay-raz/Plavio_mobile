@@ -384,6 +384,61 @@ class StreamRepository(
         }
 
     /**
+     * Discover sources (Step 20, Nuvio buildDiscoverSources): every
+     * catalog of every enabled catalog addon, with its genre options.
+     * Manifests come from the same cache the Home refresh uses.
+     */
+    suspend fun discoverCatalogs(): List<DiscoverCatalog> = withContext(Dispatchers.IO) {
+        val installed = enabledAddons()
+        coroutineScope {
+            installed.map { addon ->
+                async {
+                    val manifest = runCatching { cachedManifest(addon.baseUrl) }.getOrNull()
+                        ?: return@async emptyList<DiscoverCatalog>()
+                    if ("catalog" !in manifest.resources) return@async emptyList<DiscoverCatalog>()
+                    manifest.catalogs.map { catalog ->
+                        DiscoverCatalog(
+                            addonId = addon.id,
+                            addonName = addon.name,
+                            baseUrl = addon.baseUrl,
+                            type = catalog.type,
+                            catalogId = catalog.id,
+                            catalogName = catalog.name,
+                            genreOptions = catalog.genreOptions
+                        )
+                    }
+                }
+            }.awaitAll().flatten()
+        }
+    }
+
+    /**
+     * One Discover page (Step 20): the plain catalog page, or the
+     * genre-filtered one when a genre is picked. A genre fetch that
+     * fails (the addon doesn't really serve it) falls back to the plain
+     * page filtered client-side. Unreleased titles are dropped exactly
+     * like on Home; rawCount is the raw fetched count — skip= counts
+     * raw items, never the displayed count.
+     */
+    suspend fun fetchDiscoverPage(source: DiscoverCatalog, genre: String?, skip: Int): DiscoverPage =
+        withContext(Dispatchers.IO) {
+            val hideUnreleased = runCatching { homeRowPrefs().hideUnreleasedContent }.getOrDefault(false)
+            val currentYear = java.time.LocalDate.now().year
+            val raw: List<MetaPreview> = if (genre.isNullOrBlank()) {
+                api.fetchCatalogPage(source.baseUrl, source.type, source.catalogId, skip)
+            } else {
+                runCatching {
+                    api.fetchCatalogGenre(source.baseUrl, source.type, source.catalogId, genre, skip)
+                }.getOrElse {
+                    api.fetchCatalogPage(source.baseUrl, source.type, source.catalogId, skip)
+                        .filter { genre in it.genres }
+                }
+            }
+            val items = raw.filter { !hideUnreleased || !it.isUnreleased(currentYear) }
+            DiscoverPage(items = items, rawCount = raw.size)
+        }
+
+    /**
      * Trending movies + series for the Trailers tab. PlavioMeta first (its
      * metas carry trailerStreams), then any other enabled catalog addon.
      * Returns catalog items only — trailer YouTube ids resolve lazily per

@@ -481,6 +481,30 @@ class SettingsStore(context: Context) {
         get() = prefInt(KEY_HOME_SCROLL_OFFSET, 0).coerceAtLeast(0)
         set(value) = prefs.edit().putInt(KEY_HOME_SCROLL_OFFSET, value.coerceAtLeast(0)).apply()
 
+    /** Discover selection (Step 20, Nuvio DiscoverSelectionStorage): the picked type ("movie"/"series"), catalog key ("addonId|type|catalogId") and genre — null means "not picked yet". */
+    var discoverType: String?
+        get() = prefs.getString(KEY_DISCOVER_TYPE, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_DISCOVER_TYPE).apply()
+            else prefs.edit().putString(KEY_DISCOVER_TYPE, value).apply()
+        }
+
+    /** Discover selection: the picked catalog's key. */
+    var discoverCatalogKey: String?
+        get() = prefs.getString(KEY_DISCOVER_CATALOG_KEY, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_DISCOVER_CATALOG_KEY).apply()
+            else prefs.edit().putString(KEY_DISCOVER_CATALOG_KEY, value).apply()
+        }
+
+    /** Discover selection: the picked genre, null = all genres. */
+    var discoverGenre: String?
+        get() = prefs.getString(KEY_DISCOVER_GENRE, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_DISCOVER_GENRE).apply()
+            else prefs.edit().putString(KEY_DISCOVER_GENRE, value).apply()
+        }
+
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -1061,6 +1085,9 @@ class SettingsStore(context: Context) {
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_HOME_SCROLL_INDEX = "home_scroll_index"
         private const val KEY_HOME_SCROLL_OFFSET = "home_scroll_offset"
+        private const val KEY_DISCOVER_TYPE = "discover_type"
+        private const val KEY_DISCOVER_CATALOG_KEY = "discover_catalog_key"
+        private const val KEY_DISCOVER_GENRE = "discover_genre"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"
