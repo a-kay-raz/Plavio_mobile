@@ -520,6 +520,16 @@ class SettingsStore(context: Context) {
         get() = prefFloat(KEY_NEXT_EPISODE_THRESHOLD_MINUTES, 2f).coerceIn(0f, 3.5f)
         set(value) = prefs.edit().putFloat(KEY_NEXT_EPISODE_THRESHOLD_MINUTES, value.coerceIn(0f, 3.5f)).apply()
 
+    /** Skip-button offset (Nuvio skipIntroOffsetSeconds): shifts when the intro skip button appears, seconds, -60..60, default 0. Positive = later into the intro. */
+    var skipIntroOffsetSeconds: Int
+        get() = prefInt(KEY_SKIP_INTRO_OFFSET_SECONDS, 0).coerceIn(-60, 60)
+        set(value) = prefs.edit().putInt(KEY_SKIP_INTRO_OFFSET_SECONDS, value.coerceIn(-60, 60)).apply()
+
+    /** Auto-skip segment types (Nuvio autoSkipSegmentTypes): stored values "intro"/"recap"/"outro"/"movie-credits". Empty = offer the button only, never auto-skip. */
+    var autoSkipSegmentTypes: Set<String>
+        get() = prefs.getStringSet(KEY_AUTO_SKIP_SEGMENT_TYPES, emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_AUTO_SKIP_SEGMENT_TYPES, value.toSet()).apply()
+
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -1106,6 +1116,8 @@ class SettingsStore(context: Context) {
         private const val KEY_NEXT_EPISODE_THRESHOLD_MODE = "next_episode_threshold_mode"
         private const val KEY_NEXT_EPISODE_THRESHOLD_PERCENT = "next_episode_threshold_percent"
         private const val KEY_NEXT_EPISODE_THRESHOLD_MINUTES = "next_episode_threshold_minutes"
+        private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
+        private const val KEY_AUTO_SKIP_SEGMENT_TYPES = "auto_skip_segment_types"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"

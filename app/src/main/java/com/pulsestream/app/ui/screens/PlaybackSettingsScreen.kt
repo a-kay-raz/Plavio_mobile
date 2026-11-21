@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
@@ -101,6 +102,8 @@ fun PlaybackSettingsScreen(
     var skipBackOpen by remember { mutableStateOf(false) }
     var skipForwardOpen by remember { mutableStateOf(false) }
     var nextEpisodeOpen by remember { mutableStateOf(false) }
+    var autoSkipOpen by remember { mutableStateOf(false) }
+    var skipOffsetOpen by remember { mutableStateOf(false) }
     var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
@@ -114,6 +117,8 @@ fun PlaybackSettingsScreen(
     var skipUiTick by remember { mutableStateOf(0) }
     // Refresh key so the next-episode subtitle updates after the dialog closes.
     var nextEpisodeUiTick by remember { mutableStateOf(0) }
+    // Refresh key so the auto-skip / skip-offset subtitles update after the dialogs close.
+    var skipSettingsUiTick by remember { mutableStateOf(0) }
 
     GlowBackground {
         LazyColumn(
@@ -154,6 +159,7 @@ fun PlaybackSettingsScreen(
                 watchedUiTick
                 skipUiTick
                 nextEpisodeUiTick
+                skipSettingsUiTick
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -201,6 +207,22 @@ fun PlaybackSettingsScreen(
                                 showSkip = it
                                 settings.showSkipButton = it
                             }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.SkipNext,
+                            title = "Auto-skip",
+                            subtitle = autoSkipLabel(settings),
+                            onClick = { autoSkipOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Schedule,
+                            title = "Skip offset",
+                            subtitle = skipOffsetLabel(settings),
+                            onClick = { skipOffsetOpen = true }
                         )
                     },
                     {
@@ -387,6 +409,22 @@ fun PlaybackSettingsScreen(
             onDone = { nextEpisodeOpen = false; nextEpisodeUiTick++ }
         )
     }
+
+    if (autoSkipOpen) {
+        AutoSkipDialog(
+            settings = settings,
+            onDismiss = { autoSkipOpen = false },
+            onDone = { autoSkipOpen = false; skipSettingsUiTick++ }
+        )
+    }
+
+    if (skipOffsetOpen) {
+        SkipOffsetDialog(
+            settings = settings,
+            onDismiss = { skipOffsetOpen = false },
+            onDone = { skipOffsetOpen = false; skipSettingsUiTick++ }
+        )
+    }
 }
 
 /**
@@ -549,6 +587,172 @@ fun NextEpisodeThresholdDialog(
                 settings.nextEpisodeThresholdMode = selected.mode
                 settings.nextEpisodeThresholdPercent = selected.percent
                 settings.nextEpisodeThresholdMinutes = selected.minutes
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/** Subtitle for the Auto-skip row: which segment types skip themselves. */
+private fun autoSkipLabel(settings: SettingsStore): String {
+    val types = settings.autoSkipSegmentTypes
+    if (types.isEmpty()) return "Off — show the skip button only"
+    val names = listOf(
+        "intro" to "Intros",
+        "recap" to "Recaps",
+        "outro" to "Outros",
+        "movie-credits" to "Movie credits"
+    ).filter { (value, _) -> value in types }.map { (_, name) -> name }
+    return "Auto-skips: ${names.joinToString(", ")}"
+}
+
+/** Subtitle for the Skip offset row. */
+private fun skipOffsetLabel(settings: SettingsStore): String {
+    val offset = settings.skipIntroOffsetSeconds
+    return when {
+        offset == 0 -> "Button appears when the intro starts"
+        offset > 0 -> "Button appears ${offset}s into the intro"
+        else -> "Button appears ${-offset}s before the intro"
+    }
+}
+
+private val AUTO_SKIP_OPTIONS = listOf(
+    "intro" to "Intros",
+    "recap" to "Recaps",
+    "outro" to "Outros",
+    "movie-credits" to "Movie credits"
+)
+
+/**
+ * Auto-skip picker (Settings > Playback, Nuvio autoSkipSegmentTypes):
+ * which segment types jump to their end on their own, once per title.
+ * Nothing checked = the skip button only, never automatic.
+ */
+@Composable
+fun AutoSkipDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember { mutableStateOf(settings.autoSkipSegmentTypes) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Auto-skip", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "Checked types skip to their end as soon as the playhead enters them, once per title. Unchecked types only show the skip button.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                AUTO_SKIP_OPTIONS.forEach { (value, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selected = if (value in selected) selected - value else selected + value
+                            }
+                            .tvFocusRing(RoundedCornerShape(10.dp))
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = value in selected,
+                            onCheckedChange = {
+                                selected = if (value in selected) selected - value else selected + value
+                            },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = LocalPalette.current.accent
+                            )
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(label, color = TextPrimary)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.autoSkipSegmentTypes = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+private val SKIP_OFFSET_OPTIONS = listOf(
+    -10 to "-10s (early)",
+    -5 to "-5s",
+    0 to "On time",
+    5 to "+5s",
+    10 to "+10s (late)"
+)
+
+/**
+ * Skip-offset picker (Settings > Playback, Nuvio skipIntroOffsetSeconds):
+ * shifts when the intro skip button appears. Positive = later into the
+ * intro; negative = before it starts.
+ */
+@Composable
+fun SkipOffsetDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember { mutableStateOf(settings.skipIntroOffsetSeconds) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Skip offset", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "When the intro skip button appears. Only intros shift; recaps, outros and credits always start on time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(SKIP_OFFSET_OPTIONS, key = { it.first }) { (seconds, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = seconds }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == seconds,
+                                onClick = { selected = seconds },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(label, color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.skipIntroOffsetSeconds = selected
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
