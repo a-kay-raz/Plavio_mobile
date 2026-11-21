@@ -466,6 +466,11 @@ class SettingsStore(context: Context) {
         get() = normalizeResizeMode(prefInt(KEY_RESIZE_MODE, AspectRatioFrameLayout.RESIZE_MODE_FIT))
         set(value) = prefs.edit().putInt(KEY_RESIZE_MODE, normalizeResizeMode(value)).apply()
 
+    /** Audio boost, dB (Nuvio audioAmplificationDb): 0 (off) to 10, persisted — the Audio modal's stepper writes it and it applies on the next title. */
+    var audioBoostDb: Int
+        get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
+        set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
+
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -1043,6 +1048,7 @@ class SettingsStore(context: Context) {
         private const val KEY_TOUCH_GESTURES_ENABLED = "touch_gestures_enabled"
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
         private const val KEY_RESIZE_MODE = "resize_mode"
+        private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"

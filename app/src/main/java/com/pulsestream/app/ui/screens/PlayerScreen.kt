@@ -770,7 +770,9 @@ fun PlayerScreen(
     // Volume boost (past 100%): a LoudnessEnhancer on the player's audio
     // session adds up to +10 dB on top of the system max. volumeBoost is
     // 0f..1f; the shown percent is 100 + boost*100 while system is at max.
-    var volumeBoost by remember { mutableFloatStateOf(0f) }
+    // It starts at the persisted Audio-modal value (Step 13: Nuvio
+    // audioAmplificationDb) so a set boost applies on the next title.
+    var volumeBoost by remember { mutableFloatStateOf(settings.audioBoostDb / 10f) }
     val boostHolder = remember {
         object {
             var enhancer: LoudnessEnhancer? = null
@@ -796,6 +798,17 @@ fun PlayerScreen(
         val sys = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         val sysPct = sys * 100 / maxVolume.coerceAtLeast(1)
         return if (sys >= maxVolume) sysPct + (volumeBoost * 100).roundToInt() else sysPct
+    }
+
+    /** Audio modal stepper (Nuvio setAudioAmplification): set the boost
+     *  in whole dB, apply it to the enhancer now and persist it — a set
+     *  boost applies on the next title. The volume swipe past 100%
+     *  still moves volumeBoost for this session only. */
+    fun setAudioBoostDb(db: Int) {
+        val clamped = db.coerceIn(0, 10)
+        volumeBoost = clamped / 10f
+        applyVolumeBoost()
+        settings.audioBoostDb = clamped
     }
     var speed by remember { mutableFloatStateOf(1f) }
     var speedMenuOpen by remember { mutableStateOf(false) }
@@ -3589,6 +3602,36 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary,
                                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                            )
+                        }
+                        // Amplification (Nuvio AudioAmplificationSection):
+                        // a dB stepper on the existing LoudnessEnhancer —
+                        // the value persists and applies on the next title.
+                        // Nuvio's "Keep for next videos" toggle is not
+                        // ported: in Plavio a set boost always persists
+                        // (the plan's done-criteria is "setting +6 dB
+                        // persists", which the toggle would break by
+                        // default). Nuvio's CenterMix has no Plavio
+                        // mechanism — no audio processor for it — so it
+                        // is skipped, not faked.
+                        item {
+                            Text(
+                                "Amplification",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
+                            )
+                            val boostDb = (volumeBoost * 10).roundToInt().coerceIn(0, 10)
+                            StyleStepper(
+                                value = if (boostDb > 0) "+$boostDb dB" else "0 dB",
+                                onMinus = { setAudioBoostDb(boostDb - 1) },
+                                onPlus = { setAudioBoostDb(boostDb + 1) }
+                            )
+                            Text(
+                                "Boosts quiet audio above the system max volume.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
                             )
                         }
                         item {
