@@ -248,6 +248,13 @@ data class PlaybackRequest(
     val isTrailer: Boolean = false,
     /** Optional separate audio track for video-only sources; normal playback is unchanged. */
     val mergeAudioUrl: String? = null,
+    /**
+     * Origin master playlist URL when [streamUrl] is a sanitized temp
+     * playlist (Step 30 HLS variants): the HTTP factory uses this as the
+     * origin so segment requests keep the stream's headers. Null for
+     * normal streams.
+     */
+    val hlsMasterUrl: String? = null,
     /** Play from start (Nuvio detailActionSet): ignore the saved resume
      *  position and suppress the resume prompt — always start at 0:00.
      *  One-shot: the saved position is kept, not erased. */
