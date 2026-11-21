@@ -3059,7 +3059,11 @@ fun PlayerScreen(
                 // must continue in the PiP window — only pause when the app is
                 // truly backgrounded (not floating).
                 if (activity?.isInPictureInPictureMode == true) return@LifecycleEventObserver
-                // #10: pause on background — release stays in onDispose.
+                // Step 64: background audio (opt-in, VOD only) keeps
+                // playing — the foreground service holds the notification
+                // + session. Otherwise #10: pause on background —
+                // release stays in onDispose.
+                if (settings.backgroundAudioEnabled && !currentRequest.isLive) return@LifecycleEventObserver
                 latestPlayer.value.pause()
             }
         }
@@ -3107,6 +3111,8 @@ fun PlayerScreen(
             // survives this; the scrobblers' final stop-events are best-effort.
             ioScope.coroutineContext.cancelChildren()
             latestPlayer.value.release()
+            // Step 64: stop the background-audio service + session with the player.
+            com.pulsestream.app.data.BackgroundAudioController.unregister()
             runCatching { boostHolder.enhancer?.release() }
             // #18: swipe-brightness must not leak into the rest of the app.
             window?.let { w ->
@@ -3132,6 +3138,25 @@ fun PlayerScreen(
     // Nuvio legacy "Ends at HH:MM" label, speed-adjusted.
     val endsAtText = remember(positionMs, durationMs, speed) {
         endsAtLabel(positionMs, durationMs, speed)
+    }
+
+    // Step 64: background audio — hand the player to the now-playing
+    // controller while the setting is on (VOD only). Metadata follows
+    // the current request; turning the setting off unregisters.
+    LaunchedEffect(player, currentRequest.videoId, currentRequest.title, settings.backgroundAudioEnabled) {
+        if (!settings.backgroundAudioEnabled || currentRequest.isLive) {
+            com.pulsestream.app.data.BackgroundAudioController.unregister()
+            return@LaunchedEffect
+        }
+        com.pulsestream.app.data.BackgroundAudioController.register(
+            context = context,
+            player = player,
+            metadata = com.pulsestream.app.data.BackgroundAudioMetadata(
+                title = headerTitle,
+                subtitle = episodeLine ?: currentRequest.sourceName,
+                artworkUrl = currentRequest.poster
+            )
+        )
     }
 
     // ---- Android TV D-pad: works when the touch gestures can't. ----

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
@@ -111,6 +112,8 @@ fun PlaybackSettingsScreen(
     var autoPlayNext by remember { mutableStateOf(settings.autoPlayNext) }
     // Step 60: next-episode autoplay prefers the same release group.
     var preferBingeGroup by remember { mutableStateOf(settings.autoplayPreferBingeGroup) }
+    // Step 64: background audio (opt-in, VOD only).
+    var backgroundAudio by remember { mutableStateOf(settings.backgroundAudioEnabled) }
     var keepScreenOn by remember { mutableStateOf(settings.keepScreenOn) }
     var showSkip by remember { mutableStateOf(settings.showSkipButton) }
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
@@ -235,6 +238,18 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 preferBingeGroup = it
                                 settings.autoplayPreferBingeGroup = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Headphones,
+                            title = "Background audio",
+                            subtitle = "Keep audio playing when the app goes to background, with notification controls (videos only, not live)",
+                            checked = backgroundAudio,
+                            onCheckedChange = {
+                                backgroundAudio = it
+                                settings.backgroundAudioEnabled = it
                             }
                         )
                     },
