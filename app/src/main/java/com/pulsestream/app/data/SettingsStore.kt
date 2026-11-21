@@ -530,6 +530,31 @@ class SettingsStore(context: Context) {
         get() = prefInt(KEY_REUSE_LAST_LINK_CACHE_HOURS, 24).coerceIn(1, 168)
         set(value) = prefs.edit().putInt(KEY_REUSE_LAST_LINK_CACHE_HOURS, value.coerceIn(1, 168)).apply()
 
+    /** Continue Watching section visible on Home (Nuvio CW isVisible). */
+    var continueWatchingVisible: Boolean
+        get() = prefs.getBoolean(KEY_CW_VISIBLE, true)
+        set(value) = prefs.edit().putBoolean(KEY_CW_VISIBLE, value).apply()
+
+    /** Continue Watching card style (Nuvio ContinueWatchingSectionStyle): "card" | "wide" | "poster". */
+    var continueWatchingStyle: String
+        get() = prefs.getString(KEY_CW_STYLE, "card") ?: "card"
+        set(value) = prefs.edit().putString(KEY_CW_STYLE, value).apply()
+
+    /** Continue Watching sort (Nuvio ContinueWatchingSortMode): "default" | "streaming" | "split_upcoming". */
+    var continueWatchingSortMode: String
+        get() = prefs.getString(KEY_CW_SORT_MODE, "default") ?: "default"
+        set(value) = prefs.edit().putString(KEY_CW_SORT_MODE, value).apply()
+
+    /** Continue Watching tap action (Nuvio ContinueWatchingClickAction): "stream" | "details". */
+    var continueWatchingClickAction: String
+        get() = prefs.getString(KEY_CW_CLICK_ACTION, "stream") ?: "stream"
+        set(value) = prefs.edit().putString(KEY_CW_CLICK_ACTION, value).apply()
+
+    /** Resume prompt on launch (Nuvio showResumePromptOnLaunch): offer the latest title when the app opens. */
+    var continueWatchingResumePrompt: Boolean
+        get() = prefs.getBoolean(KEY_CW_RESUME_PROMPT, true)
+        set(value) = prefs.edit().putBoolean(KEY_CW_RESUME_PROMPT, value).apply()
+
     /** Skip-button offset (Nuvio skipIntroOffsetSeconds): shifts when the intro skip button appears, seconds, -60..60, default 0. Positive = later into the intro. */
     var skipIntroOffsetSeconds: Int
         get() = prefInt(KEY_SKIP_INTRO_OFFSET_SECONDS, 0).coerceIn(-60, 60)
@@ -1138,6 +1163,11 @@ class SettingsStore(context: Context) {
         private const val KEY_NEXT_EPISODE_THRESHOLD_MINUTES = "next_episode_threshold_minutes"
         private const val KEY_REUSE_LAST_LINK_ENABLED = "reuse_last_link_enabled"
         private const val KEY_REUSE_LAST_LINK_CACHE_HOURS = "reuse_last_link_cache_hours"
+        private const val KEY_CW_VISIBLE = "continue_watching_visible"
+        private const val KEY_CW_STYLE = "continue_watching_style"
+        private const val KEY_CW_SORT_MODE = "continue_watching_sort_mode"
+        private const val KEY_CW_CLICK_ACTION = "continue_watching_click_action"
+        private const val KEY_CW_RESUME_PROMPT = "continue_watching_resume_prompt"
         private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
         private const val KEY_AUTO_SKIP_SEGMENT_TYPES = "auto_skip_segment_types"
         private const val KEY_SEASON_VIEW_MODE = "season_view_mode"

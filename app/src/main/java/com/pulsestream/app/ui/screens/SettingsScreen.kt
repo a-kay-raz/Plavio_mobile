@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Storage
@@ -132,6 +133,7 @@ fun SettingsScreen(
     onThemeChanged: () -> Unit = {},
     onGoToAddons: () -> Unit = {},
     onGoToHomeCatalogs: () -> Unit = {},
+    onGoToContinueWatching: () -> Unit = {},
     onGoToPlayback: () -> Unit = {},
     onGoToSubtitles: () -> Unit = {},
     onGoToAppearance: () -> Unit = {},
@@ -215,6 +217,16 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_home_catalogs_title),
                 subtitle = stringResource(R.string.settings_home_catalogs_sub),
                 onClick = onGoToHomeCatalogs,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Continue Watching",
+            "continue watching resume sort style tap action prompt") {
+            SettingsNavRow(
+                icon = Icons.Filled.History,
+                title = "Continue Watching",
+                subtitle = "Sort, card style, tap action and resume prompt",
+                onClick = onGoToContinueWatching,
                 compact = true
             )
         },
