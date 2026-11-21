@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SkipNext
@@ -72,6 +73,8 @@ import com.pulsestream.app.data.BUFFER_MAX_OPTIONS_S
 import com.pulsestream.app.data.BUFFER_MIN_OPTIONS_S
 import com.pulsestream.app.data.BUFFER_PRESETS
 import com.pulsestream.app.data.BUFFER_REBUFFER_OPTIONS_MS
+import com.pulsestream.app.data.FALLBACK_MAX_SOURCES_OPTIONS
+import com.pulsestream.app.data.FALLBACK_STARTUP_TIMEOUT_OPTIONS_S
 import com.pulsestream.app.data.BUFFER_START_OPTIONS_MS
 import com.pulsestream.app.data.DISK_CACHE_OPTIONS
 import com.pulsestream.app.data.PlayerChoice
@@ -120,6 +123,8 @@ fun PlaybackSettingsScreen(
     var customBuffers by remember { mutableStateOf(settings.customPlaybackBuffersEnabled) }
     var bufferFineOpen by remember { mutableStateOf(false) }
     var diskCacheAutoSize by remember { mutableStateOf(settings.diskCacheAutoSize) }
+    // Step 40: configurable failover.
+    var failoverDialogOpen by remember { mutableStateOf(false) }
     var watchedThresholdOpen by remember { mutableStateOf(false) }
     var skipBackOpen by remember { mutableStateOf(false) }
     var skipForwardOpen by remember { mutableStateOf(false) }
@@ -347,6 +352,15 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
+                        // Step 40: how many sources failover tries + startup timeout.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Replay,
+                            title = "Source failover",
+                            subtitle = "Try up to ${settings.fallbackMaxSources} sources · ${settings.fallbackStartupTimeoutSeconds}s to start",
+                            onClick = { failoverDialogOpen = true }
+                        )
+                    },
+                    {
                         SettingsNavRow(
                             icon = Icons.Filled.CheckCircle,
                             title = "Watched threshold",
@@ -502,6 +516,14 @@ fun PlaybackSettingsScreen(
             settings = settings,
             onDismiss = { bufferFineOpen = false },
             onDone = { bufferFineOpen = false; bufferUiTick++ }
+        )
+    }
+
+    if (failoverDialogOpen) {
+        SourceFailoverDialog(
+            settings = settings,
+            onDismiss = { failoverDialogOpen = false },
+            onDone = { failoverDialogOpen = false; bufferUiTick++ }
         )
     }
 
@@ -1866,6 +1888,64 @@ fun BufferFineDialog(
                 settings.bufferForPlaybackMs = startMs.coerceAtMost(minMs)
                 settings.bufferRebufferMs = rebufferMs.coerceAtMost(minMs)
                 settings.bufferBackBufferMs = backS * 1000
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/**
+ * Step 40 — source failover settings (Nuvio streamAutoPlayFallbackMaxSources
+ * + FallbackStartupTimeoutSeconds). Max sources 1 stops after one failover;
+ * the startup timeout is how long a source gets to start before the next
+ * one is tried (5–45s). Applies to the next title you play.
+ */
+@Composable
+fun SourceFailoverDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var maxSources by remember { mutableStateOf(settings.fallbackMaxSources) }
+    var timeoutS by remember { mutableStateOf(settings.fallbackStartupTimeoutSeconds) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Source failover", color = TextPrimary) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "When a source fails or never starts, the player tries the next one. A mid-play stall first retries the same source once.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+                Text("Max sources to try", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = FALLBACK_MAX_SOURCES_OPTIONS.map { "$it" },
+                    selected = "$maxSources",
+                    onSelect = { maxSources = it.toInt() },
+                )
+                Text("Startup timeout", color = TextPrimary, fontWeight = FontWeight.Bold)
+                OptionChips(
+                    options = FALLBACK_STARTUP_TIMEOUT_OPTIONS_S.map { "${it}s" },
+                    selected = "${timeoutS}s",
+                    onSelect = { timeoutS = it.removeSuffix("s").toInt() },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.fallbackMaxSources = maxSources
+                settings.fallbackStartupTimeoutSeconds = timeoutS
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
