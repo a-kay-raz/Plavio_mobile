@@ -42,14 +42,20 @@ class CustomListsRepository(private val db: AppDatabase) {
         dao.getList(id)
     }
 
-    /** Creates a list and returns its id. */
-    suspend fun createList(name: String): String = withContext(Dispatchers.IO) {
+    /** Creates a list and returns its id. New lists go first. */
+    suspend fun createList(name: String, description: String = ""): String = withContext(Dispatchers.IO) {
         val trimmed = name.trim().take(60)
         require(trimmed.isNotEmpty()) { "List name must not be empty" }
         val id = UUID.randomUUID().toString()
-        dao.upsertList(
-            CustomList(id = id, name = trimmed, createdAt = System.currentTimeMillis())
-        )
+        writeMutex.withLock {
+            val minOrder = dao.getLists().minOfOrNull { it.sortOrder } ?: 0L
+            dao.upsertList(
+                CustomList(
+                    id = id, name = trimmed, createdAt = System.currentTimeMillis(),
+                    description = description.trim().take(200), sortOrder = minOrder - 1000
+                )
+            )
+        }
         id
     }
 
@@ -57,6 +63,39 @@ class CustomListsRepository(private val db: AppDatabase) {
         val trimmed = name.trim().take(60)
         require(trimmed.isNotEmpty()) { "List name must not be empty" }
         dao.renameList(id, trimmed)
+    }
+
+    /** Step 48: name + description edited together (the list editor dialog). */
+    suspend fun updateList(id: String, name: String, description: String) = withContext(Dispatchers.IO) {
+        val trimmed = name.trim().take(60)
+        require(trimmed.isNotEmpty()) { "List name must not be empty" }
+        writeMutex.withLock {
+            dao.renameList(id, trimmed)
+            dao.updateDescription(id, description.trim().take(200))
+        }
+    }
+
+    suspend fun updateDescription(id: String, description: String) = withContext(Dispatchers.IO) {
+        dao.updateDescription(id, description.trim().take(200))
+    }
+
+    /**
+     * Step 48: move a list to a display position (drag-reorder). The list
+     * is removed from the current sortOrder sequence and re-inserted at
+     * [toIndex]; every list then gets sortOrder = index * 1000 so later
+     * moves have room without renumbering the whole table each time.
+     */
+    suspend fun moveList(id: String, toIndex: Int) = withContext(Dispatchers.IO) {
+        writeMutex.withLock {
+            val ordered = dao.getLists().sortedBy { it.sortOrder }.toMutableList()
+            val from = ordered.indexOfFirst { it.id == id }
+            if (from < 0) return@withLock
+            val item = ordered.removeAt(from)
+            ordered.add(toIndex.coerceIn(0, ordered.size), item)
+            ordered.forEachIndexed { index, list ->
+                dao.updateSortOrder(list.id, index * 1000L)
+            }
+        }
     }
 
     /** Deletes the list and all of its items. */
