@@ -100,6 +100,7 @@ fun PlaybackSettingsScreen(
     var watchedThresholdOpen by remember { mutableStateOf(false) }
     var skipBackOpen by remember { mutableStateOf(false) }
     var skipForwardOpen by remember { mutableStateOf(false) }
+    var nextEpisodeOpen by remember { mutableStateOf(false) }
     var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
@@ -111,6 +112,8 @@ fun PlaybackSettingsScreen(
     var watchedUiTick by remember { mutableStateOf(0) }
     // Refresh key so the skip-seconds subtitles update after the dialogs close.
     var skipUiTick by remember { mutableStateOf(0) }
+    // Refresh key so the next-episode subtitle updates after the dialog closes.
+    var nextEpisodeUiTick by remember { mutableStateOf(0) }
 
     GlowBackground {
         LazyColumn(
@@ -150,6 +153,7 @@ fun PlaybackSettingsScreen(
                 bufferUiTick
                 watchedUiTick
                 skipUiTick
+                nextEpisodeUiTick
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -300,6 +304,14 @@ fun PlaybackSettingsScreen(
                                 }
                             }
                         )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.SkipNext,
+                            title = "Next episode",
+                            subtitle = nextEpisodeThresholdLabel(settings),
+                            onClick = { nextEpisodeOpen = true }
+                        )
                     }
                 )
             }
@@ -367,6 +379,14 @@ fun PlaybackSettingsScreen(
             onDone = { skipForwardOpen = false; skipUiTick++ }
         )
     }
+
+    if (nextEpisodeOpen) {
+        NextEpisodeThresholdDialog(
+            settings = settings,
+            onDismiss = { nextEpisodeOpen = false },
+            onDone = { nextEpisodeOpen = false; nextEpisodeUiTick++ }
+        )
+    }
 }
 
 /**
@@ -423,6 +443,112 @@ fun SkipSecondsDialog(
             TextButton(onClick = {
                 if (forward) settings.skipForwardSeconds = selected
                 else settings.skipBackwardSeconds = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/** One next-episode threshold choice: when the countdown card appears. */
+private data class NextEpisodeThresholdOption(
+    val label: String,
+    val mode: String,
+    val percent: Int,
+    val minutes: Float
+)
+
+private val NEXT_EPISODE_THRESHOLD_OPTIONS = listOf(
+    NextEpisodeThresholdOption("At 97% played", "percentage", 97, 2f),
+    NextEpisodeThresholdOption("At 98% played", "percentage", 98, 2f),
+    NextEpisodeThresholdOption("At 99% played", "percentage", 99, 2f),
+    NextEpisodeThresholdOption("At the end (100%)", "percentage", 100, 2f),
+    NextEpisodeThresholdOption("30 sec before the end", "minutes", 99, 0.5f),
+    NextEpisodeThresholdOption("1 min before the end", "minutes", 99, 1f),
+    NextEpisodeThresholdOption("2 min before the end", "minutes", 99, 2f),
+    NextEpisodeThresholdOption("3 min before the end", "minutes", 99, 3f)
+)
+
+/** Subtitle for the Next episode row: the current threshold in words. */
+private fun nextEpisodeThresholdLabel(settings: SettingsStore): String {
+    return if (settings.nextEpisodeThresholdMode == "minutes") {
+        val minutes = settings.nextEpisodeThresholdMinutes
+        if (minutes < 1f) "Countdown card 30 sec before the end"
+        else "Countdown card ${minutes.toInt()} min before the end"
+    } else if (settings.nextEpisodeThresholdPercent >= 100) {
+        "Countdown card at the end"
+    } else {
+        "Countdown card at ${settings.nextEpisodeThresholdPercent}% played"
+    }
+}
+
+/**
+ * Next-episode threshold picker (Settings > Playback, Nuvio
+ * nextEpisodeThresholdMode/Percent/MinutesBeforeEnd): when the "Up next"
+ * countdown card appears. One list covers both modes; the stored mode
+ * and value follow the picked row.
+ */
+@Composable
+fun NextEpisodeThresholdDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember {
+        mutableStateOf(
+            NEXT_EPISODE_THRESHOLD_OPTIONS.firstOrNull {
+                it.mode == settings.nextEpisodeThresholdMode &&
+                    (if (it.mode == "minutes") it.minutes == settings.nextEpisodeThresholdMinutes
+                    else it.percent == settings.nextEpisodeThresholdPercent)
+            } ?: NEXT_EPISODE_THRESHOLD_OPTIONS[2]
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Next episode", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "When the \"Up next\" countdown card appears near the end of an episode. Cancel stops the auto-advance for that episode.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(NEXT_EPISODE_THRESHOLD_OPTIONS, key = { it.label }) { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = option }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == option,
+                                onClick = { selected = option },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(option.label, color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.nextEpisodeThresholdMode = selected.mode
+                settings.nextEpisodeThresholdPercent = selected.percent
+                settings.nextEpisodeThresholdMinutes = selected.minutes
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)

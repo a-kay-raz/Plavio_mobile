@@ -505,6 +505,21 @@ class SettingsStore(context: Context) {
             else prefs.edit().putString(KEY_DISCOVER_GENRE, value).apply()
         }
 
+    /** Next-episode card threshold mode (Nuvio nextEpisodeThresholdMode): "percentage" or "minutes". */
+    var nextEpisodeThresholdMode: String
+        get() = prefs.getString(KEY_NEXT_EPISODE_THRESHOLD_MODE, "percentage") ?: "percentage"
+        set(value) = prefs.edit().putString(KEY_NEXT_EPISODE_THRESHOLD_MODE, value).apply()
+
+    /** Next-episode card threshold, percent played (Nuvio nextEpisodeThresholdPercent): 97–100, default 99. */
+    var nextEpisodeThresholdPercent: Int
+        get() = prefInt(KEY_NEXT_EPISODE_THRESHOLD_PERCENT, 99).coerceIn(97, 100)
+        set(value) = prefs.edit().putInt(KEY_NEXT_EPISODE_THRESHOLD_PERCENT, value.coerceIn(97, 100)).apply()
+
+    /** Next-episode card threshold, minutes before the end (Nuvio nextEpisodeThresholdMinutesBeforeEnd): 0–3.5, default 2. */
+    var nextEpisodeThresholdMinutes: Float
+        get() = prefFloat(KEY_NEXT_EPISODE_THRESHOLD_MINUTES, 2f).coerceIn(0f, 3.5f)
+        set(value) = prefs.edit().putFloat(KEY_NEXT_EPISODE_THRESHOLD_MINUTES, value.coerceIn(0f, 3.5f)).apply()
+
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -1088,6 +1103,9 @@ class SettingsStore(context: Context) {
         private const val KEY_DISCOVER_TYPE = "discover_type"
         private const val KEY_DISCOVER_CATALOG_KEY = "discover_catalog_key"
         private const val KEY_DISCOVER_GENRE = "discover_genre"
+        private const val KEY_NEXT_EPISODE_THRESHOLD_MODE = "next_episode_threshold_mode"
+        private const val KEY_NEXT_EPISODE_THRESHOLD_PERCENT = "next_episode_threshold_percent"
+        private const val KEY_NEXT_EPISODE_THRESHOLD_MINUTES = "next_episode_threshold_minutes"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"

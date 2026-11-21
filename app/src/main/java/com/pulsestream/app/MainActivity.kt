@@ -1544,7 +1544,11 @@ private fun PulseNavGraph(
             DarkVideoSurface {
                 PlayerScreen(
                     repository = repository,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOpenDetail = { addonId, type, metaId ->
+                        navController.popBackStack()
+                        openResolvedDetail(addonId, type, metaId)
+                    }
                 )
             }
         }
