@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,6 +13,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,15 +46,11 @@ import com.pulsestream.app.data.WatchProgressPullResult
 import com.pulsestream.app.data.WatchProgressSource
 import com.pulsestream.app.data.tracking.TrackingLibrarySource
 import com.pulsestream.app.data.tracking.TrackingProgressSource
-import com.pulsestream.app.data.tracking.TrackingRatingsSource
-import com.pulsestream.app.data.tracking.effectiveRatingsSource
-import com.pulsestream.app.data.tracking.isAnilistLinked
-import com.pulsestream.app.data.tracking.isMdblistLinked
-import com.pulsestream.app.data.tracking.isPublicMetaDbLinked
 import com.pulsestream.app.data.tracking.isSimklLinked
-import com.pulsestream.app.data.tracking.isWetrakrLinked
 import com.pulsestream.app.data.tracking.isTraktLinked
+import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
+import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -70,7 +73,6 @@ fun TrackingSettingsScreen(
 
     var libraryPickerOpen by remember { mutableStateOf(false) }
     var progressPickerOpen by remember { mutableStateOf(false) }
-    var ratingsPickerOpen by remember { mutableStateOf(false) }
     // Step 62: resume-position source + manual pull.
     var resumePickerOpen by remember { mutableStateOf(false) }
     val watchProgressPull = remember { WatchProgressPull(settings) }
@@ -81,20 +83,12 @@ fun TrackingSettingsScreen(
 
     val traktLinked = remember(tick) { settings.isTraktLinked() }
     val simklLinked = remember(tick) { settings.isSimklLinked() }
-    val anilistLinked = remember(tick) { settings.isAnilistLinked() }
-    val wetrakrLinked = remember(tick) { settings.isWetrakrLinked() }
-    val publicMetaDbLinked = remember(tick) { settings.isPublicMetaDbLinked() }
-    val mdblistLinked = remember(tick) { settings.isMdblistLinked() }
     val librarySource = remember(tick) {
         TrackingLibrarySource.fromStored(settings.trackingLibrarySource)
     }
     val progressSource = remember(tick) {
         TrackingProgressSource.fromStored(settings.trackingProgressSource)
     }
-    val ratingsSource = remember(tick) {
-        TrackingRatingsSource.fromStored(settings.trackingRatingsSource)
-    }
-    val effectiveRatings = remember(tick) { settings.effectiveRatingsSource() }
     // Step 62: resume-position source (local / Trakt / Simkl).
     val resumeSource = remember(tick) {
         WatchProgressSource.fromStored(settings.watchProgressSource)
@@ -131,15 +125,17 @@ fun TrackingSettingsScreen(
                         color = TextPrimary,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
-                    Text(
-                        text = "Trakt — ${if (traktLinked) "linked" else "not linked"}\n" +
-                            "Simkl — ${if (simklLinked) "linked" else "not linked"}\n" +
-                            "AniList — ${if (anilistLinked) "linked" else "not linked"}\n" +
-                            "WeTrakr — ${if (wetrakrLinked) "linked" else "not linked"}\n" +
-                            "PublicMetaDB — ${if (publicMetaDbLinked) "linked" else "not linked"}\n" +
-                            "MDBList — ${if (mdblistLinked) "linked" else "not linked"}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                    TrackingLinkedRow(
+                        icon = Icons.Filled.Sync,
+                        title = "Trakt",
+                        subtitle = "Sync watched history and progress",
+                        linked = traktLinked
+                    )
+                    TrackingLinkedRow(
+                        icon = Icons.Filled.CloudQueue,
+                        title = "Simkl",
+                        subtitle = "Sync watched history and progress",
+                        linked = simklLinked
                     )
                     Text(
                         text = "Link services in Settings > Integrations.",
@@ -150,16 +146,13 @@ fun TrackingSettingsScreen(
                 }
                 item {
                     TrackingPickerRow(
+                        icon = Icons.Filled.Folder,
                         title = "Library source",
                         subtitle = "Which service's watchlist and lists show in the Library",
                         valueLabel = librarySource.label,
                         note = when (librarySource) {
                             TrackingLibrarySource.TRAKT -> linkedNote("trakt", traktLinked, "all linked services")
                             TrackingLibrarySource.SIMKL -> linkedNote("simkl", simklLinked, "all linked services")
-                            TrackingLibrarySource.ANILIST -> linkedNote("anilist", anilistLinked, "all linked services")
-                            TrackingLibrarySource.WETRAKR -> linkedNote("wetrakr", wetrakrLinked, "all linked services")
-                            TrackingLibrarySource.PUBLICMETADB -> linkedNote("publicmetadb", publicMetaDbLinked, "all linked services")
-                            TrackingLibrarySource.MDBLIST -> linkedNote("mdblist", mdblistLinked, "all linked services")
                             else -> null
                         },
                         onClick = { libraryPickerOpen = true }
@@ -167,50 +160,23 @@ fun TrackingSettingsScreen(
                 }
                 item {
                     TrackingPickerRow(
+                        icon = Icons.Filled.PlayArrow,
                         title = "Up Next source",
                         subtitle = "Which service's watch progress feeds Up Next",
                         valueLabel = progressSource.label,
                         note = when (progressSource) {
                             TrackingProgressSource.TRAKT -> linkedNote("trakt", traktLinked, "all linked services")
                             TrackingProgressSource.SIMKL -> linkedNote("simkl", simklLinked, "all linked services")
-                            TrackingProgressSource.ANILIST -> linkedNote("anilist", anilistLinked, "all linked services")
-                            TrackingProgressSource.WETRAKR -> linkedNote("wetrakr", wetrakrLinked, "all linked services")
-                            TrackingProgressSource.PUBLICMETADB -> linkedNote("publicmetadb", publicMetaDbLinked, "all linked services")
-                            TrackingProgressSource.MDBLIST -> linkedNote("mdblist", mdblistLinked, "all linked services")
                             else -> null
                         },
                         onClick = { progressPickerOpen = true }
                     )
                 }
-                item {
-                    TrackingPickerRow(
-                        title = "Ratings source",
-                        subtitle = "Which service's community score shows in the ratings sheet",
-                        valueLabel = ratingsSource.label,
-                        note = when (ratingsSource) {
-                            TrackingRatingsSource.ANILIST ->
-                                if (!anilistLinked) "AniList isn't linked — showing Trakt ratings instead." else null
-                            TrackingRatingsSource.WETRAKR ->
-                                if (!wetrakrLinked) "WeTrakr isn't linked — showing Trakt ratings instead." else null
-                            TrackingRatingsSource.MDBLIST ->
-                                if (!mdblistLinked) "MDBList isn't linked — showing Trakt ratings instead." else null
-                            else -> null
-                        },
-                        onClick = { ratingsPickerOpen = true }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    if (effectiveRatings != ratingsSource) {
-                        Text(
-                            text = "Showing ${effectiveRatings.label} ratings (your pick isn't linked).",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
-                    }
-                }
                 // Step 62: resume-position source — where in-progress
                 // playback positions come from when this device has none.
                 item {
                     TrackingPickerRow(
+                        icon = Icons.Filled.Refresh,
                         title = "Resume position source",
                         subtitle = "Pull in-progress positions from another device; local progress always wins when it exists",
                         valueLabel = resumeSource.label,
@@ -303,19 +269,6 @@ fun TrackingSettingsScreen(
             onDismiss = { progressPickerOpen = false }
         )
     }
-    if (ratingsPickerOpen) {
-        TrackingSingleSelectDialog(
-            title = "Ratings source",
-            options = TrackingRatingsSource.entries.map { it.stored to it.label },
-            selected = ratingsSource.stored,
-            onSelect = {
-                settings.trackingRatingsSource = it
-                tick++
-                ratingsPickerOpen = false
-            },
-            onDismiss = { ratingsPickerOpen = false }
-        )
-    }
     if (resumePickerOpen) {
         TrackingSingleSelectDialog(
             title = "Resume position source",
@@ -347,38 +300,96 @@ fun TrackingSettingsScreen(
     }
 }
 
+/**
+ * Picker rows, restyled 2026-11-22 to the app's standard settings row
+ * (SettingsStaticRow): a GlassCard with 14dp inside and 5dp between
+ * cards, icon tile on the left. The old plain rows had no card, no icon
+ * and only 10dp vertical padding, so they sat tighter and flatter than
+ * every other settings row. The LazyColumn already supplies the 16dp
+ * horizontal inset, so the card itself adds none.
+ */
 @Composable
 private fun TrackingPickerRow(
+    icon: ImageVector,
     title: String,
     subtitle: String,
     valueLabel: String,
     note: String?,
     onClick: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp)
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        onClick = onClick
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = TextPrimary,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = valueLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = valueLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                if (note != null) {
+                    Text(
+                        note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
         }
-        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        if (note != null) {
+    }
+}
+
+@Composable
+private fun TrackingLinkedRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    linked: Boolean,
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        onClick = null
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+            Spacer(Modifier.width(12.dp))
             Text(
-                note,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 2.dp)
+                text = if (linked) "Linked" else "Not linked",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (linked) LocalPalette.current.accent else TextSecondary
             )
         }
     }

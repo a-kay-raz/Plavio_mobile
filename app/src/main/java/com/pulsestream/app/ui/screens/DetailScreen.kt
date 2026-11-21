@@ -160,7 +160,6 @@ import com.pulsestream.app.data.PlaybackRequest
 import com.pulsestream.app.data.BrowsingPrivacy
 import com.pulsestream.app.data.OmdbClient
 import com.pulsestream.app.data.OmdbRating
-import com.pulsestream.app.data.tracking.effectiveRatingsSource
 import com.pulsestream.app.data.trakt.TraktApi
 import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.data.UserRatings
@@ -802,82 +801,30 @@ private fun DetailContent(
     var omdbRatings by remember { mutableStateOf<List<OmdbRating>?>(null) }
     // Trakt community rating (Step 33): public endpoint, no login needed.
     var traktTitleRatings by remember { mutableStateOf<TraktApi.TraktTitleRatings?>(null) }
-    // Step 52: AniList mean score (0–100) when it is the ratings source.
-    var anilistAverage by remember { mutableStateOf<Int?>(null) }
-    // Step 53: WeTrakr rating (1–10) when it is the ratings source.
-    var wetrakrRating by remember { mutableStateOf<Int?>(null) }
-    // Step 54: MDBList rating (1–10, the user's own) when it is the source.
-    var mdblistRating by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(meta.id, settings.trackingRatingsSource) {
+    // Ratings source is Trakt only now (the ported AniList / WeTrakr /
+    // MDBList providers were removed 2026-11-22): Trakt community rating
+    // (Step 33, public endpoint, no login needed).
+    LaunchedEffect(meta.id) {
         omdbRatings = null
         traktTitleRatings = null
-        anilistAverage = null
-        wetrakrRating = null
-        mdblistRating = null
         val key = settings.omdbApiKey
         val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
         if (!key.isNullOrBlank() && imdbId != null) {
             omdbRatings = OmdbClient.fetchRatings(key, imdbId)
         }
-        when (settings.effectiveRatingsSource()) {
-            com.pulsestream.app.data.tracking.TrackingRatingsSource.ANILIST -> {
-                if (imdbId != null) {
-                    val anilistId = runCatching {
-                        com.pulsestream.app.data.anilist.AniListApi.anilistForImdb(imdbId)
-                    }.getOrNull()
-                    if (anilistId != null) {
-                        anilistAverage = runCatching {
-                            com.pulsestream.app.data.anilist.AniListApi.getMediaAverageScore(
-                                settings.anilistAccessToken, anilistId
-                            )
-                        }.getOrNull()
-                    }
-                }
-            }
-            com.pulsestream.app.data.tracking.TrackingRatingsSource.WETRAKR -> {
-                // WeTrakr keys are IMDb ids, or "tmdb:<id>" when a title
-                // has no IMDb id; fall back to the meta id itself.
-                val lookupId = imdbId ?: meta.id.takeIf { it.startsWith("tmdb:") }
-                if (lookupId != null) {
-                    val ratings = runCatching {
-                        com.pulsestream.app.data.wetrakr.WeTrakrApi.getRatings(settings)
-                    }.getOrNull().orEmpty()
-                    wetrakrRating = ratings[lookupId]
-                }
-            }
-            com.pulsestream.app.data.tracking.TrackingRatingsSource.MDBLIST -> {
-                val lookupId = imdbId ?: meta.id.takeIf { it.startsWith("tmdb:") }
-                if (lookupId != null) {
-                    val ratings = runCatching {
-                        com.pulsestream.app.data.mdblist.MdbListApi.getRatings(settings)
-                    }.getOrNull().orEmpty()
-                    mdblistRating = ratings[lookupId]
-                }
-            }
-            else -> {
-                if (imdbId != null) {
-                    traktTitleRatings = runCatching {
-                        TraktApi().getTitleRatings(imdbId, meta.type)
-                    }.getOrNull()
-                }
-            }
+        if (imdbId != null) {
+            traktTitleRatings = runCatching {
+                TraktApi().getTitleRatings(imdbId, meta.type)
+            }.getOrNull()
         }
     }
     // Provider scores: OMDb's matrix when loaded, else the meta's IMDb value,
-    // plus the picked service's community average when it has one.
-    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings, anilistAverage, wetrakrRating, mdblistRating) {
+    // plus Trakt's community average when it has one.
+    val providerRatings = remember(meta.imdbRating, omdbRatings, traktTitleRatings) {
         val base = if (!omdbRatings.isNullOrEmpty()) omdbRatings!!
             else meta.imdbRating?.takeIf { it.isNotBlank() }
                 ?.let { listOf(OmdbRating("Internet Movie Database", it)) } ?: emptyList()
-        val community = if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.ANILIST) {
-            anilistAverage?.let { OmdbRating("AniList", "%.1f/10".format(it / 10.0)) }
-        } else if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.WETRAKR) {
-            wetrakrRating?.let { OmdbRating("WeTrakr", "%.1f/10".format(it.toDouble())) }
-        } else if (settings.effectiveRatingsSource() == com.pulsestream.app.data.tracking.TrackingRatingsSource.MDBLIST) {
-            mdblistRating?.let { OmdbRating("MDBList", "%.1f/10".format(it.toDouble())) }
-        } else {
-            traktTitleRatings?.let { OmdbRating("Trakt", "%.1f/10".format(it.rating)) }
-        }
+        val community = traktTitleRatings?.let { OmdbRating("Trakt", "%.1f/10".format(it.rating)) }
         if (community != null) base + community else base
     }
     // The user's own Trakt rating (1–10, Step 33): fetched lazily when the

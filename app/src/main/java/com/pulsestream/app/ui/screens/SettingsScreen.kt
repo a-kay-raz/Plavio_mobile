@@ -389,7 +389,7 @@ fun SettingsScreen(
             )
         },
         SettingsEntry(sectionGeneral, "Tracking",
-            "tracking trakt simkl anilist library progress ratings source") {
+            "tracking trakt simkl library progress ratings source") {
             SettingsNavRow(
                 icon = Icons.Filled.Sync,
                 title = "Tracking",
@@ -1366,7 +1366,7 @@ fun AboutCard() {
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = "Data: TMDB • Fanart.tv • MDBList • Cinemeta • OpenSubtitles • IntroDB",
+                    text = "Data: TMDB • Fanart.tv • Cinemeta • OpenSubtitles • IntroDB",
                     style = MaterialTheme.typography.labelMedium,
                     color = TextSecondary,
                     textAlign = TextAlign.Center

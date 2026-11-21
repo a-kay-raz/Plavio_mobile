@@ -459,9 +459,8 @@ object TmdbClient {
     }
 
     /**
-     * Step 53: TMDB id -> IMDb id (GET /movie|tv/{id} -> imdb_id). Used to
-     * resolve PublicMetaDB's TMDB-keyed entries to Plavio meta ids. Null
-     * when there is no TMDB key or the title has no IMDb id.
+     * TMDB id -> IMDb id (GET /movie|tv/{id} -> imdb_id). Null when there
+     * is no TMDB key or the title has no IMDb id.
      */
     suspend fun getImdbId(
         settings: SettingsStore,
