@@ -220,7 +220,11 @@ fun HomeCatalogsScreen(
 
             if (prefs.heroEnabled) {
                 item(key = "hero_header") { HomeSectionHeader("HERO SOURCES") }
-                items(visiblePrefs, key = { it.key }) { pref ->
+                // Keys are prefixed per section: the hero list and the
+                // catalog list render the SAME prefs, and LazyColumn keys
+                // must be unique across the whole list — unprefixed keys
+                // crashed on scroll (duplicate key, dev-7).
+                items(visiblePrefs, key = { "hero:${it.key}" }) { pref ->
                     val row = rowByKey[pref.key] ?: return@items
                     HeroSourceRow(
                         title = prefs.displayTitle(row),
@@ -255,7 +259,7 @@ fun HomeCatalogsScreen(
                     )
                 }
             } else {
-                items(visiblePrefs, key = { it.key }) { pref ->
+                items(visiblePrefs, key = { "row:${it.key}" }) { pref ->
                     val row = rowByKey[pref.key] ?: return@items
                     val idx = visiblePrefs.indexOfFirst { it.key == pref.key }
                     HomeCatalogRow(
@@ -299,7 +303,7 @@ fun HomeCatalogsScreen(
                     }
                 }
                 if (showHidden) {
-                    items(hiddenPrefs, key = { it.key }) { pref ->
+                    items(hiddenPrefs, key = { "hidden:${it.key}" }) { pref ->
                         val row = rowByKey[pref.key] ?: return@items
                         val idx = hiddenPrefs.indexOfFirst { it.key == pref.key }
                         HomeCatalogRow(
