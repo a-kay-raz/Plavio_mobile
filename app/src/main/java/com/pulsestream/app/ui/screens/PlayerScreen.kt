@@ -105,6 +105,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -200,6 +201,10 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import com.pulsestream.app.data.AUDIO_DELAY_MAX_MS
+import com.pulsestream.app.data.AUDIO_DELAY_MIN_MS
+import com.pulsestream.app.data.AUDIO_DELAY_STEP_MS
+import com.pulsestream.app.data.AudioDelayMediaSourceFactory
 import com.pulsestream.app.data.BingeGroupCache
 import com.pulsestream.app.data.CachedStreamLink
 import com.pulsestream.app.data.FilenameEpisodeMatcher
@@ -265,6 +270,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -537,6 +543,31 @@ fun PlayerScreen(
      * Shared by [buildPlaybackMediaSource] and the player's own factory so
      * later setMediaItem calls use the same networking.
      */
+    // Step 65: audio delay (lip-sync). The value lives in an AtomicLong
+    // so the AudioDelayMediaSourceFactory's provider reads it live from
+    // the renderer thread — the slider applies without re-preparing —
+    // and in state + SettingsStore so the modal shows it and it
+    // persists. Seeded from settings so a set delay applies on the
+    // next title too. Declared here (before buildPlaybackMediaSource)
+    // because that factory builder reads the ref.
+    val audioDelayUsRef = remember { AtomicLong(settings.audioDelayMs * 1000L) }
+    var audioDelayMs by remember { mutableIntStateOf(settings.audioDelayMs) }
+    fun setAudioDelayMs(ms: Int) {
+        val clamped = ms.coerceIn(AUDIO_DELAY_MIN_MS, AUDIO_DELAY_MAX_MS)
+        audioDelayMs = clamped
+        audioDelayUsRef.set(clamped * 1000L)
+        settings.audioDelayMs = clamped
+    }
+    fun formatAudioDelay(ms: Int): String {
+        val sign = when {
+            ms > 0 -> "+"
+            ms < 0 -> "-"
+            else -> ""
+        }
+        val absoluteMs = kotlin.math.abs(ms)
+        return "$sign${absoluteMs / 1000}.${(absoluteMs % 1000).toString().padStart(3, '0')}s"
+    }
+
     fun playbackMediaSourceFactory(req: PlaybackRequest): MediaSource.Factory {
         val playbackHeaders = PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv)
         // HLS variant temp playlists are file:// URLs — the HTTP origin is
@@ -567,7 +598,15 @@ fun PlayerScreen(
         subs: List<ResolvedSubtitle> = emptyList(),
         forcedMime: String? = null
     ): MediaSource {
-        val mediaSourceFactory = playbackMediaSourceFactory(req)
+        // Step 65: wrap the factory so video sample timestamps shift
+        // by the audio delay (audio is the master clock) — the delay
+        // provider reads the AtomicLong live, no re-prepare needed.
+        // This is the single choke point: buildExo and the quality
+        // switch (replaceStream) both build sources here.
+        val mediaSourceFactory = AudioDelayMediaSourceFactory(
+            playbackMediaSourceFactory(req),
+            audioDelayUsRef::get
+        )
         // Nuvio parity: infer HLS/DASH from the FULL URL (path + query) so
         // proxied URLs like /api/manifest?url=<encoded ...m3u8> play as HLS
         // instead of being misidentified as progressive.
@@ -4561,6 +4600,51 @@ fun PlayerScreen(
                             )
                             Text(
                                 "Boosts quiet audio above the system max volume.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
+                            )
+                        }
+                        item {
+                            Text(
+                                "Audio delay",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
+                            )
+                            // Step 65 (Nuvio AudioDelaySection): a slider
+                            // for lip-sync, +/-60s in 100ms steps, live —
+                            // the value applies at once and persists. A
+                            // positive delay means the audio plays later
+                            // than the video.
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Slider(
+                                    value = audioDelayMs.toFloat(),
+                                    onValueChange = { setAudioDelayMs(it.roundToInt()) },
+                                    valueRange = AUDIO_DELAY_MIN_MS.toFloat()..AUDIO_DELAY_MAX_MS.toFloat(),
+                                    steps = (AUDIO_DELAY_MAX_MS - AUDIO_DELAY_MIN_MS) / AUDIO_DELAY_STEP_MS - 1,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    formatAudioDelay(audioDelayMs),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary,
+                                    modifier = Modifier.widthIn(min = 64.dp),
+                                    textAlign = TextAlign.End
+                                )
+                                TextButton(
+                                    onClick = { setAudioDelayMs(0) },
+                                    enabled = audioDelayMs != 0
+                                ) {
+                                    Text("Reset")
+                                }
+                            }
+                            Text(
+                                "Shifts audio against the video. Positive = audio later.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary,
                                 modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
