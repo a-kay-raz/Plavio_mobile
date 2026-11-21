@@ -1781,10 +1781,11 @@ class StreamRepository(
         season: Int = 0,
         episode: Int = 0
     ) = withContext(Dispatchers.IO) {
-        // Watched pill: crossing 90% counts as watched (the same spirit as
-        // the scrobblers). Recorded before the early returns below, so
-        // finishing a title always lands here first.
-        if (durationMs > 0 && positionMs >= durationMs * 9 / 10) {
+        // Watched pill (Nuvio WatchedThresholdSettings): crossing the
+        // configured % counts as watched (default 90). Recorded before the
+        // early returns below, so finishing a title always lands here first.
+        val watchedThreshold = settings.watchedThresholdPercent
+        if (durationMs > 0 && positionMs * 100L >= durationMs * watchedThreshold) {
             val watchedKey = if (season > 0 || episode > 0) {
                 WatchedMarks.episodeKey(imdbId ?: videoId.substringBefore(":"), season, episode)
             } else {
