@@ -191,7 +191,9 @@ internal fun PlayerSourcesContent(
             }
             streamListItems(streams = browser.filtered, onPick = onPick, selectedUrl = selectedUrl,
                 // Step 35: hide the download button when the setting is off.
-                onDownload = if (settings?.showDownloadButton != false) onDownload else null, compact = true)
+                onDownload = if (settings?.showDownloadButton != false) onDownload else null, compact = true,
+                // Step 44: debrid name/description templates rename debrid rows.
+                settings = settings)
         } else {
             item {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,

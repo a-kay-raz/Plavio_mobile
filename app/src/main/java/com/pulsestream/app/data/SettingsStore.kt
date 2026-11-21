@@ -714,6 +714,77 @@ class SettingsStore(context: Context) {
         smartFilterHideLowQuality = true
     }
 
+    // Debrid stream preferences (Step 44) — applied in applyStreamPreferences.
+    // ------------------------------------------------------------------
+
+    /** Minimum resolution for listed streams: "any" | "720" | "1080" | "2160". */
+    var debridMinQuality: String
+        get() = prefs.getString(KEY_DEBRID_MIN_QUALITY, "any") ?: "any"
+        set(value) = prefs.edit().putString(KEY_DEBRID_MIN_QUALITY, value).apply()
+
+    /** Dolby Vision filter: "any" | "only" | "exclude". */
+    var debridDvFilter: String
+        get() = prefs.getString(KEY_DEBRID_DV_FILTER, "any") ?: "any"
+        set(value) = prefs.edit().putString(KEY_DEBRID_DV_FILTER, value).apply()
+
+    /** HDR filter (HDR10 / HDR10+ / DV): "any" | "only" | "exclude". */
+    var debridHdrFilter: String
+        get() = prefs.getString(KEY_DEBRID_HDR_FILTER, "any") ?: "any"
+        set(value) = prefs.edit().putString(KEY_DEBRID_HDR_FILTER, value).apply()
+
+    /** Codec filter: "any" | "h264" | "hevc" | "av1". */
+    var debridCodecFilter: String
+        get() = prefs.getString(KEY_DEBRID_CODEC_FILTER, "any") ?: "any"
+        set(value) = prefs.edit().putString(KEY_DEBRID_CODEC_FILTER, value).apply()
+
+    private fun debridTagSet(key: String): Set<String> =
+        prefs.getString(key, "")?.split(",")?.map { it.trim().lowercase() }
+            ?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+
+    private fun setDebridTagSet(key: String, value: Set<String>) =
+        prefs.edit().putString(key, value.joinToString(", ")).apply()
+
+    /** Preferred tag substrings (comma-separated): matching streams sort first. */
+    var debridPreferredTags: Set<String>
+        get() = debridTagSet(KEY_DEBRID_PREFERRED_TAGS)
+        set(value) = setDebridTagSet(KEY_DEBRID_PREFERRED_TAGS, value)
+
+    /** Required tag substrings (comma-separated): a stream must contain all of them. */
+    var debridRequiredTags: Set<String>
+        get() = debridTagSet(KEY_DEBRID_REQUIRED_TAGS)
+        set(value) = setDebridTagSet(KEY_DEBRID_REQUIRED_TAGS, value)
+
+    /** Excluded tag substrings (comma-separated): a stream containing any is hidden. */
+    var debridExcludedTags: Set<String>
+        get() = debridTagSet(KEY_DEBRID_EXCLUDED_TAGS)
+        set(value) = setDebridTagSet(KEY_DEBRID_EXCLUDED_TAGS, value)
+
+    /** Name template for debrid-resolved rows ({resolution} {service} …); blank = keep the addon name. */
+    var debridNameTemplate: String
+        get() = prefs.getString(KEY_DEBRID_NAME_TEMPLATE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_DEBRID_NAME_TEMPLATE, value).apply()
+
+    /** Description template for debrid-resolved rows; blank = no extra line. */
+    var debridDescriptionTemplate: String
+        get() = prefs.getString(KEY_DEBRID_DESCRIPTION_TEMPLATE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_DEBRID_DESCRIPTION_TEMPLATE, value).apply()
+
+    /** The debrid stream filter prefs the list pipeline reads. */
+    fun debridStreamFilterPrefs(): DebridStreamFilterPrefs = DebridStreamFilterPrefs(
+        minQualityLines = when (debridMinQuality) {
+            "720" -> 720
+            "1080" -> 1080
+            "2160" -> 2160
+            else -> 0
+        },
+        dvFilter = debridDvFilter,
+        hdrFilter = debridHdrFilter,
+        codecFilter = debridCodecFilter,
+        preferredTags = debridPreferredTags,
+        requiredTags = debridRequiredTags,
+        excludedTags = debridExcludedTags,
+    )
+
     /**
      * On-disk playback cache size in MB (0 = off). Caches progressive
      * media so re-watches don't re-download. HLS/DASH segments are cached
@@ -1638,6 +1709,15 @@ class SettingsStore(context: Context) {
         private const val KEY_SMART_FILTER_MAX_SIZE_GB = "smart_filter_max_size_gb"
         private const val KEY_SMART_FILTER_INSTANT_ONLY = "smart_filter_instant_only"
         private const val KEY_SMART_FILTER_HIDE_LOW_QUALITY = "smart_filter_hide_low_quality"
+        private const val KEY_DEBRID_MIN_QUALITY = "debrid_min_quality"
+        private const val KEY_DEBRID_DV_FILTER = "debrid_dv_filter"
+        private const val KEY_DEBRID_HDR_FILTER = "debrid_hdr_filter"
+        private const val KEY_DEBRID_CODEC_FILTER = "debrid_codec_filter"
+        private const val KEY_DEBRID_PREFERRED_TAGS = "debrid_preferred_tags"
+        private const val KEY_DEBRID_REQUIRED_TAGS = "debrid_required_tags"
+        private const val KEY_DEBRID_EXCLUDED_TAGS = "debrid_excluded_tags"
+        private const val KEY_DEBRID_NAME_TEMPLATE = "debrid_name_template"
+        private const val KEY_DEBRID_DESCRIPTION_TEMPLATE = "debrid_description_template"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"
