@@ -254,6 +254,12 @@ val DISK_CACHE_OPTIONS: List<Pair<Int, String>> = listOf(
 /** Watched-threshold options in % (Nuvio WatchedThresholdSettings.options). */
 val WATCHED_THRESHOLD_OPTIONS: List<Int> = listOf(80, 85, 90, 95, 99)
 
+/** Double-tap skip options, seconds (Nuvio PlayerSkipSecondsOptions). */
+val SKIP_SECONDS_OPTIONS: List<Int> = listOf(5, 10, 15, 30)
+
+private fun normalizeSkipSeconds(seconds: Int?): Int =
+    seconds?.takeIf { it in SKIP_SECONDS_OPTIONS } ?: 10
+
 fun diskCacheName(mb: Int): String =
     DISK_CACHE_OPTIONS.find { it.first == mb }?.second
         ?: if (mb <= 0) "Off" else "$mb MB"
@@ -430,6 +436,26 @@ class SettingsStore(context: Context) {
     var watchedThresholdPercent: Int
         get() = prefInt(KEY_WATCHED_THRESHOLD_PERCENT, 90).coerceIn(80, 99)
         set(value) = prefs.edit().putInt(KEY_WATCHED_THRESHOLD_PERCENT, value.coerceIn(80, 99)).apply()
+
+    /** Double-tap skip backward, seconds (Nuvio skipBackwardSeconds). Options 5/10/15/30, default 10. */
+    var skipBackwardSeconds: Int
+        get() = normalizeSkipSeconds(prefInt(KEY_SKIP_BACKWARD_SECONDS, 10))
+        set(value) = prefs.edit().putInt(KEY_SKIP_BACKWARD_SECONDS, normalizeSkipSeconds(value)).apply()
+
+    /** Double-tap skip forward, seconds (Nuvio skipForwardSeconds). */
+    var skipForwardSeconds: Int
+        get() = normalizeSkipSeconds(prefInt(KEY_SKIP_FORWARD_SECONDS, 10))
+        set(value) = prefs.edit().putInt(KEY_SKIP_FORWARD_SECONDS, normalizeSkipSeconds(value)).apply()
+
+    /** Master touch-gesture switch (Nuvio touchGesturesEnabled). Off = tap-only: no double-tap skip, drags or hold. */
+    var touchGesturesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TOUCH_GESTURES_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_TOUCH_GESTURES_ENABLED, value).apply()
+
+    /** Horizontal swipe seeks (Nuvio swipeToSeekEnabled). Only applies while touch gestures are on. */
+    var swipeToSeekEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SWIPE_TO_SEEK_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_SWIPE_TO_SEEK_ENABLED, value).apply()
 
     /** Keep the screen awake while the player is open. */
     var keepScreenOn: Boolean
@@ -1003,6 +1029,10 @@ class SettingsStore(context: Context) {
         private const val KEY_BUFFER_FOR_PLAYBACK_MS = "buffer_for_playback_ms"
         private const val KEY_DISK_CACHE_MB = "disk_cache_mb"
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
+        private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"
+        private const val KEY_SKIP_FORWARD_SECONDS = "skip_forward_seconds"
+        private const val KEY_TOUCH_GESTURES_ENABLED = "touch_gestures_enabled"
+        private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         
         private const val KEY_AUDIO_LANG = "preferred_audio_language"
