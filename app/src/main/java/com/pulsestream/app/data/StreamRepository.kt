@@ -377,6 +377,12 @@ class StreamRepository(
         enabledAddons().filter { it.hasCatalog }
     }
 
+    /** Paged catalog fetch (Step 19): Stremio skip= page, 100 per page. */
+    suspend fun fetchCatalogPage(baseUrl: String, type: String, catalogId: String, skip: Int): List<MetaPreview> =
+        withContext(Dispatchers.IO) {
+            api.fetchCatalogPage(baseUrl, type, catalogId, skip)
+        }
+
     /**
      * Trending movies + series for the Trailers tab. PlavioMeta first (its
      * metas carry trailerStreams), then any other enabled catalog addon.

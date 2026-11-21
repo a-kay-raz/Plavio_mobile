@@ -100,6 +100,19 @@ class StremioApi {
         StremioParser.parseCatalog(get(endpoint(baseUrl, "catalog", type, catalogId)), type)
 
     /**
+     * Paged catalog fetch (Step 19, Nuvio CatalogRepository): Stremio
+     * skip= page, 100 per page — {base}/catalog/{type}/{id}/skip={n}.json.
+     * skip=0 is the plain first page. Addons that ignore skip repeat
+     * page 1; the caller dedupes and stops.
+     */
+    suspend fun fetchCatalogPage(baseUrl: String, type: String, catalogId: String, skip: Int): List<MetaPreview> =
+        if (skip <= 0) fetchCatalog(baseUrl, type, catalogId)
+        else StremioParser.parseCatalog(
+            get(endpoint(baseUrl, "catalog", type, catalogId, "skip=$skip")),
+            type
+        )
+
+    /**
      * Genre-filtered catalog, e.g. {base}/catalog/movie/top/genre=Action.json.
      * Only fired at catalogs that declare the "genre" extra — others 404
      * and the caller swallows it.
