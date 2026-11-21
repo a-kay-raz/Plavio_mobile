@@ -155,6 +155,25 @@ class StreamRepository(
     }
 
     /**
+     * Honest install-failure text for the setup/onboarding screens. A server
+     * that answers at all is NOT the user's connection — e.g. PlavioMeta's
+     * Vercel deployment disabled answers HTTP 402 (DEPLOYMENT_DISABLED), and
+     * blaming the network then is wrong. Only a failure to reach the host
+     * at all (DNS/connect/timeout) is a connection problem.
+     */
+    internal fun addonInstallFailureMessage(error: Throwable?): String = when (error) {
+        is BoundedHttp.HttpFailure ->
+            "The addon server answered HTTP ${error.statusCode} — it is down right now, not your connection."
+        is java.net.UnknownHostException,
+        is java.net.ConnectException ->
+            "Couldn't add it — check your connection and try again."
+        is java.net.SocketTimeoutException ->
+            "Couldn't add it — the server took too long to answer. Try again."
+        else -> error?.message?.takeIf { it.isNotBlank() }
+            ?: "Couldn't add it — check your connection and try again."
+    }
+
+    /**
      * Re-fetch an installed addon's manifest.json from its stored base URL
      * and update the local record (name, version, description, types,
      * resources, configure flag, logo). User-owned fields — enabled,

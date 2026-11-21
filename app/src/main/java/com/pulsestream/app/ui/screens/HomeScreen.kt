@@ -891,15 +891,26 @@ private fun NoAddonsEmptyState(
     val scope = rememberCoroutineScope()
     var metaStep by remember { mutableStateOf(SetupStepState.Idle) }
     var streamsStep by remember { mutableStateOf(SetupStepState.Idle) }
+    var metaFail by remember { mutableStateOf<String?>(null) }
+    var streamsFail by remember { mutableStateOf<String?>(null) }
 
-    fun add(url: String, set: (SetupStepState) -> Unit) {
+    fun add(
+        url: String,
+        set: (SetupStepState) -> Unit,
+        setFail: (String?) -> Unit
+    ) {
         set(SetupStepState.Adding)
+        setFail(null)
         scope.launch {
             val result = repository.addAddonFromUrl(url)
             if (result.isSuccess) {
                 set(SetupStepState.Added)
                 onReload()
             } else {
+                // Show the real reason: a server that answers (e.g.
+                // PlavioMeta's disabled deployment → HTTP 402) is not the
+                // user's connection.
+                setFail(repository.addonInstallFailureMessage(result.exceptionOrNull()))
                 set(SetupStepState.Failed)
             }
         }
@@ -929,14 +940,16 @@ private fun NoAddonsEmptyState(
             title = "Metadata",
             subtitle = "Posters, cast and episode guides \u2014 e.g. PlavioMeta",
             state = metaStep,
-            onAdd = { add(META_ADDON_URL) { metaStep = it } }
+            failText = metaFail,
+            onAdd = { add(META_ADDON_URL, { metaStep = it }, { metaFail = it }) }
         )
         SetupStepRow(
             number = 2,
             title = "Streams",
             subtitle = "Movies and shows to actually play \u2014 e.g. PlavioHD",
             state = streamsStep,
-            onAdd = { add(STREAMS_ADDON_URL) { streamsStep = it } }
+            failText = streamsFail,
+            onAdd = { add(STREAMS_ADDON_URL, { streamsStep = it }, { streamsFail = it }) }
         )
         Text(
             "Or tap \u201CAdd an addon\u201D below to paste any addon URL.",
@@ -970,7 +983,8 @@ private fun SetupStepRow(
     title: String,
     subtitle: String,
     state: SetupStepState,
-    onAdd: () -> Unit
+    onAdd: () -> Unit,
+    failText: String? = null
 ) {
     val palette = LocalPalette.current
     Row(
@@ -1008,7 +1022,7 @@ private fun SetupStepRow(
             )
             if (state == SetupStepState.Failed) {
                 Text(
-                    "Couldn't add it \u2014 check your connection and try again.",
+                    failText ?: "Couldn't add it \u2014 check your connection and try again.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
