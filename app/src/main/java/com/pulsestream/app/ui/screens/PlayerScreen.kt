@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Hd
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -943,9 +944,17 @@ fun PlayerScreen(
     // Resume prompt
     var resumeOfferMs by remember { mutableStateOf<Long?>(null) }
 
-    // Skip segments
-    var skipSegments by remember { mutableStateOf(emptyList<SkipSegment>()) }
+    // Skip segments: IntroDB intervals (per title) + chapter-derived
+    // intervals (per source) merge with chapters winning per type.
+    var apiSkipSegments by remember { mutableStateOf(emptyList<SkipSegment>()) }
+    var chapterSkipSegments by remember { mutableStateOf(emptyList<SkipSegment>()) }
+    val skipSegments = mergeSkipIntervals(apiSkipSegments, chapterSkipSegments, isMovie = currentRequest.isMovie)
     var activeSegment by remember { mutableStateOf<SkipSegment?>(null) }
+
+    // Chapters (Nuvio PlayerChapters): read once per source from the
+    // file itself (ExoPlayer's Matroska extractor skips them).
+    var chapters by remember { mutableStateOf<List<PlayerChapter>>(emptyList()) }
+    var chaptersOpen by remember { mutableStateOf(false) }
 
     // Subtitle search
     var subSearchOpen by remember { mutableStateOf(false) }
@@ -980,13 +989,14 @@ fun PlayerScreen(
     // they still dismiss themselves before this runs.)
     BackHandler {
         when {
-            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen -> {
+            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen || chaptersOpen -> {
                 tracksOpen = false
                 subSearchOpen = false
                 sourcesOpen = false
                 episodesOpen = false
                 qualityOpen = false
                 infoOpen = false
+                chaptersOpen = false
             }
             showControls && !locked -> showControls = false
             else -> onBack()
@@ -2454,7 +2464,7 @@ fun PlayerScreen(
 
     // Skip segments follow the title, not the source — fetch once per episode.
     LaunchedEffect(initialRequest.imdbId, initialRequest.season, initialRequest.episode) {
-        skipSegments = if (!initialRequest.imdbId.isNullOrBlank()) {
+        apiSkipSegments = if (!initialRequest.imdbId.isNullOrBlank()) {
             runCatching {
                 IntroDbApi().fetchSegments(
                     initialRequest.imdbId!!,
@@ -2464,6 +2474,22 @@ fun PlayerScreen(
                 )
             }.getOrDefault(emptyList())
         } else emptyList()
+    }
+
+    // Chapters follow the source, not the title — read once per stream URL
+    // from the file itself (ExoPlayer's Matroska extractor skips them).
+    // Local files and HLS/DASH playlists are skipped by the loader/gate.
+    LaunchedEffect(currentRequest.streamUrl) {
+        chapters = emptyList()
+        chapterSkipSegments = emptyList()
+        val req = currentRequest
+        if (!shouldReadChapters(req.mimeType, req.streamUrl)) return@LaunchedEffect
+        chapters = MatroskaChapterLoader.load(req.streamUrl, req.headers)
+    }
+
+    // Chapter-derived skip intervals: computed once the duration is known.
+    LaunchedEffect(chapters, durationMs) {
+        chapterSkipSegments = ChapterSkipIntervals.fromChapters(chapters, durationMs)
     }
 
     // Save on background so progress is never lost.
@@ -2606,7 +2632,7 @@ fun PlayerScreen(
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen ||
+        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen || chaptersOpen ||
             speedMenuOpen || resumeOfferMs != null || playerError != null
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -2677,7 +2703,7 @@ fun PlayerScreen(
     // container, so the remote can never stay dead. Skipped while a sheet or
     // dialog (separate window) legitimately owns focus.
     var rootHasFocus by remember { mutableStateOf(true) }
-    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen ||
+    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen || chaptersOpen ||
         speedMenuOpen || resumeOfferMs != null || downloadStream != null
     LaunchedEffect(rootHasFocus, isTv, sheetUp, showControls, playerError) {
         if (isTv && !rootHasFocus && !sheetUp && playerError == null) {
@@ -3068,6 +3094,7 @@ fun PlayerScreen(
                         positionMs = positionMs,
                         durationMs = durationMs,
                         bufferedMs = bufferedMs,
+                        chapterFractions = chapters.chapterMarkFractions(durationMs),
                         onSeek = {},
                         enabled = false,
                         isTv = isTv
@@ -3363,6 +3390,13 @@ fun PlayerScreen(
                                 label = "Audio",
                                 onClick = { trackTick++; tracksMode = "audio"; tracksOpen = true }
                             )
+                            if (chapters.isNotEmpty()) {
+                                PillBarButton(
+                                    icon = Icons.Filled.List,
+                                    label = "Chapters",
+                                    onClick = { chaptersOpen = true }
+                                )
+                            }
                             PillBarButton(
                                 icon = Icons.Filled.AspectRatio,
                                 label = aspectLabel,
@@ -3446,13 +3480,34 @@ fun PlayerScreen(
                             actionPill()
                         }
                     } else {
-                        // Chapter + end-time row (no chapters in Plavio —
-                        // end-time only, right-aligned).
+                        // Chapter + end-time row: the current chapter title
+                        // on the left (tap opens the Chapters panel), the
+                        // "Ends at" time on the right.
                         Row(
                             Modifier.fillMaxWidth().offset(y = (-19).dp).padding(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
+                            val chapterIndex = chapters.currentChapterIndex(positionMs)
+                            val chapterTitle = chapters.getOrNull(chapterIndex)?.title?.takeIf { it.isNotBlank() }
+                                ?: if (chapterIndex >= 0) "Chapter ${chapterIndex + 1}" else null
+                            if (chapterTitle != null) {
+                                Text(
+                                    chapterTitle,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 12.sp,
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                                        .clickable { chaptersOpen = true }
+                                )
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
                             endsAtText?.let {
                                 Text(
                                     it,
@@ -3468,6 +3523,7 @@ fun PlayerScreen(
                             positionMs = positionMs,
                             durationMs = durationMs,
                             bufferedMs = bufferedMs,
+                            chapterFractions = chapters.chapterMarkFractions(durationMs),
                             onSeek = { player.seekTo(it) },
                             modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
                             isTv = isTv,
@@ -3566,6 +3622,75 @@ fun PlayerScreen(
                     player.playWhenReady = true
                 }
             )
+        }
+
+        // Chapters panel (Nuvio PlayerChaptersPanel, bottom-sheet shape
+        // like the Audio sheet): time + title rows, current highlighted,
+        // tap seeks to the chapter and closes.
+        if (chaptersOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { chaptersOpen = false },
+                sheetState = rememberModalBottomSheetState(),
+                containerColor = Color(0xFF14141F)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
+                ) {
+                    item {
+                        Text(
+                            "Chapters",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                        )
+                    }
+                    val currentIndex = chapters.currentChapterIndex(positionMs)
+                    itemsIndexed(chapters, key = { index, chapter -> "chap_${index}_${chapter.startMs}" }) { index, chapter ->
+                        val isCurrent = index == currentIndex
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isCurrent) LocalPalette.current.accent.copy(alpha = 0.15f) else Color.Transparent)
+                                .clickable {
+                                    chaptersOpen = false
+                                    player.seekTo(chapter.startMs)
+                                    pokeIndicator(PlayerIndicator.Message(chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}"))
+                                }
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                formatMs(chapter.startMs),
+                                color = if (isCurrent) LocalPalette.current.accent else TextSecondary,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.width(14.dp))
+                            Text(
+                                chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}",
+                                color = TextPrimary,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isCurrent) {
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "Playing",
+                                    color = LocalPalette.current.accent,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Track switching: the Subs button opens the subtitle overlay
