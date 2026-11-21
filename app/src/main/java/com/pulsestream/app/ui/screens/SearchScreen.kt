@@ -88,6 +88,7 @@ import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.ShimmerPoster
 import com.pulsestream.app.ui.tv.tvFocusRing
 import com.pulsestream.app.data.CachedMeta
+import com.pulsestream.app.data.SearchSection
 import com.pulsestream.app.data.CastMember
 import com.pulsestream.app.data.SearchHistory
 import com.pulsestream.app.data.StreamRepository
@@ -120,6 +121,8 @@ fun SearchScreen(
     // when the search moves on (replaces the old remember(query) reset).
     var genreOwner by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<CachedMeta>>(emptyList()) }
+    // Step 71: the same results grouped into one section per addon.
+    var sections by remember { mutableStateOf<List<SearchSection>>(emptyList()) }
     // Actors matching the query (owner's order 2026-10-26 — search by
     // actor): name + photo, tap opens the actor page.
     var people by remember { mutableStateOf<List<CastMember>>(emptyList()) }
@@ -142,6 +145,15 @@ fun SearchScreen(
     val visibleResults = remember(queryResults, selectedGenre) {
         if (selectedGenre == null) queryResults
         else queryResults.filter { selectedGenre in it.meta.genres }
+    }
+    // Step 71: the sections with the genre filter applied — a section
+    // whose items all fall outside the genre drops out entirely.
+    val visibleSections = remember(sections, selectedGenre) {
+        sections.mapNotNull { section ->
+            val items = if (selectedGenre == null) section.items
+            else section.items.filter { selectedGenre in it.meta.genres }
+            if (items.isEmpty()) null else section.copy(items = items)
+        }
     }
     val clearRefinements = {
         selectedGenre = null
@@ -277,6 +289,7 @@ fun SearchScreen(
         val q = query.trim()
         if (q.isEmpty()) {
             results = emptyList()
+            sections = emptyList()
             people = emptyList()
             resultOwner = ""
             searching = false
@@ -291,8 +304,11 @@ fun SearchScreen(
         }
         searching = true
         delay(500)
-        val outcome = repository.searchAllWithStatus(q, selectedType)
-        results = outcome.results
+        // Step 71: one call returns the sections; the flat list is derived
+        // from them so the genre chips and empty states keep working.
+        val outcome = repository.searchAllSections(q, selectedType)
+        sections = outcome.sections
+        results = outcome.sections.flatMap { it.items }
         searchFailed = outcome.remoteFailed
         resultOwner = owner
         searching = false
@@ -1026,13 +1042,40 @@ fun SearchScreen(
                                         }
                                     }
                                 }
-                                itemsIndexed(
-                                    visibleResults,
-                                    key = { index, item -> "${item.addonId}_${item.meta.id}_$index" }
-                                ) { _, item ->
-                                    GridPoster(item) {
-                                        recordSettledSearch()
-                                        onOpenDetail(item.addonId, item.meta.type, item.meta.id)
+                                // Step 71: one section per addon — a
+                                // full-width header, then that addon's
+                                // posters in the same grid. The scroll
+                                // machinery above is untouched.
+                                visibleSections.forEach { section ->
+                                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                section.addonName,
+                                                color = TextPrimary,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                "${section.items.size}",
+                                                color = TextSecondary,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                    items(
+                                        section.items,
+                                        key = { item -> "${section.addonId}_${item.meta.id}" }
+                                    ) { item ->
+                                        GridPoster(item) {
+                                            recordSettledSearch()
+                                            onOpenDetail(item.addonId, item.meta.type, item.meta.id)
+                                        }
                                     }
                                 }
                             }

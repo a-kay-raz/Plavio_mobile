@@ -238,6 +238,23 @@ data class CachedMeta(
 /** Result of a search plus its failure signal (Nuvio SearchEmptyStateReason.RequestFailed). */
 data class SearchOutcome(val results: List<CachedMeta>, val remoteFailed: Boolean)
 
+/**
+ * Step 71: one search-results section per addon (Nuvio's orderedSections,
+ * Plavio scope: per ADDON, not per catalog — one section per addon is the
+ * user's own wording, and it matches how the remote fan-out already groups
+ * by addon). The server leg ("Plavio Search") is its own section.
+ */
+data class SearchSection(
+    val addonId: String,
+    val addonName: String,
+    val items: List<CachedMeta>
+)
+
+data class SearchSectionsOutcome(
+    val sections: List<SearchSection>,
+    val remoteFailed: Boolean
+)
+
 /** Everything the player needs, passed in-memory via the repository. */
 data class PlaybackRequest(
     val streamUrl: String,
