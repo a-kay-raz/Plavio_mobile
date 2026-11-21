@@ -142,8 +142,8 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // Pill-leaning radius (user's order 2026-10-20): big soft corners.
-    val shape = RoundedCornerShape(28.dp)
+    // Nuvio card radius (NuvioTokens.Radius.card = 24dp).
+    val shape = RoundedCornerShape(24.dp)
     val clickableMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
         modifier = modifier
@@ -202,13 +202,13 @@ fun PosterCard(
             .width(128.dp)
             .then(gestureModifier)
             .focusable()
-            .tvFocusRing(RoundedCornerShape(16.dp))
+            .tvFocusRing(RoundedCornerShape(12.dp))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(180.dp)
-                .liquidGlass(RoundedCornerShape(16.dp))
+                .liquidGlass(RoundedCornerShape(12.dp))
         ) {
             SafePosterImage(
                 model = tmdbSizedImage(meta.poster, "w342"),

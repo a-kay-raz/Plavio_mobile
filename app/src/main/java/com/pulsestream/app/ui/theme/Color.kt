@@ -8,18 +8,18 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 
-// Smoky slate, rather than near-black, is the default Liquid Glass canvas.
-// AMOLED remains a separate opt-in palette in [paletteFor].
-val BgDeep = Color(0xFF202630)
-val BgPanel = Color(0xFF303A47)
+// Nuvio-matched canvas (Nuvio WHITE theme): #0D0D0D background,
+// #1A1A1A elevated/panel — flat, no slate tint.
+val BgDeep = Color(0xFF0D0D0D)
+val BgPanel = Color(0xFF1A1A1A)
 // Raw values of the DARK design (the original constants). The public
 // names below read the ACTIVE palette, so Normal (light) mode re-skins
 // every screen that uses them; in Dark mode they resolve to exactly
 // these values.
-private val DarkTextPrimary = Color(0xFFF6F7FA)
-private val DarkTextSecondary = Color(0xFFC5CDD7)
-private val DarkGlassFill = Color.White.copy(alpha = 0.10f)
-private val DarkGlassBorder = Color.White.copy(alpha = 0.18f)
+private val DarkTextPrimary = Color(0xFFF5F7F8)
+private val DarkTextSecondary = Color(0xFFB8BEC5)
+private val DarkGlassFill = Color.White.copy(alpha = 0.06f)
+private val DarkGlassBorder = Color(0xFF252A2A)
 
 val TextPrimary: Color
     @Composable @ReadOnlyComposable get() = LocalPalette.current.textPrimary
@@ -124,7 +124,7 @@ val LocalPalette = compositionLocalOf {
  * (see SettingsStore.appTheme).
  */
 enum class AppTheme(val label: String, val blurb: String, val light: Boolean) {
-    ONYX("Onyx", "Pure black mono — flat charcoal cards, white accents", false),
+    ONYX("Onyx", "Nuvio look — #0D0D0D canvas, flat cards, white accents", false),
     WARM_IVORY("Warm Ivory", "Your current Normal, now frosted", true),
     AURORA_FROST("Aurora Frost", "The vivid one — strongest ambient colour", false),
     TRUE_BLACK("True Black", "AMOLED black — deepest blacks, best battery", false),
@@ -143,18 +143,18 @@ enum class AppTheme(val label: String, val blurb: String, val light: Boolean) {
 fun paletteForTheme(theme: AppTheme, accent: AccentTheme, frosted: Boolean = true): AppPalette {
     val base = when (theme) {
         AppTheme.ONYX -> AppPalette(
-            // Onyx (owner's order 2026-10-25): the permanent theme.
-            // The chosen accent applies; the default accent is White,
-            // which is the approved monochrome look.
+            // Onyx (Nuvio-matched, 2026-11-21): Nuvio WHITE theme values —
+            // #0D0D0D canvas, #1A1A1A panel, #F5F7F8 primary text,
+            // #B8BEC5 secondary, #252A2A borders. Flat by design.
             accent = accent.primary,
             accent2 = accent.secondary,
-            background = Color(0xFF070707),
-            panel = Color(0xFF1B1B1D),
+            background = Color(0xFF0D0D0D),
+            panel = Color(0xFF1A1A1A),
             amoled = false,
-            textPrimary = Color.White,
-            textSecondary = Color(0xFF9A9AA0),
-            glassFill = Color.White.copy(alpha = 0.07f),
-            glassBorder = Color.White.copy(alpha = 0.09f),
+            textPrimary = Color(0xFFF5F7F8),
+            textSecondary = Color(0xFFB8BEC5),
+            glassFill = Color.White.copy(alpha = 0.06f),
+            glassBorder = Color(0xFF252A2A),
             accentText = if (accent.primary == Color.White) Color.Black else Color.White,
             glowAlpha = 0f
         )
@@ -188,10 +188,10 @@ fun paletteForTheme(theme: AppTheme, accent: AccentTheme, frosted: Boolean = tru
             accent = accent.primary,
             accent2 = accent.secondary,
             background = Color.Black,
-            panel = Color(0xFF0D0D0F),
+            panel = Color(0xFF1A1A1A),
             amoled = true,
-            textPrimary = Color(0xFFF5F5F5),
-            textSecondary = Color(0xFFB9B9C0),
+            textPrimary = Color(0xFFF5F7F8),
+            textSecondary = Color(0xFFB8BEC5),
             glowAlpha = 0.55f
         )
         AppTheme.TWILIGHT -> AppPalette(
