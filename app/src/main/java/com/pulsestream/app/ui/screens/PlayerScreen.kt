@@ -55,6 +55,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
@@ -880,6 +881,7 @@ fun PlayerScreen(
     // Quality picker: null = Auto (best available quality), otherwise
     // the picked quality label. Resets per video.
     var qualityOpen by remember { mutableStateOf(false) }
+    var infoOpen by remember { mutableStateOf(false) }
     var qualitySelection by remember(currentRequest.videoId) { mutableStateOf<String?>(null) }
     var downloadStream by remember { mutableStateOf<com.pulsestream.app.data.StreamItem?>(null) }
     var zapping by remember { mutableStateOf(false) }
@@ -954,12 +956,13 @@ fun PlayerScreen(
     // they still dismiss themselves before this runs.)
     BackHandler {
         when {
-            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen -> {
+            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen -> {
                 tracksOpen = false
                 subSearchOpen = false
                 sourcesOpen = false
                 episodesOpen = false
                 qualityOpen = false
+                infoOpen = false
             }
             showControls && !locked -> showControls = false
             else -> onBack()
@@ -2524,7 +2527,7 @@ fun PlayerScreen(
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen ||
+        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen ||
             speedMenuOpen || resumeOfferMs != null || playerError != null
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -2595,7 +2598,7 @@ fun PlayerScreen(
     // container, so the remote can never stay dead. Skipped while a sheet or
     // dialog (separate window) legitimately owns focus.
     var rootHasFocus by remember { mutableStateOf(true) }
-    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen ||
+    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen ||
         speedMenuOpen || resumeOfferMs != null || downloadStream != null
     LaunchedEffect(rootHasFocus, isTv, sheetUp, showControls, playerError) {
         if (isTv && !rootHasFocus && !sheetUp && playerError == null) {
@@ -3080,12 +3083,17 @@ fun PlayerScreen(
                         }
                     }
                     // Top-right cluster, Nuvio legacy order (only the actions
-                    // Plavio has — no cast/party/engine-switch/rate/info;
+                    // Plavio has — no cast/party/engine-switch/rate;
                     // video settings is iOS-only in Nuvio). Back is last.
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        PlayerHeaderButton(
+                            icon = Icons.Filled.Info,
+                            label = "Playback info",
+                            onClick = { infoOpen = true }
+                        )
                         PlayerHeaderButton(
                             icon = Icons.Filled.ExitToApp,
                             label = "Open in external player",
@@ -4230,6 +4238,19 @@ fun PlayerScreen(
                     }
                 }
             }
+        }
+
+        // Playback info (Nuvio PlaybackInfoModal content in Plavio's
+        // bottom-sheet panel shape): codec, resolution, fps, bitrate and
+        // live network speed. Formats re-read every second while open, so
+        // an adaptive switch updates the rows live.
+        if (infoOpen) {
+            PlaybackInfoSheet(
+                player = player,
+                selectedQualityLabel = qualitySelection ?: qualityOptions.firstOrNull()?.first,
+                isAuto = qualitySelection == null,
+                onDismiss = { infoOpen = false }
+            )
         }
 
         // Download confirmation dialog
