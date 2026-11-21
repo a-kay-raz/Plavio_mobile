@@ -182,6 +182,7 @@ internal fun LegacySeekBar(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     isTv: Boolean = false,
+    chapterFractions: List<Float> = emptyList(),
     onSeekDelta: ((Long) -> Unit)? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null
 ) {
@@ -260,6 +261,21 @@ internal fun LegacySeekBar(
                         size = Size(size.width * frac, trackH),
                         cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
                     )
+                }
+                // Chapter ticks (Nuvio chapterMarkFractions): short white
+                // ticks straddling the track at each chapter start.
+                if (chapterFractions.isNotEmpty()) {
+                    val tickW = 2.dp.toPx()
+                    val tickH = 10.dp.toPx()
+                    chapterFractions.forEach { fraction ->
+                        val x = (size.width * fraction).coerceIn(0f, size.width - tickW)
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.85f),
+                            topLeft = Offset(x, cy - tickH / 2f),
+                            size = Size(tickW, tickH),
+                            cornerRadius = CornerRadius(tickW / 2f, tickW / 2f)
+                        )
+                    }
                 }
             }
         }
