@@ -123,6 +123,10 @@ fun SearchScreen(
     var results by remember { mutableStateOf<List<CachedMeta>>(emptyList()) }
     // Step 71: the same results grouped into one section per addon.
     var sections by remember { mutableStateOf<List<SearchSection>>(emptyList()) }
+    // Poster-grid columns (Step 71): read up here — the LazyColumn's
+    // LazyListScope lambda below is not @Composable, so LocalConfiguration
+    // cannot be read where the value is used.
+    val columns = maxOf(2, (LocalConfiguration.current.screenWidthDp - 32 + 12) / 140)
     // Actors matching the query (owner's order 2026-10-26 — search by
     // actor): name + photo, tap opens the actor page.
     var people by remember { mutableStateOf<List<CastMember>>(emptyList()) }
@@ -706,7 +710,6 @@ fun SearchScreen(
                             }
                             // Poster rows (Nuvio PosterGridRow shape): fixed
                             // 128dp cards, as many columns as the width fits.
-                            val columns = maxOf(2, (LocalConfiguration.current.screenWidthDp - 32 + 12) / 140)
                             if (discoverLoading && discoverItems.isEmpty()) {
                                 items(2, key = { "discover_skel_$it" }) {
                                     Row(

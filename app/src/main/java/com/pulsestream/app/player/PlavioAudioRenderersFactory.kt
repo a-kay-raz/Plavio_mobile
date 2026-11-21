@@ -68,7 +68,7 @@ class NoHardwareDolbySelector : MediaCodecSelector {
 @UnstableApi
 class PlavioAudioRenderersFactory(
     context: Context,
-    downmixConfig: DownmixConfig? = null,
+    private val downmixConfig: DownmixConfig? = null,
 ) : DefaultRenderersFactory(context) {
 
     init {

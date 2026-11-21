@@ -4,6 +4,7 @@ import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.text.TextOutput
+import androidx.media3.ui.SubtitleView
 
 /**
  * Step 38 — SDH (deaf/hard-of-hearing) cue filtering (Nuvio
@@ -36,23 +37,23 @@ object SubtitleSdhFilter {
 /**
  * A TextOutput that strips SDH annotations from every cue before passing
  * it to the delegate (Nuvio's PlayerEngine.android.kt cue pipeline, same
- * shape). The delegate is the PlayerView's SubtitleView, so rendering is
- * unchanged apart from the filtered text. When [enabled] is false the cues
- * pass through untouched.
+ * shape). The delegate is the PlayerView's SubtitleView — it does not
+ * implement TextOutput in Media3 1.4.1, so cues reach it via setCues —
+ * and rendering is unchanged apart from the filtered text. When [enabled]
+ * is false the cues pass through untouched.
  */
 @OptIn(UnstableApi::class)
 class SdhFilteringTextOutput(
-    private val delegate: TextOutput,
+    private val delegate: SubtitleView,
     private val enabled: () -> Boolean,
 ) : TextOutput {
     override fun onCues(cueGroup: CueGroup) {
-        val processed = cueGroup.cues.mapNotNull(::processCue)
-        delegate.onCues(CueGroup(processed, cueGroup.presentationTimeUs))
+        delegate.setCues(cueGroup.cues.mapNotNull(::processCue))
     }
 
     @Deprecated("Uses the deprecated Media3 callback for text outputs.")
     override fun onCues(cues: List<Cue>) {
-        delegate.onCues(cues.mapNotNull(::processCue))
+        delegate.setCues(cues.mapNotNull(::processCue))
     }
 
     private fun processCue(cue: Cue): Cue? {
