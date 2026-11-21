@@ -197,7 +197,9 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
-import com.pulsestream.app.data.ASPECT_MODES
+import com.pulsestream.app.data.CachedStreamLink
+import com.pulsestream.app.data.StreamLinkCache
+import com.pulsestream.app.data.streamLinkContentKey
 import com.pulsestream.app.data.IntroDbApi
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.PlaybackHeaders
@@ -275,6 +277,36 @@ fun PlayerScreen(
     val initialRequest = repository.pendingPlayback
     val settings = repository.settings
 
+    // Reuse last link (Nuvio StreamLinkCacheRepository): the last played link
+    // per title, so a replay inside the TTL skips the full re-resolve.
+    val linkCache = remember(context) { StreamLinkCache(context) }
+
+    /**
+     * Saves the currently playing link for reuse. Live, trailers and local
+     * files never cache; only real http(s) links do (guarded in save()).
+     */
+    fun saveLinkForReuse(req: PlaybackRequest) {
+        if (!settings.reuseLastLinkEnabled || req.isLive || req.isTrailer) return
+        linkCache.save(
+            streamLinkContentKey(
+                type = req.type,
+                videoId = req.videoId,
+                parentMetaId = req.metaId.takeIf { it.isNotBlank() },
+                season = req.season.takeIf { it > 0 },
+                episode = req.episode.takeIf { it > 0 },
+            ),
+            CachedStreamLink(
+                url = req.streamUrl,
+                streamName = req.streamLabel ?: req.title,
+                addonName = req.sourceName ?: "",
+                addonId = "",
+                cachedAtMs = System.currentTimeMillis(),
+                requestHeaders = req.headers,
+                mimeType = req.mimeType,
+            )
+        )
+    }
+
     // PiP (v0.9.0+): track whether the video floats so overlay UI can hide,
     // and mark the player active so MainActivity.onUserLeaveHint auto-enters
     // PiP when Home/recents is pressed mid-playback.
@@ -315,6 +347,8 @@ fun PlayerScreen(
     val subtitleShiftGeneration = remember { AtomicInteger(0) }
     /** Non-null while the current stream is in a failed state (#4). */
     var playerError by remember { mutableStateOf<String?>(null) }
+    /** Last ExoPlayer error code, so effects can tell a dead link from a stall. */
+    var lastPlayerErrorCode by remember { mutableStateOf(0) }
     /** Auto-failover count; generic playback caps at 3, mobile Live uses its policy cap. */
     var autoFailoverCount by remember { mutableStateOf(0) }
     /** Bounded recovery budget for streams that play and later stall, per channel session. */
@@ -343,6 +377,7 @@ fun PlayerScreen(
         object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 if (disposed.get()) return
+                lastPlayerErrorCode = error.errorCode
                 val cause = generateSequence<Throwable>(error) { it.cause }.firstOrNull {
                     it::class.java.simpleName == "UnrecognizedInputFormatException"
                 }
@@ -1578,6 +1613,7 @@ fun PlayerScreen(
                     }
                     currentRequest = newReq
                     repository.pendingPlayback = newReq
+                    saveLinkForReuse(newReq)
                     resumeOfferMs = null
                     // #29: carry already-resolved subtitles (same title) into
                     // the fresh player so the attach effect doesn't re-prepare
@@ -2588,6 +2624,33 @@ fun PlayerScreen(
         var offerResume = saved > 0
         // Local files (downloads): never re-resolve sources — play the file directly.
         if (saved > 0 && req.streams.isEmpty() && !req.isLive && !isLocalFile && !disposed.get()) {
+            // #15 + Nuvio reuse-last-link: within the TTL, replay the last
+            // played link directly instead of re-resolving every addon (and
+            // debrid) first. Expired/signed URLs fall through to the fresh
+            // resolve below; a dead reused link is dropped on error.
+            val reuseKey = streamLinkContentKey(
+                type = req.type,
+                videoId = req.videoId,
+                parentMetaId = req.metaId.takeIf { it.isNotBlank() },
+                season = req.season.takeIf { it > 0 },
+                episode = req.episode.takeIf { it > 0 },
+            )
+            val cachedLink = if (settings.reuseLastLinkEnabled) {
+                linkCache.getValid(reuseKey, settings.reuseLastLinkCacheHours * 3_600_000L)
+            } else null
+            if (cachedLink != null) {
+                req = req.copy(
+                    streamUrl = cachedLink.url,
+                    headers = cachedLink.requestHeaders,
+                    mimeType = cachedLink.mimeType ?: req.mimeType,
+                    streamLabel = cachedLink.streamName,
+                    sourceName = cachedLink.addonName.takeIf { it.isNotBlank() },
+                    streams = emptyList() // filled in the background by refreshStreamsBackground
+                )
+                repository.pendingPlayback = req
+                // Fresh URL: go straight in at the saved position, no prompt.
+                offerResume = false
+            } else {
             // #15: Continue Watching resume — re-resolve the title's streams
             // first so signed/expiring URLs are fresh, and resume at the saved
             // position on the fresh URL. Falls back to the stored URL when
@@ -2616,6 +2679,7 @@ fun PlayerScreen(
             } else {
                 // Stored URL stays; quietly fill Sources for a manual re-pick.
                 refreshStreamsBackground(req.type, req.videoId)
+            }
             }
         }
         if (disposed.get()) return@LaunchedEffect
@@ -2652,6 +2716,8 @@ fun PlayerScreen(
             p.playWhenReady = false
             showControls = true
         }
+        // The settled link is the last played link for this title.
+        saveLinkForReuse(req)
     }
 
     // An early Play action may hand off only the first addon's results. Always finish
@@ -2794,6 +2860,23 @@ fun PlayerScreen(
     /** True while the TV seekbar holds D-pad focus (arrows then seek). */
     var seekbarFocused by remember { mutableStateOf(false) }
     LaunchedEffect(playerError, isTv) {
+        // A dead HTTP status on the playing link means the cached URL is
+        // gone (signed link expired): drop it so the next replay re-resolves
+        // instead of retrying the same dead link.
+        if (playerError != null && settings.reuseLastLinkEnabled &&
+            (lastPlayerErrorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                lastPlayerErrorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
+        ) {
+            linkCache.remove(
+                streamLinkContentKey(
+                    type = currentRequest.type,
+                    videoId = currentRequest.videoId,
+                    parentMetaId = currentRequest.metaId.takeIf { it.isNotBlank() },
+                    season = currentRequest.season.takeIf { it > 0 },
+                    episode = currentRequest.episode.takeIf { it > 0 },
+                )
+            )
+        }
         if (isTv && playerError != null) {
             delay(300)
             runCatching { errorRetryFocus.requestFocus() }

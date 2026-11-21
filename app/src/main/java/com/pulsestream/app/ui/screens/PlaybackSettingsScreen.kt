@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -104,6 +106,8 @@ fun PlaybackSettingsScreen(
     var nextEpisodeOpen by remember { mutableStateOf(false) }
     var autoSkipOpen by remember { mutableStateOf(false) }
     var skipOffsetOpen by remember { mutableStateOf(false) }
+    var reuseLastLink by remember { mutableStateOf(settings.reuseLastLinkEnabled) }
+    var reuseLinkHoursOpen by remember { mutableStateOf(false) }
     var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
@@ -119,6 +123,8 @@ fun PlaybackSettingsScreen(
     var nextEpisodeUiTick by remember { mutableStateOf(0) }
     // Refresh key so the auto-skip / skip-offset subtitles update after the dialogs close.
     var skipSettingsUiTick by remember { mutableStateOf(0) }
+    // Refresh key so the last-link cache subtitle updates after the dialog closes.
+    var reuseLinkUiTick by remember { mutableStateOf(0) }
 
     GlowBackground {
         LazyColumn(
@@ -160,6 +166,7 @@ fun PlaybackSettingsScreen(
                 skipUiTick
                 nextEpisodeUiTick
                 skipSettingsUiTick
+                reuseLinkUiTick
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -334,6 +341,26 @@ fun PlaybackSettingsScreen(
                             subtitle = nextEpisodeThresholdLabel(settings),
                             onClick = { nextEpisodeOpen = true }
                         )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Link,
+                            title = "Reuse last link",
+                            subtitle = "Replay a title with its last played link instead of re-resolving sources",
+                            checked = reuseLastLink,
+                            onCheckedChange = {
+                                reuseLastLink = it
+                                settings.reuseLastLinkEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.History,
+                            title = "Last-link cache",
+                            subtitle = "Links stay reusable for ${settings.reuseLastLinkCacheHours}h",
+                            onClick = { reuseLinkHoursOpen = true }
+                        )
                     }
                 )
             }
@@ -425,6 +452,14 @@ fun PlaybackSettingsScreen(
             onDone = { skipOffsetOpen = false; skipSettingsUiTick++ }
         )
     }
+
+    if (reuseLinkHoursOpen) {
+        ReuseLinkHoursDialog(
+            settings = settings,
+            onDismiss = { reuseLinkHoursOpen = false },
+            onDone = { reuseLinkHoursOpen = false; reuseLinkUiTick++ }
+        )
+    }
 }
 
 /**
@@ -481,6 +516,68 @@ fun SkipSecondsDialog(
             TextButton(onClick = {
                 if (forward) settings.skipForwardSeconds = selected
                 else settings.skipBackwardSeconds = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/** Last-link cache window (Nuvio streamReuseLastLinkCacheHours): how long a played link stays reusable. */
+private val REUSE_LINK_CACHE_HOURS_OPTIONS = listOf(6, 12, 24, 48)
+
+/** Cache-hours picker for Reuse last link. */
+@Composable
+fun ReuseLinkHoursDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember { mutableStateOf(settings.reuseLastLinkCacheHours) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Last-link cache", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "How long a played link stays reusable before the title re-resolves its sources.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(REUSE_LINK_CACHE_HOURS_OPTIONS, key = { it }) { hours ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = hours }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == hours,
+                                onClick = { selected = hours },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text("${hours}h", color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.reuseLastLinkCacheHours = selected
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
