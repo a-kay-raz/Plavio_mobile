@@ -1237,6 +1237,15 @@ class SettingsStore(
         get() = prefs.getString(KEY_WATCH_PROGRESS_SOURCE, "local") ?: "local"
         set(value) = prefs.edit().putString(KEY_WATCH_PROGRESS_SOURCE, value).apply()
 
+    // Step 63: player toolbar layouts ("id:v,id:h", see PlayerToolbarLayout.kt).
+    var playerBottomLayout: String
+        get() = prefs.getString(KEY_PLAYER_BOTTOM_LAYOUT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PLAYER_BOTTOM_LAYOUT, value).apply()
+
+    var playerTopLayout: String
+        get() = prefs.getString(KEY_PLAYER_TOP_LAYOUT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PLAYER_TOP_LAYOUT, value).apply()
+
     // Step 62: pulled remote resume points, keyed by playback identity.
     var remoteResumePointsJson: String
         get() = prefs.getString(KEY_REMOTE_RESUME_POINTS, "") ?: ""
@@ -2067,6 +2076,9 @@ class SettingsStore(
         private const val KEY_WATCH_PROGRESS_SOURCE = "watch_progress_source"
         private const val KEY_REMOTE_RESUME_POINTS = "remote_resume_points"
         private const val KEY_LAST_WATCH_PROGRESS_PULL = "last_watch_progress_pull"
+        // Step 63: player toolbar layouts.
+        private const val KEY_PLAYER_BOTTOM_LAYOUT = "player_bottom_layout"
+        private const val KEY_PLAYER_TOP_LAYOUT = "player_top_layout"
         private const val KEY_BINGE_GROUP_CACHE = "binge_group_cache"
         private const val KEY_AUTOPLAY_PREFER_BINGE_GROUP = "autoplay_prefer_binge_group"
         private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"
