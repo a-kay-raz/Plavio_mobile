@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
@@ -108,6 +109,8 @@ fun PlaybackSettingsScreen(
     val settings = repository.settings
     var autoplay by remember { mutableStateOf(settings.autoplay) }
     var autoPlayNext by remember { mutableStateOf(settings.autoPlayNext) }
+    // Step 60: next-episode autoplay prefers the same release group.
+    var preferBingeGroup by remember { mutableStateOf(settings.autoplayPreferBingeGroup) }
     var keepScreenOn by remember { mutableStateOf(settings.keepScreenOn) }
     var showSkip by remember { mutableStateOf(settings.showSkipButton) }
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
@@ -220,6 +223,18 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 autoPlayNext = it
                                 settings.autoPlayNext = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Group,
+                            title = "Prefer same release group",
+                            subtitle = "Next-episode autoplay stays on the release group of the episode just played",
+                            checked = preferBingeGroup,
+                            onCheckedChange = {
+                                preferBingeGroup = it
+                                settings.autoplayPreferBingeGroup = it
                             }
                         )
                     },

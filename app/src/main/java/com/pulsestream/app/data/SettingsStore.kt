@@ -462,6 +462,13 @@ class SettingsStore(
         get() = prefs.getBoolean(KEY_AUTOPLAY_NEXT, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTOPLAY_NEXT, value).apply()
 
+    /** Step 60: next-episode autoplay prefers the release group of the
+     * episode just played (Nuvio streamAutoPlayPreferBingeGroup,
+     * default true). */
+    var autoplayPreferBingeGroup: Boolean
+        get() = prefs.getBoolean(KEY_AUTOPLAY_PREFER_BINGE_GROUP, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTOPLAY_PREFER_BINGE_GROUP, value).apply()
+
     /** Play series episodes in random order instead of sequential (v0.9.0+). */
     var shuffleEpisodes: Boolean
         get() = prefs.getBoolean(KEY_SHUFFLE_EPISODES, false)
@@ -1209,6 +1216,11 @@ class SettingsStore(
     var favoritePeopleJson: String
         get() = prefs.getString(KEY_FAVORITE_PEOPLE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_FAVORITE_PEOPLE, value).apply()
+
+    /** Step 60: binge-group cache blob (JSON, see BingeGroupCache). */
+    var bingeGroupCacheJson: String
+        get() = prefs.getString(KEY_BINGE_GROUP_CACHE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_BINGE_GROUP_CACHE, value).apply()
 
     /** Stable per-install device id for server auth headers. */
     var mediaServerDeviceId: String
@@ -2017,6 +2029,8 @@ class SettingsStore(
         private const val KEY_MEDIA_SERVERS = "media_servers"
         private const val KEY_DETAIL_SECTIONS = "detail_sections"
         private const val KEY_FAVORITE_PEOPLE = "favorite_people"
+        private const val KEY_BINGE_GROUP_CACHE = "binge_group_cache"
+        private const val KEY_AUTOPLAY_PREFER_BINGE_GROUP = "autoplay_prefer_binge_group"
         private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"
         private const val KEY_TRACKING_LIBRARY_SOURCE = "tracking_library_source"
         private const val KEY_TRACKING_PROGRESS_SOURCE = "tracking_progress_source"
