@@ -220,8 +220,9 @@ fun OnboardingScreen(
                                                 installedName =
                                                     result.getOrNull()?.name ?: "PlavioMeta"
                                             } else {
-                                                installError = result.exceptionOrNull()?.message
-                                                    ?: "Couldn't install — check your connection and try again."
+                                                installError = repository.addonInstallFailureMessage(
+                                                    result.exceptionOrNull()
+                                                )
                                             }
                                         }
                                     },
