@@ -218,6 +218,8 @@ import com.pulsestream.app.data.simkl.SimklManager
 import com.pulsestream.app.data.scrobble.ScrobbleManager
 import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.data.buttonLabel
+import com.pulsestream.app.data.buttonStartMs
+import com.pulsestream.app.data.autoSkipStoredValue
 import com.pulsestream.app.data.streamQualityLabel
 import com.pulsestream.app.ui.components.AddonTabs
 import com.pulsestream.app.ui.components.ErrorState
@@ -954,6 +956,10 @@ fun PlayerScreen(
     var chapterSkipSegments by remember { mutableStateOf(emptyList<SkipSegment>()) }
     val skipSegments = mergeSkipIntervals(apiSkipSegments, chapterSkipSegments, isMovie = currentRequest.isMovie)
     var activeSegment by remember { mutableStateOf<SkipSegment?>(null) }
+    // Segments already auto-skipped for this title (Nuvio
+    // autoSkippedIntervals): once per segment — a manual seek back
+    // into one doesn't instantly re-skip it.
+    var autoSkippedSegments by remember { mutableStateOf<Set<SkipSegment>>(emptySet()) }
 
     // Chapters (Nuvio PlayerChapters): read once per source from the
     // file itself (ExoPlayer's Matroska extractor skips them).
@@ -984,6 +990,7 @@ fun PlayerScreen(
         movieRecsAddonId = null
         movieRecsDismissed = false
         movieRecsAutoHidden = false
+        autoSkippedSegments = emptySet()
     }
 
     // Subtitle search
@@ -2336,6 +2343,10 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(player) {
+        // Previous tick's position, for manual-seek detection (a jump
+        // over a segment marks it auto-skipped, Nuvio
+        // intervalsAtSeekPositions).
+        var lastPollPositionMs = -1L
         while (true) {
             val c = player
             positionMs = c.currentPosition
@@ -2355,9 +2366,49 @@ fun PlayerScreen(
             // A rebuilt player (source/episode switch) has a new audio
             // session — re-attach the boost enhancer to it.
             if (volumeBoost > 0f) applyVolumeBoost()
+            // A manual seek over a segment marks it auto-skipped, so
+            // seeking back into it doesn't instantly re-skip.
+            if (lastPollPositionMs >= 0 && kotlin.math.abs(positionMs - lastPollPositionMs) > 3000) {
+                val from = minOf(lastPollPositionMs, positionMs)
+                val to = maxOf(lastPollPositionMs, positionMs)
+                val crossed = skipSegments.filter { seg -> seg.startMs < to && seg.endMs > from }
+                if (crossed.isNotEmpty()) autoSkippedSegments = autoSkippedSegments + crossed
+            }
+            lastPollPositionMs = positionMs
             activeSegment = if (settings.showSkipButton) {
-                skipSegments.firstOrNull { positionMs >= it.startMs && positionMs <= it.endMs }
+                val offset = settings.skipIntroOffsetSeconds
+                skipSegments.firstOrNull {
+                    positionMs >= it.buttonStartMs(offset) && positionMs <= it.endMs
+                }
             } else null
+            // Auto-skip (Nuvio PlayerScreenRuntimeEffects): when the
+            // playhead enters an auto-skip segment, jump to its end.
+            // Fires once per segment per title.
+            if (isPlaying && settings.showSkipButton) {
+                val autoTypes = settings.autoSkipSegmentTypes
+                if (autoTypes.isNotEmpty()) {
+                    val offset = settings.skipIntroOffsetSeconds
+                    val target = skipSegments.firstOrNull { seg ->
+                        seg.type.autoSkipStoredValue() in autoTypes &&
+                            seg !in autoSkippedSegments &&
+                            positionMs >= seg.buttonStartMs(offset) && positionMs < seg.endMs
+                    }
+                    if (target != null) {
+                        autoSkippedSegments = autoSkippedSegments + target
+                        val seekTo = if (durationMs > 0) {
+                            (target.endMs + 400).coerceAtMost(durationMs - 1)
+                        } else {
+                            target.endMs + 400
+                        }
+                        if (seekTo > positionMs) {
+                            player.seekTo(seekTo)
+                            val label = target.type.buttonLabel()
+                                .removePrefix("Skip ").replaceFirstChar { it.lowercase() }
+                            pokeIndicator(PlayerIndicator.Message("Skipped $label"))
+                        }
+                    }
+                }
+            }
             // Next-episode countdown card (Nuvio NextEpisodeCard): when
             // the threshold is crossed, the card appears and counts down
             // instead of the silent immediate advance. Seeking back below
@@ -3134,6 +3185,7 @@ fun PlayerScreen(
                 ) {
                     TextButton(
                         onClick = {
+                            autoSkippedSegments = autoSkippedSegments + seg
                             player.seekTo(seg.endMs + 400)
                             activeSegment = null
                         },

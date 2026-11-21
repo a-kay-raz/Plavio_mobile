@@ -25,6 +25,24 @@ fun SegmentType.buttonLabel(): String = when (this) {
     SegmentType.POST_CREDITS -> "Skip credits"
 }
 
+/** Stored value for auto-skip settings (Nuvio AutoSkipSegmentType). */
+fun SegmentType.autoSkipStoredValue(): String = when (this) {
+    SegmentType.INTRO -> "intro"
+    SegmentType.RECAP -> "recap"
+    SegmentType.OUTRO -> "outro"
+    SegmentType.POST_CREDITS -> "movie-credits"
+}
+
+/**
+ * When the skip button appears for this segment (Nuvio
+ * skipButtonStartTime): intros shift by the offset (positive = later
+ * into the intro), other types start at the segment start.
+ */
+fun SkipSegment.buttonStartMs(offsetSeconds: Int): Long {
+    if (type != SegmentType.INTRO || offsetSeconds == 0) return startMs
+    return (startMs + offsetSeconds * 1000L).coerceIn(0L, maxOf(startMs, endMs - 1000L))
+}
+
 /**
  * Client for the community IntroDB database (https://introdb.app) — no auth
  * needed. Returns intro/recap/outro/post-credits windows for an IMDb id,
