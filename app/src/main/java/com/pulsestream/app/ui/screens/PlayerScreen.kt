@@ -738,6 +738,27 @@ fun PlayerScreen(
     )
     var scrubPositionMs by remember { mutableStateOf<Long?>(null) }
 
+    // Step 61: player badges — matched image badges for the playing
+    // stream, from the user's imported badge rules (Nuvio's
+    // two-phase match: playback text first, meta text second).
+    val badgeSettings = remember { com.pulsestream.app.data.StreamBadgeSettings(repository.settings) }
+    val badgeRules by badgeSettings.rules.collectAsState()
+    val showPlayerBadges by badgeSettings.showInPlayer.collectAsState()
+    val playerBadgeSource by badgeSettings.playerBadgeSource.collectAsState()
+    val playerBadges = remember(currentRequest.streamUrl, badgeRules, showPlayerBadges, playerBadgeSource) {
+        if (!showPlayerBadges) emptyList()
+        else {
+            val stream = currentRequest.streams.firstOrNull { it.url == currentRequest.streamUrl }
+            val rules = badgeRules.forPlayer(playerBadgeSource)
+            val filters = com.pulsestream.app.data.StreamBadgeMatcher.compile(rules)
+            val playbackCandidate = stream?.filename?.takeIf { it.isNotBlank() } ?: stream?.title
+            val metaCandidates = listOfNotNull(stream?.filename, stream?.title, stream?.name)
+            com.pulsestream.app.data.StreamBadgeMatcher
+                .matchedPlayerBadges(playbackCandidate, metaCandidates, filters)
+                .filter { it.imageURL.isNotBlank() }
+        }
+    }
+
     // Step 60: binge groups — the release group of the stream now
     // playing is saved under the series id, so the next episode's
     // autoplay prefers the same group instead of re-ranking.
@@ -3857,6 +3878,11 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        }
+                        // Step 61: matched image badges for the playing stream.
+                        if (playerBadges.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            PlayerBadgesRow(badges = playerBadges)
                         }
                     }
                     // Top-right cluster, Nuvio legacy order (only the actions

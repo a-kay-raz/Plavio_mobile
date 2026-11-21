@@ -153,7 +153,8 @@ fun SettingsScreen(
     onGoToTracking: () -> Unit = {},
     onGoToMediaServers: () -> Unit = {},
     onGoToProfiles: () -> Unit = {},
-    onGoToDetailSections: () -> Unit = {}
+    onGoToDetailSections: () -> Unit = {},
+    onGoToStreamBadges: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -353,6 +354,17 @@ fun SettingsScreen(
                 title = "Detail sections",
                 subtitle = "Reorder and hide the detail page's sections",
                 onClick = onGoToDetailSections,
+                compact = true
+            )
+        },
+        // Step 61: custom stream badges — import rule sets, show chips on streams.
+        SettingsEntry(sectionGeneral, "Stream badges",
+            "stream badges rules import chips labels quality codec group") {
+            SettingsNavRow(
+                icon = Icons.Filled.Style,
+                title = "Stream badges",
+                subtitle = "Import badge rules shown on matching streams",
+                onClick = onGoToStreamBadges,
                 compact = true
             )
         },

@@ -1217,6 +1217,21 @@ class SettingsStore(
         get() = prefs.getString(KEY_FAVORITE_PEOPLE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_FAVORITE_PEOPLE, value).apply()
 
+    // Step 61: custom stream badge rule imports (JSON, see StreamBadges.kt).
+    var streamBadgeRulesJson: String
+        get() = prefs.getString(KEY_STREAM_BADGE_RULES, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_STREAM_BADGE_RULES, value).apply()
+
+    // Step 61: show matched image badges in the player header.
+    var showStreamBadgesInPlayer: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_STREAM_BADGES_IN_PLAYER, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_STREAM_BADGES_IN_PLAYER, value).apply()
+
+    // Step 61: which imported badge source the player uses ("" = the active one).
+    var playerBadgeSource: String
+        get() = prefs.getString(KEY_PLAYER_BADGE_SOURCE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_PLAYER_BADGE_SOURCE, value).apply()
+
     /** Step 60: binge-group cache blob (JSON, see BingeGroupCache). */
     var bingeGroupCacheJson: String
         get() = prefs.getString(KEY_BINGE_GROUP_CACHE, "") ?: ""
@@ -2029,6 +2044,10 @@ class SettingsStore(
         private const val KEY_MEDIA_SERVERS = "media_servers"
         private const val KEY_DETAIL_SECTIONS = "detail_sections"
         private const val KEY_FAVORITE_PEOPLE = "favorite_people"
+        // Step 61: custom stream badges.
+        private const val KEY_STREAM_BADGE_RULES = "stream_badge_rules"
+        private const val KEY_SHOW_STREAM_BADGES_IN_PLAYER = "show_stream_badges_in_player"
+        private const val KEY_PLAYER_BADGE_SOURCE = "player_badge_source"
         private const val KEY_BINGE_GROUP_CACHE = "binge_group_cache"
         private const val KEY_AUTOPLAY_PREFER_BINGE_GROUP = "autoplay_prefer_binge_group"
         private const val KEY_MEDIA_SERVER_DEVICE_ID = "media_server_device_id"

@@ -198,7 +198,12 @@ data class StreamItem(
      */
     val bingeGroup: String? = null,
     /** Identity only: lets a cached HTTP link replace its pending row across progressive updates. */
-    val resolvedInfoHash: String? = null
+    val resolvedInfoHash: String? = null,
+    /**
+     * Step 61: badges matched from the user's imported badge rules
+     * (StreamBadgePresentation). Empty when no rules are imported.
+     */
+    val badges: List<StreamBadge> = emptyList()
 )
 
 data class Subtitle(
