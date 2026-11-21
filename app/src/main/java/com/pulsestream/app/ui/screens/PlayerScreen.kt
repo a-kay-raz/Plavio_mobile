@@ -1974,8 +1974,12 @@ fun PlayerScreen(
 
     /**
      * Full gesture set for the video surface in ONE pointerInput handler:
-     * tap (toggle controls), double-tap (±10s seek), directional drags
-     * (seek / volume / brightness) and hold-for-speed with slide steps.
+     * tap (toggle controls), double-tap (skip by the Skip seconds
+     * setting), directional drags (seek / volume / brightness) and
+     * hold-for-speed with slide steps. Touch gestures off = tap-only:
+     * drags swallow (mode 3) and the double-tap seek is disabled;
+     * swipe-to-seek off = horizontal drags swallow, volume/brightness
+     * drags still work.
      *
      * v0.12.1 regression fix: v0.12.0 stacked THREE separate detectors
      * (tap + a second detectTapGestures for the hold + drag) on this same
@@ -2027,9 +2031,11 @@ fun PlayerScreen(
             var upChange: androidx.compose.ui.input.pointer.PointerInputChange? = null
 
             while (upChange == null) {
-                val event = if (!holdEngaged && dragMode == -1) {
+                val event = if (!holdEngaged && dragMode == -1 && settings.touchGesturesEnabled) {
                     // Still a tap/hold candidate: wake up at the hold
                     // threshold even if no further pointer event arrives.
+                    // (Gestures off: block on the next event instead — the
+                    // threshold must not spin the loop.)
                     val remaining = (downTime + holdThresholdMs - lastEventMs).coerceAtLeast(0L)
                     withTimeoutOrNull(remaining) { awaitPointerEvent() }
                 } else {
@@ -2067,8 +2073,14 @@ fun PlayerScreen(
                     }
                 } else {
                     if (dragMode == -1 && (abs(accX) > slop || abs(accY) > slop)) {
-                        dragMode = if (abs(accX) > abs(accY)) 0
-                        else if (downPos.x < size.width / 2f) 2 else 1
+                        // Gestures off (or swipe-to-seek off for a horizontal
+                        // drag): swallow the drag — mode 3 settles as a
+                        // no-op, never a seek/volume/brightness change and
+                        // never a tap.
+                        dragMode = if (!settings.touchGesturesEnabled) 3
+                        else if (abs(accX) > abs(accY)) {
+                            if (settings.swipeToSeekEnabled) 0 else 3
+                        } else if (downPos.x < size.width / 2f) 2 else 1
                         seekBase = player.currentPosition
                         seekTarget = -1L
                         volBase = displayVolumePercent().toFloat()
@@ -2140,17 +2152,18 @@ fun PlayerScreen(
                 }
                 dragMode == -1 -> {
                     // A tap: a second tap inside the double-tap window
-                    // seeks ±10s by side; a lone tap toggles the controls
-                    // once the window expires (same timing as the old
-                    // detectTapGestures behaviour).
+                    // seeks by the Skip seconds setting by side; a lone
+                    // tap toggles the controls once the window expires
+                    // (same timing as the old detectTapGestures behaviour).
+                    // Gestures off: no double-tap seek, tap only.
                     val now = upChange?.uptimeMillis ?: downTime
                     val window = viewConfiguration.doubleTapTimeoutMillis
-                    if (lastTapUpMs != 0L && now - lastTapUpMs <= window) {
+                    if (lastTapUpMs != 0L && now - lastTapUpMs <= window && settings.touchGesturesEnabled) {
                         pendingToggle?.cancel()
                         pendingToggle = null
                         lastTapUpMs = 0L
-                        if (downPos.x < size.width / 2f) seekByWithFeedback(-10_000)
-                        else seekByWithFeedback(10_000)
+                        if (downPos.x < size.width / 2f) seekByWithFeedback(-settings.skipBackwardSeconds * 1000L)
+                        else seekByWithFeedback(settings.skipForwardSeconds * 1000L)
                     } else {
                         lastTapUpMs = now
                         pendingToggle = gestureUiScope.launch {
@@ -2171,9 +2184,9 @@ fun PlayerScreen(
                 else toggleControls()
             },
             onDoubleTap = { offset ->
-                if (!locked) {
-                    if (offset.x < size.width / 2f) seekByWithFeedback(-10_000)
-                    else seekByWithFeedback(10_000)
+                if (!locked && settings.touchGesturesEnabled) {
+                    if (offset.x < size.width / 2f) seekByWithFeedback(-settings.skipBackwardSeconds * 1000L)
+                    else seekByWithFeedback(settings.skipForwardSeconds * 1000L)
                 }
             }
         )
@@ -2563,8 +2576,8 @@ fun PlayerScreen(
                 Key.MediaPlayPause -> { togglePlay(); true }
                 Key.MediaPlay -> { player.play(); true }
                 Key.MediaPause -> { player.pause(); true }
-                Key.MediaFastForward -> { seekByWithFeedback(10_000); true }
-                Key.MediaRewind -> { seekByWithFeedback(-10_000); true }
+                Key.MediaFastForward -> { seekByWithFeedback(settings.skipForwardSeconds * 1000L); true }
+                Key.MediaRewind -> { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L); true }
                 // D-pad Left/Right: with a dialog open, hand off to the
                 // dialog. With the seekbar focused, its own handler seeks.
                 // With controls visible, let 2D focus search move between
@@ -2572,11 +2585,11 @@ fun PlayerScreen(
                 // With controls hidden, arrows seek directly.
                 Key.DirectionLeft -> when {
                     dialogOpen || seekbarFocused || showControls -> false
-                    else -> { seekByWithFeedback(-10_000); true }
+                    else -> { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L); true }
                 }
                 Key.DirectionRight -> when {
                     dialogOpen || seekbarFocused || showControls -> false
-                    else -> { seekByWithFeedback(10_000); true }
+                    else -> { seekByWithFeedback(settings.skipForwardSeconds * 1000L); true }
                 }
                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
                     if (dialogOpen) false

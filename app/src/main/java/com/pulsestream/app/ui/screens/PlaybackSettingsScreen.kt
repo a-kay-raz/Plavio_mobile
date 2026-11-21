@@ -25,12 +25,15 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Swipe
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -71,6 +74,7 @@ import com.pulsestream.app.data.subtitleColorName
 import com.pulsestream.app.data.subtitleEdgeName
 import com.pulsestream.app.data.subtitleSizeName
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.SKIP_SECONDS_OPTIONS
 import com.pulsestream.app.data.WATCHED_THRESHOLD_OPTIONS
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.tv.tvFocusRing
@@ -94,6 +98,10 @@ fun PlaybackSettingsScreen(
     var bufferPresetOpen by remember { mutableStateOf(false) }
     var diskCacheOpen by remember { mutableStateOf(false) }
     var watchedThresholdOpen by remember { mutableStateOf(false) }
+    var skipBackOpen by remember { mutableStateOf(false) }
+    var skipForwardOpen by remember { mutableStateOf(false) }
+    var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
+    var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
     // Refresh key so the preferred-player subtitle updates after the dialog closes.
     var playerUiTick by remember { mutableStateOf(0) }
@@ -101,6 +109,8 @@ fun PlaybackSettingsScreen(
     var bufferUiTick by remember { mutableStateOf(0) }
     // Refresh key so the watched-threshold subtitle updates after the dialog closes.
     var watchedUiTick by remember { mutableStateOf(0) }
+    // Refresh key so the skip-seconds subtitles update after the dialogs close.
+    var skipUiTick by remember { mutableStateOf(0) }
 
     GlowBackground {
         LazyColumn(
@@ -139,6 +149,7 @@ fun PlaybackSettingsScreen(
                 playerUiTick
                 bufferUiTick
                 watchedUiTick
+                skipUiTick
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -243,6 +254,52 @@ fun PlaybackSettingsScreen(
                             subtitle = "A title counts as watched at ${settings.watchedThresholdPercent}% played",
                             onClick = { watchedThresholdOpen = true }
                         )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.FastRewind,
+                            title = "Skip backward",
+                            subtitle = "Double-tap left skips back ${settings.skipBackwardSeconds}s",
+                            onClick = { skipBackOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.FastForward,
+                            title = "Skip forward",
+                            subtitle = "Double-tap right skips forward ${settings.skipForwardSeconds}s",
+                            onClick = { skipForwardOpen = true }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.TouchApp,
+                            title = "Touch gestures",
+                            subtitle = "Double-tap skip, swipe seek/volume/brightness and hold-for-speed",
+                            checked = gesturesOn,
+                            onCheckedChange = {
+                                gesturesOn = it
+                                settings.touchGesturesEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Swipe,
+                            title = "Swipe to seek",
+                            subtitle = if (gesturesOn) {
+                                "Horizontal swipe seeks; turn off to keep only volume/brightness swipes"
+                            } else {
+                                "Turn on Touch gestures to use swipe seek"
+                            },
+                            checked = swipeSeekOn && gesturesOn,
+                            onCheckedChange = {
+                                if (gesturesOn) {
+                                    swipeSeekOn = it
+                                    settings.swipeToSeekEnabled = it
+                                }
+                            }
+                        )
                     }
                 )
             }
@@ -292,6 +349,91 @@ fun PlaybackSettingsScreen(
             onDone = { watchedThresholdOpen = false; watchedUiTick++ }
         )
     }
+
+    if (skipBackOpen) {
+        SkipSecondsDialog(
+            settings = settings,
+            forward = false,
+            onDismiss = { skipBackOpen = false },
+            onDone = { skipBackOpen = false; skipUiTick++ }
+        )
+    }
+
+    if (skipForwardOpen) {
+        SkipSecondsDialog(
+            settings = settings,
+            forward = true,
+            onDismiss = { skipForwardOpen = false },
+            onDone = { skipForwardOpen = false; skipUiTick++ }
+        )
+    }
+}
+
+/**
+ * Skip-seconds picker (Settings > Playback, Nuvio skipBackward/skipForward
+ * seconds): how far a double-tap jumps. Options 5/10/15/30, default 10.
+ */
+@Composable
+fun SkipSecondsDialog(
+    settings: SettingsStore,
+    forward: Boolean,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember {
+        mutableStateOf(if (forward) settings.skipForwardSeconds else settings.skipBackwardSeconds)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (forward) "Skip forward" else "Skip backward", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    if (forward) "How far a double-tap on the right jumps forward."
+                    else "How far a double-tap on the left jumps back.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(SKIP_SECONDS_OPTIONS, key = { it }) { seconds ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = seconds }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == seconds,
+                                onClick = { selected = seconds },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text("${seconds}s", color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (forward) settings.skipForwardSeconds = selected
+                else settings.skipBackwardSeconds = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
 }
 
 /**
