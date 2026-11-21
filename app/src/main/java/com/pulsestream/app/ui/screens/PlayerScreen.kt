@@ -3072,13 +3072,6 @@ fun PlayerScreen(
                                 }
                             }
                         )
-                        if (settings.pipEnabled) {
-                            PlayerHeaderButton(
-                                icon = Icons.Filled.PictureInPicture,
-                                label = "Picture in picture",
-                                onClick = { enterPip() }
-                            )
-                        }
                         PlayerHeaderButton(
                             icon = if (isPortrait) Icons.Filled.StayCurrentLandscape
                             else Icons.Filled.StayCurrentPortrait,
