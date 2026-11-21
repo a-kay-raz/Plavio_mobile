@@ -844,6 +844,11 @@ class SettingsStore(
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
 
+    /** Step 65: audio delay (lip-sync), ms, +/-60s. One value for the device. */
+    var audioDelayMs: Int
+        get() = prefInt(KEY_AUDIO_DELAY_MS, 0).coerceIn(AUDIO_DELAY_MIN_MS, AUDIO_DELAY_MAX_MS)
+        set(value) = prefs.edit().putInt(KEY_AUDIO_DELAY_MS, value.coerceIn(AUDIO_DELAY_MIN_MS, AUDIO_DELAY_MAX_MS)).apply()
+
     /** Home scroll spot (Nuvio HomeScrollPosition): first visible row index, persisted so a cold start lands where the last session left off. */
     var homeScrollIndex: Int
         get() = prefInt(KEY_HOME_SCROLL_INDEX, 0).coerceAtLeast(0)
@@ -1975,6 +1980,7 @@ class SettingsStore(
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
         private const val KEY_RESIZE_MODE = "resize_mode"
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
+        private const val KEY_AUDIO_DELAY_MS = "audio_delay_ms"
         private const val KEY_HOME_SCROLL_INDEX = "home_scroll_index"
         private const val KEY_HOME_SCROLL_OFFSET = "home_scroll_offset"
         private const val KEY_DISCOVER_TYPE = "discover_type"
