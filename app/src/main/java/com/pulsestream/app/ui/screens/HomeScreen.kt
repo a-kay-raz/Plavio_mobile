@@ -416,6 +416,18 @@ fun HomeScreen(
                                 .thenBy { it.sortOrder }
                         )
                     }
+                    // Step 69: Release Radar — new episodes/seasons from
+                    // the library + new releases in the home rows. Rebuilt
+                    // when any input changes; the library leg reuses
+                    // NextUpResolver's 6h meta cache.
+                    val watchlist by repository.watchlist.collectAsState(initial = emptyList())
+                    val catalogItems = remember(state.rows) { state.rows.flatMap { it.items } }
+                    var radarItems by remember { mutableStateOf<List<com.pulsestream.app.data.ReleaseRadarItem>>(emptyList()) }
+                    LaunchedEffect(nextUp, watchlist, catalogItems, watchedKeys) {
+                        radarItems = com.pulsestream.app.data.ReleaseRadar.build(
+                            repository, nextUp, watchlist, catalogItems, watchedKeys
+                        )
+                    }
                     // Dock Home-tap → scroll to the very top (v0.12.4).
                     // handledScrollRequest is saveable so a request fired
                     // while Home sat in the back stack is honoured once,
@@ -615,6 +627,30 @@ fun HomeScreen(
                                     ) { episode ->
                                         NextUpCard(episode) {
                                             onOpenDetail("", "series", episode.showId)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                              }
+                            }
+                        }
+                        // Step 69: Release Radar — new from your library.
+                        if (radarItems.isNotEmpty()) {
+                            item(key = "release_radar") {
+                              Column(
+                                Modifier.background(LocalPalette.current.background)
+                              ) {
+                                SectionTitle("Release Radar")
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(
+                                        radarItems,
+                                        key = { it.key }
+                                    ) { item ->
+                                        ReleaseRadarCard(item) {
+                                            onOpenDetail("", item.metaType, item.metaId)
                                         }
                                     }
                                 }
@@ -1166,6 +1202,72 @@ private fun NextUpCard(
             style = MaterialTheme.typography.bodySmall,
             color = if (episode.hasAired(today)) TextSecondary else LocalPalette.current.accent
         )
+    }
+}
+
+/**
+ * Step 69: Release Radar card — the poster with a date pill
+ * (Today / Tomorrow / In 5d / 5d ago), the title, and the episode
+ * or "New season" line. Tap opens the title's detail page.
+ */
+@Composable
+private fun ReleaseRadarCard(
+    item: com.pulsestream.app.data.ReleaseRadarItem,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(128.dp)
+            .tvFocusRing(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .focusable()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .liquidGlass(RoundedCornerShape(12.dp))
+        ) {
+            SafePosterImage(
+                model = tmdbSizedImage(item.imageUrl, "w342"),
+                contentDescription = item.title,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .background(Color(0xFF040A12).copy(alpha = 0.72f), RoundedCornerShape(50))
+                    .padding(horizontal = 7.dp, vertical = 2.5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    com.pulsestream.app.data.ReleaseRadar.dateLabel(item),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp, fontWeight = FontWeight.Bold
+                    ),
+                    color = Color.White
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            item.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        item.subtitle?.let { subtitle ->
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
