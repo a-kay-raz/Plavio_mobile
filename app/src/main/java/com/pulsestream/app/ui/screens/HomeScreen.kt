@@ -893,7 +893,7 @@ private fun formatRemaining(ms: Long): String {
 }
 
 /** Starter addons for the guided empty-state steps (Sample C). */
-private const val META_ADDON_URL = "https://plaviometa.vercel.app/manifest.json"
+private const val META_ADDON_URL = "https://meta.plavio.site/manifest.json"
 private const val STREAMS_ADDON_URL = "https://hd.plavio.site/manifest.json"
 
 private enum class SetupStepState { Idle, Adding, Added, Failed }

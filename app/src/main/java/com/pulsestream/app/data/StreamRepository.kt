@@ -1245,9 +1245,15 @@ class StreamRepository(
                 )
         }
 
+    // PlavioMeta moved off Vercel (plaviometa.vercel.app is dead — 402
+    // DEPLOYMENT_DISABLED) to meta.plavio.site, manifest id
+    // "com.plavio.catalogs" (name PMeta). Old matches stay so an existing
+    // install of the old host still ranks first until it is replaced.
     private fun isPlavioMeta(addon: InstalledAddon): Boolean =
         addon.id.contains("plaviometa", ignoreCase = true) ||
-                addon.baseUrl.contains("plaviometa", ignoreCase = true)
+                addon.id == "com.plavio.catalogs" ||
+                addon.baseUrl.contains("plaviometa", ignoreCase = true) ||
+                addon.baseUrl.contains("meta.plavio.site", ignoreCase = true)
 
     private fun isCinemeta(addon: InstalledAddon): Boolean =
         addon.id.contains("cinemeta", ignoreCase = true) ||
@@ -2192,7 +2198,7 @@ class StreamRepository(
         // addon.plavio.site (ensureLockedAddon()); the public hd.plavio.site
         // is not pre-installed anymore (owner's order 2026-10-24).
         val targets = listOf(
-            "https://plaviometa.vercel.app/manifest.json",
+            "https://meta.plavio.site/manifest.json",
             "https://v3-cinemeta.strem.io/manifest.json",
             "https://opensubtitles-v3.strem.io/manifest.json",
             "https://subsense.nepiraw.com/manifest.json"
@@ -2219,6 +2225,18 @@ class StreamRepository(
                 }
             } catch (_: Exception) {
                 // Offline or dead URL — try again next launch.
+            }
+        }
+        // Upstream moved PlavioMeta off Vercel (plaviometa.vercel.app
+        // answers 402 DEPLOYMENT_DISABLED) to meta.plavio.site. Once the
+        // new home is installed, drop any stale install of the dead host
+        // so meta lookups never waste their per-addon timeout on it.
+        val installed = db.addonDao().getAll()
+        if (installed.any { it.baseUrl.contains("meta.plavio.site", ignoreCase = true) }) {
+            for (dead in installed.filter { it.baseUrl.contains("plaviometa.vercel.app", ignoreCase = true) }) {
+                db.addonDao().deleteById(dead.id)
+                db.catalogCacheDao().deleteByAddonId(dead.id)
+                invalidateAddonCaches(dead.id)
             }
         }
     }

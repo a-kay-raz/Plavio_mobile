@@ -56,7 +56,7 @@ import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
-private const val PLAVIO_META_MANIFEST = "https://plaviometa.vercel.app/manifest.json"
+private const val PLAVIO_META_MANIFEST = "https://meta.plavio.site/manifest.json"
 
 private data class OnboardingStep(
     val icon: ImageVector,

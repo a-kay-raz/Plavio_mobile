@@ -33,5 +33,5 @@ suspend fun resolveDetailTarget(
     val reference = parseTmdbReference(metaId, type)
         ?: return DetailTarget(addonId, normalizeDetailType(type), metaId)
     val resolvedType = if (reference.mediaType == "movie") "movie" else "series"
-    return DetailTarget("community.plaviometa", resolvedType, metaId)
+    return DetailTarget("com.plavio.catalogs", resolvedType, metaId)
 }

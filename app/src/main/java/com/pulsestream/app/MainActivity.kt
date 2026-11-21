@@ -1529,7 +1529,7 @@ private fun PulseNavGraph(
                 onOpenDetail = { type, metaId ->
                     // PlavioMeta addon id — detail resolves meta/streams from
                     // any capable addon via the base-URL hint chain.
-                    openResolvedDetail("community.plaviometa", type, metaId)
+                    openResolvedDetail("com.plavio.catalogs", type, metaId)
                 }
             )
         }
