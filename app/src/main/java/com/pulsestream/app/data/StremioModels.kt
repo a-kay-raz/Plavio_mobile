@@ -312,7 +312,9 @@ data class TvChannelRef(
     /** Resource type used by the channel meta and /stream request. */
     val type: String = "tv",
     /** Origin catalog identity; addonId above identifies its owning addon. */
-    val catalogId: String? = null
+    val catalogId: String? = null,
+    /** Catalog display name ("$provider — $group") for grouping in the in-player channels panel. */
+    val group: String? = null
 )
 
 /** Pulls a quality tag like "1080p"/"4K" out of a stream's name/title, if present. */

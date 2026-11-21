@@ -476,7 +476,8 @@ fun LiveScreen(
         name = meta.name,
         poster = meta.poster,
         type = liveResourceType(meta.type, row.type),
-        catalogId = row.catalogId
+        catalogId = row.catalogId,
+        group = row.catalogName
     )
 
     fun playChannel(row: CatalogRow, meta: MetaPreview, flatList: List<TvChannelRef>) {

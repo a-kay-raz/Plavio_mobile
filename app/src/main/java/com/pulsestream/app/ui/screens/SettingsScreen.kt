@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Extension
@@ -154,7 +155,8 @@ fun SettingsScreen(
     onGoToMediaServers: () -> Unit = {},
     onGoToProfiles: () -> Unit = {},
     onGoToDetailSections: () -> Unit = {},
-    onGoToStreamBadges: () -> Unit = {}
+    onGoToStreamBadges: () -> Unit = {},
+    onGoToPlayerToolbar: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -365,6 +367,17 @@ fun SettingsScreen(
                 title = "Stream badges",
                 subtitle = "Import badge rules shown on matching streams",
                 onClick = onGoToStreamBadges,
+                compact = true
+            )
+        },
+        // Step 63: player toolbar — reorder/hide the pill and top buttons.
+        SettingsEntry(sectionGeneral, "Player buttons",
+            "player buttons toolbar pill reorder hide chapters sources speed") {
+            SettingsNavRow(
+                icon = Icons.Filled.Dashboard,
+                title = "Player buttons",
+                subtitle = "Reorder and hide the player's pill and top buttons",
+                onClick = onGoToPlayerToolbar,
                 compact = true
             )
         },

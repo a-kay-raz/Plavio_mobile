@@ -87,6 +87,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
@@ -286,6 +287,15 @@ fun PlayerScreen(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val initialRequest = repository.pendingPlayback
     val settings = repository.settings
+
+    // Step 63: player toolbar layouts (order + visibility), decoded from
+    // the stored "id:v,id:h" strings; blank = all visible, default order.
+    val bottomButtonLayout = remember(settings.playerBottomLayout) {
+        com.pulsestream.app.data.PlayerButtonLayouts.decodeBottom(settings.playerBottomLayout)
+    }
+    val topButtonLayout = remember(settings.playerTopLayout) {
+        com.pulsestream.app.data.PlayerButtonLayouts.decodeTop(settings.playerTopLayout)
+    }
 
     // Reuse last link (Nuvio StreamLinkCacheRepository): the last played link
     // per title, so a replay inside the TTL skips the full re-resolve.
@@ -1152,6 +1162,8 @@ fun PlayerScreen(
     // file itself (ExoPlayer's Matroska extractor skips them).
     var chapters by remember { mutableStateOf<List<PlayerChapter>>(emptyList()) }
     var chaptersOpen by remember { mutableStateOf(false) }
+    // Step 63: in-player live-channels panel.
+    var channelsOpen by remember { mutableStateOf(false) }
 
     // Next-episode countdown card (Nuvio NextEpisodeCard): the resolved
     // next episode + the live countdown; Cancel marks the episode handled
@@ -3924,54 +3936,68 @@ fun PlayerScreen(
                     }
                     // Top-right cluster, Nuvio legacy order (only the actions
                     // Plavio has — no cast/party/engine-switch/rate;
-                    // video settings is iOS-only in Nuvio). Back is last.
+                    // video settings is iOS-only in Nuvio). Step 63: the
+                    // order/visibility follow the user's toolbar layout.
+                    // Back is last, always.
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        PlayerHeaderButton(
-                            icon = Icons.Filled.Info,
-                            label = "Playback info",
-                            onClick = { infoOpen = true }
-                        )
-                        PlayerHeaderButton(
-                            icon = Icons.Filled.ExitToApp,
-                            label = "Open in external player",
-                            onClick = {
-                                val ctx = activity ?: return@PlayerHeaderButton
-                                // Protected links warn once (owner's order
-                                // 2026-10-26) instead of the old hard block;
-                                // normal links open at once.
-                                if (ExternalPlayer.needsWarning(ctx, req)) {
-                                    externalWarningHide = false
-                                    externalWarningReq = req
-                                } else {
-                                    ExternalPlayer.play(ctx, req)
+                        topButtonLayout.visibleButtons.forEach { button ->
+                            when (button) {
+                                com.pulsestream.app.data.PlayerTopButton.PLAYBACK_INFO -> {
+                                    PlayerHeaderButton(
+                                        icon = Icons.Filled.Info,
+                                        label = "Playback info",
+                                        onClick = { infoOpen = true }
+                                    )
+                                }
+                                com.pulsestream.app.data.PlayerTopButton.EXTERNAL_PLAYER -> {
+                                    PlayerHeaderButton(
+                                        icon = Icons.Filled.ExitToApp,
+                                        label = "Open in external player",
+                                        onClick = {
+                                            val ctx = activity ?: return@PlayerHeaderButton
+                                            // Protected links warn once (owner's order
+                                            // 2026-10-26) instead of the old hard block;
+                                            // normal links open at once.
+                                            if (ExternalPlayer.needsWarning(ctx, req)) {
+                                                externalWarningHide = false
+                                                externalWarningReq = req
+                                            } else {
+                                                ExternalPlayer.play(ctx, req)
+                                            }
+                                        }
+                                    )
+                                }
+                                com.pulsestream.app.data.PlayerTopButton.ROTATE -> {
+                                    PlayerHeaderButton(
+                                        icon = if (isPortrait) Icons.Filled.StayCurrentLandscape
+                                        else Icons.Filled.StayCurrentPortrait,
+                                        label = "Rotate",
+                                        onClick = {
+                                            isPortrait = !isPortrait
+                                            activity?.requestedOrientation = if (isPortrait)
+                                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                            else
+                                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                        }
+                                    )
+                                }
+                                com.pulsestream.app.data.PlayerTopButton.LOCK -> {
+                                    PlayerHeaderButton(
+                                        icon = Icons.Filled.LockOpen,
+                                        label = "Lock controls",
+                                        onClick = {
+                                            locked = true
+                                            showControls = false
+                                            lockedOverlayVisible = true
+                                            pokeIndicator(PlayerIndicator.Message("Controls locked"))
+                                        }
+                                    )
                                 }
                             }
-                        )
-                        PlayerHeaderButton(
-                            icon = if (isPortrait) Icons.Filled.StayCurrentLandscape
-                            else Icons.Filled.StayCurrentPortrait,
-                            label = "Rotate",
-                            onClick = {
-                                isPortrait = !isPortrait
-                                activity?.requestedOrientation = if (isPortrait)
-                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                else
-                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                            }
-                        )
-                        PlayerHeaderButton(
-                            icon = Icons.Filled.LockOpen,
-                            label = "Lock controls",
-                            onClick = {
-                                locked = true
-                                showControls = false
-                                lockedOverlayVisible = true
-                                pokeIndicator(PlayerIndicator.Message("Controls locked"))
-                            }
-                        )
+                        }
                         PlayerHeaderButton(
                             icon = Icons.Filled.ArrowBack,
                             label = "Back",
@@ -4065,75 +4091,109 @@ fun PlayerScreen(
                             Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (settings.pipEnabled) {
-                                PillBarButton(
-                                    icon = Icons.Filled.PictureInPicture,
-                                    label = "PiP",
-                                    onClick = { enterPip() }
-                                )
-                            }
-                            PillBarButton(
-                                icon = Icons.Filled.HighQuality,
-                                label = streamLabelText ?: "Quality",
-                                onClick = {
-                                    // Fresh fetch when opening Quality — ensures full list, not stale partial
-                                    refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                                    qualityOpen = true
+                            // Step 63: pill buttons follow the user's toolbar
+                            // layout (order + visibility) — each button keeps
+                            // its own availability gate.
+                            bottomButtonLayout.visibleButtons.forEach { button ->
+                                when (button) {
+                                    com.pulsestream.app.data.PlayerBottomButton.PIP -> {
+                                        if (settings.pipEnabled) {
+                                            PillBarButton(
+                                                icon = Icons.Filled.PictureInPicture,
+                                                label = "PiP",
+                                                onClick = { enterPip() }
+                                            )
+                                        }
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.QUALITY -> {
+                                        PillBarButton(
+                                            icon = Icons.Filled.HighQuality,
+                                            label = streamLabelText ?: "Quality",
+                                            onClick = {
+                                                // Fresh fetch when opening Quality — ensures full list, not stale partial
+                                                refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
+                                                qualityOpen = true
+                                            }
+                                        )
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.SUBTITLES -> {
+                                        PillBarButton(
+                                            icon = Icons.Filled.ClosedCaption,
+                                            label = "Subs",
+                                            onClick = {
+                                                trackTick++
+                                                tracksMode = "subs"
+                                                tracksOpen = true
+                                            }
+                                        )
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.AUDIO -> {
+                                        PillBarButton(
+                                            icon = Icons.Filled.Audiotrack,
+                                            label = "Audio",
+                                            onClick = { trackTick++; tracksMode = "audio"; tracksOpen = true }
+                                        )
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.CHAPTERS -> {
+                                        if (chapters.isNotEmpty()) {
+                                            PillBarButton(
+                                                icon = Icons.Filled.List,
+                                                label = "Chapters",
+                                                onClick = { chaptersOpen = true }
+                                            )
+                                        }
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.RESIZE -> {
+                                        PillBarButton(
+                                            icon = Icons.Filled.AspectRatio,
+                                            label = aspectLabel,
+                                            onClick = { cycleAspect() }
+                                        )
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.SPEED -> {
+                                        SpeedMenuButton(
+                                            speed = speed,
+                                            menuOpen = speedMenuOpen,
+                                            onOpenMenu = { speedMenuOpen = true },
+                                            onDismissMenu = { speedMenuOpen = false },
+                                            onSpeedSelected = { s ->
+                                                speed = s
+                                                player.setPlaybackSpeed(s)
+                                                speedMenuOpen = false
+                                                pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
+                                            }
+                                        )
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.SOURCES -> {
+                                        PillBarButton(
+                                            icon = Icons.Filled.CloudDownload,
+                                            label = "Sources",
+                                            onClick = {
+                                                // Fresh fetch when opening Sources — ensures full list, not stale partial
+                                                refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
+                                                sourcesOpen = true
+                                            }
+                                        )
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.EPISODES -> {
+                                        if (!req.isMovie && req.episodes.isNotEmpty()) {
+                                            PillBarButton(
+                                                icon = Icons.Filled.VideoLibrary,
+                                                label = "Episodes",
+                                                onClick = { episodesOpen = true }
+                                            )
+                                        }
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.LIVE_CHANNELS -> {
+                                        if (currentRequest.isLive && canZap()) {
+                                            PillBarButton(
+                                                icon = Icons.Filled.Tv,
+                                                label = "Channels",
+                                                onClick = { channelsOpen = true }
+                                            )
+                                        }
+                                    }
                                 }
-                            )
-                            PillBarButton(
-                                icon = Icons.Filled.ClosedCaption,
-                                label = "Subs",
-                                onClick = {
-                                    trackTick++
-                                    tracksMode = "subs"
-                                    tracksOpen = true
-                                }
-                            )
-                            PillBarButton(
-                                icon = Icons.Filled.Audiotrack,
-                                label = "Audio",
-                                onClick = { trackTick++; tracksMode = "audio"; tracksOpen = true }
-                            )
-                            if (chapters.isNotEmpty()) {
-                                PillBarButton(
-                                    icon = Icons.Filled.List,
-                                    label = "Chapters",
-                                    onClick = { chaptersOpen = true }
-                                )
-                            }
-                            PillBarButton(
-                                icon = Icons.Filled.AspectRatio,
-                                label = aspectLabel,
-                                onClick = { cycleAspect() }
-                            )
-                            SpeedMenuButton(
-                                speed = speed,
-                                menuOpen = speedMenuOpen,
-                                onOpenMenu = { speedMenuOpen = true },
-                                onDismissMenu = { speedMenuOpen = false },
-                                onSpeedSelected = { s ->
-                                    speed = s
-                                    player.setPlaybackSpeed(s)
-                                    speedMenuOpen = false
-                                    pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
-                                }
-                            )
-                            PillBarButton(
-                                icon = Icons.Filled.CloudDownload,
-                                label = "Sources",
-                                onClick = {
-                                    // Fresh fetch when opening Sources — ensures full list, not stale partial
-                                    refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                                    sourcesOpen = true
-                                }
-                            )
-                            if (!req.isMovie && req.episodes.isNotEmpty()) {
-                                PillBarButton(
-                                    icon = Icons.Filled.VideoLibrary,
-                                    label = "Episodes",
-                                    onClick = { episodesOpen = true }
-                                )
                             }
                         }
                     }
@@ -5336,6 +5396,18 @@ fun PlayerScreen(
         }
 
         // TEST: YouTube quality picker dialog.
+        // Step 63: in-player live-channels panel (search + catalog groups).
+        if (channelsOpen) {
+            LiveChannelsPanel(
+                channels = zapChannels,
+                currentVideoId = currentRequest.videoId,
+                onChannelSelected = { index ->
+                    channelsOpen = false
+                    zapTo(index)
+                },
+                onDismiss = { channelsOpen = false }
+            )
+        }
         // Episodes picker for series.
         if (episodesOpen) {
             val episodes = currentRequest.episodes

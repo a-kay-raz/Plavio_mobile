@@ -33,6 +33,7 @@ object Routes {
     const val STREAMS_SETTINGS = "streams_settings"
     const val TRACKING_SETTINGS = "tracking_settings"
     const val STREAM_BADGES = "stream_badges"
+    const val PLAYER_TOOLBAR = "player_toolbar"
     const val INTEGRATIONS = "integrations"
     const val ABOUT = "about"
     const val WHATS_NEW = "whats_new"

@@ -152,6 +152,7 @@ import com.pulsestream.app.ui.screens.SplashScreen
 import com.pulsestream.app.ui.screens.SettingsScreen
 import com.pulsestream.app.ui.screens.AccountScreen
 import com.pulsestream.app.ui.screens.DetailSectionsScreen
+import com.pulsestream.app.ui.screens.PlayerToolbarScreen
 import com.pulsestream.app.ui.screens.StreamBadgesScreen
 import com.pulsestream.app.ui.screens.PinEntryDialog
 import com.pulsestream.app.ui.screens.ProfilesScreen
@@ -1517,7 +1518,8 @@ private fun PulseNavGraph(
                 onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) },
                 onGoToProfiles = { navController.navigate(Routes.PROFILES) },
                 onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) },
-                onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) }
+                onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) },
+                onGoToPlayerToolbar = { navController.navigate(Routes.PLAYER_TOOLBAR) }
             )
         }
         composable(Routes.MEDIA_SERVERS) {
@@ -1621,6 +1623,13 @@ private fun PulseNavGraph(
         composable(Routes.STREAM_BADGES) {
             StreamBadgesScreen(
                 badgeSettings = streamBadgeSettings,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        // Step 63: player toolbar customization.
+        composable(Routes.PLAYER_TOOLBAR) {
+            PlayerToolbarScreen(
+                settings = repository.settings,
                 onBack = { navController.popBackStack() }
             )
         }
