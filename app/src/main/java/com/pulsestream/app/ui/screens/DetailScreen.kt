@@ -1,5 +1,6 @@
 package com.pulsestream.app.ui.screens
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -764,8 +765,8 @@ private fun DetailContent(
                             overflow = TextOverflow.Ellipsis
                         )
                         val factsLine = buildList {
-                            meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(it) }
-                            meta.runtime?.takeIf { it.isNotBlank() }?.let { add(it) }
+                            meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(formatEpisodeDate(it)) }
+                            formatRuntimeForDisplay(meta.runtime)?.let { add(it) }
                             meta.imdbRating?.takeIf { it.isNotBlank() }?.let { add("★ $it") }
                         }.joinToString("  •  ")
                         if (factsLine.isNotBlank()) {
@@ -860,13 +861,11 @@ private fun DetailContent(
         if (!meta.description.isNullOrBlank()) {
             item {
                 Column {
-                    Text(
-                        meta.description!!,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis
+                    // Nuvio ExpandableDescription: 4 lines collapsed, expands in place.
+                    ExpandableDescription(
+                        text = meta.description!!,
+                        collapsedMaxLines = 4,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)
                     )
                     if (meta.genres.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
@@ -2091,6 +2090,85 @@ internal fun FullPageSourcePicker(
 }
 
 /** TMDB recommendation item. */
+/**
+ * Nuvio ExpandableDescription: collapses to [collapsedMaxLines] and expands
+ * in place when the text actually overflows; the "Show more"/"Show less"
+ * hint appears only when there is overflow to show.
+ */
+@Composable
+private fun ExpandableDescription(
+    text: String,
+    collapsedMaxLines: Int,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    color: Color = TextSecondary,
+) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var canExpand by remember(text) { mutableStateOf(false) }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .clickable(enabled = canExpand) { expanded = !expanded },
+    ) {
+        Text(
+            text = text,
+            style = style,
+            color = color,
+            maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { result ->
+                if (!expanded) canExpand = result.hasVisualOverflow
+            },
+        )
+        if (canExpand) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (expanded) "Show less" else "Show more",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LocalPalette.current.accent,
+            )
+        }
+    }
+}
+
+/** Nuvio formatRuntimeForDisplay: "136 min" / "136" / "2:16" -> "2h 16m"; unparseable passes through. */
+private fun formatRuntimeForDisplay(rawRuntime: String?): String? {
+    val normalized = rawRuntime?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val totalMinutes = parseRuntimeMinutes(normalized) ?: return normalized
+    if (totalMinutes <= 0) return normalized
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        else -> "${minutes}m"
+    }
+}
+
+private fun parseRuntimeMinutes(rawRuntime: String): Int? {
+    val value = rawRuntime.trim()
+    hourMinuteColonRegex.matchEntire(value)?.let { match ->
+        val hours = match.groupValues[1].toIntOrNull() ?: return null
+        val minutes = match.groupValues[2].toIntOrNull() ?: return null
+        return (hours * 60) + minutes
+    }
+    val hoursToken = hourTokenRegex.find(value)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val minutesToken = minuteTokenRegex.find(value)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    if (hoursToken != null || minutesToken != null) {
+        return ((hoursToken ?: 0).coerceAtLeast(0) * 60) + (minutesToken ?: 0).coerceAtLeast(0)
+    }
+    digitsOnlyRegex.matchEntire(value)?.let { match ->
+        return match.groupValues[1].toIntOrNull()?.coerceAtLeast(0)
+    }
+    return null
+}
+
+private val hourTokenRegex = Regex("""(?i)(\d+)\s*h(?:ours?)?""")
+private val minuteTokenRegex = Regex("""(?i)(\d+)\s*m(?:in(?:ute)?s?)?""")
+private val hourMinuteColonRegex = Regex("""^\s*(\d+)\s*:\s*(\d{1,2})\s*$""")
+private val digitsOnlyRegex = Regex("""^\s*(\d+)\s*$""")
+
 /** Facts for the Show Details tiles — only what the meta actually carries. */
 private fun buildDetailTiles(meta: MetaDetail): List<Pair<String, String>> {
     val tiles = mutableListOf<Pair<String, String>>()
@@ -2104,10 +2182,10 @@ private fun buildDetailTiles(meta: MetaDetail): List<Pair<String, String>> {
             if (lo != hi) "$lo\u2013$hi" else meta.releaseInfo ?: lo.toString()
         } else meta.releaseInfo
     } else meta.releaseInfo
-    release?.takeIf { it.isNotBlank() }?.let { tiles += "Release" to it }
+    release?.takeIf { it.isNotBlank() }?.let { tiles += "Release" to formatEpisodeDate(it) }
     meta.certification?.takeIf { it.isNotBlank() }?.let { tiles += "Certification" to it }
     meta.country?.takeIf { it.isNotBlank() }?.let { tiles += "Origin" to it }
-    meta.runtime?.takeIf { it.isNotBlank() }?.let { tiles += "Runtime" to it }
+    formatRuntimeForDisplay(meta.runtime)?.let { tiles += "Runtime" to it }
     meta.network?.takeIf { it.isNotBlank() }?.let { tiles += "Network" to it }
     meta.imdbRating?.takeIf { it.isNotBlank() }?.let { tiles += "IMDb" to it }
     if (meta.genres.isNotEmpty()) tiles += "Genres" to meta.genres.take(2).joinToString(", ")
