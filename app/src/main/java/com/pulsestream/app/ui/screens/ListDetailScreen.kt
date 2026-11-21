@@ -60,6 +60,8 @@ fun ListDetailScreen(
 ) {
     val items by listsRepository.observeItems(listId).collectAsState(initial = emptyList())
     var listName by remember { mutableStateOf<String?>(null) }
+    // Step 48: list description (shown under the title, editable).
+    var listDescription by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
@@ -73,7 +75,10 @@ fun ListDetailScreen(
 
     LaunchedEffect(listId) {
         val list = listsRepository.getList(listId)
-        if (list == null) onBack() else listName = list.name
+        if (list == null) onBack() else {
+            listName = list.name
+            listDescription = list.description
+        }
     }
 
     GlowBackground {
@@ -83,12 +88,16 @@ fun ListDetailScreen(
                 IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary) }
                 Column(Modifier.weight(1f)) {
                     Text(text = listName ?: "List", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Black), color = TextPrimary)
+                    // Step 48: description under the title.
+                    if (!listDescription.isNullOrBlank()) {
+                        Text(listDescription!!, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
                     if (items.isNotEmpty()) Text("${items.size} ${if (items.size == 1) "title" else "titles"}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                 }
                 Box {
                     IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "List options", tint = TextSecondary) }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(text = { Text("Rename list") }, leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) }, onClick = { menuOpen = false; showRename = true })
+                        DropdownMenuItem(text = { Text("Edit list") }, leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) }, onClick = { menuOpen = false; showRename = true })
                         DropdownMenuItem(text = { Text("Delete list") }, leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) }, onClick = { menuOpen = false; showDelete = true })
                     }
                 }
@@ -105,7 +114,7 @@ fun ListDetailScreen(
                         removed.forEach { listsRepository.removeFromList(listId, it.itemKey) }
                         selectedKeys = emptySet(); selecting = false
                         if (snackbar.showSnackbar("Removed ${removed.size} titles", "Undo") == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                            removed.forEach { listsRepository.addToList(listId, it.addonId, it.type, it.metaId, it.name, it.poster) }
+                            removed.forEach { listsRepository.addToList(listId, it.addonId, it.type, it.metaId, it.name, it.poster, it.year) }
                         }
                     }
                 }
@@ -136,23 +145,35 @@ fun ListDetailScreen(
 
     if (showRename) {
         var name by remember { mutableStateOf(listName ?: "") }
+        var description by remember { mutableStateOf(listDescription ?: "") }
         AlertDialog(
             onDismissRequest = { showRename = false },
-            title = { Text("Rename list", color = TextPrimary) },
+            title = { Text("Edit list", color = TextPrimary) },
             text = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { if (it.length <= 60) name = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { if (it.length <= 60) name = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { if (it.length <= 200) description = it },
+                        placeholder = { Text("Description (optional)", color = TextSecondary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 3
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         scope.launch {
-                            listsRepository.renameList(listId, name)
+                            listsRepository.updateList(listId, name, description)
                             listName = name.trim()
+                            listDescription = description.trim()
                             showRename = false
                         }
                     },

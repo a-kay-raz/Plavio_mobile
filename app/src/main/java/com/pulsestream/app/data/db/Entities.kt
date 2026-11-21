@@ -196,7 +196,10 @@ interface WatchlistDao {
 data class CustomList(
     @PrimaryKey val id: String,
     val name: String,
-    val createdAt: Long
+    val createdAt: Long,
+    // Step 48: optional description + manual order (display = sortOrder ASC).
+    val description: String = "",
+    val sortOrder: Long = 0
 )
 
 /**
@@ -224,14 +227,16 @@ data class CustomListItem(
 
 @Dao
 interface CustomListDao {
-    @Query("SELECT * FROM custom_lists ORDER BY createdAt DESC")
+    // Step 48: display order is sortOrder ASC (backfilled from -createdAt,
+    // so the previous newest-first order is preserved).
+    @Query("SELECT * FROM custom_lists ORDER BY sortOrder ASC")
     fun observeLists(): Flow<List<CustomList>>
 
     // Step 47: all list items in one flow (the Saved view groups them).
     @Query("SELECT * FROM custom_list_items ORDER BY addedAt DESC")
     fun observeAllItems(): Flow<List<CustomListItem>>
 
-    @Query("SELECT * FROM custom_lists ORDER BY createdAt DESC")
+    @Query("SELECT * FROM custom_lists ORDER BY sortOrder ASC")
     suspend fun getLists(): List<CustomList>
 
     @Query("SELECT * FROM custom_lists WHERE id = :id LIMIT 1")
@@ -242,6 +247,13 @@ interface CustomListDao {
 
     @Query("UPDATE custom_lists SET name = :name WHERE id = :id")
     suspend fun renameList(id: String, name: String)
+
+    // Step 48: description edit + manual reorder.
+    @Query("UPDATE custom_lists SET description = :description WHERE id = :id")
+    suspend fun updateDescription(id: String, description: String)
+
+    @Query("UPDATE custom_lists SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateSortOrder(id: String, sortOrder: Long)
 
     @Query("DELETE FROM custom_lists WHERE id = :id")
     suspend fun deleteList(id: String)

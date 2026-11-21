@@ -3,6 +3,7 @@ package com.pulsestream.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -43,9 +45,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.data.db.CustomList
 import com.pulsestream.app.ui.components.EmptyState
@@ -71,6 +77,12 @@ fun ListsScreen(
     var showCreate by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<CustomList?>(null) }
     var deleteTarget by remember { mutableStateOf<CustomList?>(null) }
+    // Step 48: drag-reorder — the local order follows the flow, mutates
+    // live while dragging, and persists on release.
+    var orderedLists by remember(lists) { mutableStateOf(lists) }
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    val gridState = rememberLazyGridState()
 
     GlowBackground {
         Column(Modifier.fillMaxSize()) {
@@ -103,6 +115,14 @@ fun ListsScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+            if (lists.isNotEmpty()) {
+                Text(
+                    text = "Long-press a list to drag it into a new order.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                )
+            }
             if (lists.isEmpty()) {
                 EmptyState(
                     title = "No lists yet",
@@ -113,19 +133,87 @@ fun ListsScreen(
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    state = gridState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(lists, key = { it.id }) { list ->
-                        ListCard(
-                            listsRepository = listsRepository,
-                            customList = list,
-                            onOpen = { onOpenList(list.id) },
-                            onRename = { renameTarget = list },
-                            onDelete = { deleteTarget = list }
-                        )
+                    items(orderedLists, key = { it.id }) { list ->
+                        // Step 48: long-press drag — the card lifts and
+                        // follows the finger; crossing into another card's
+                        // cell swaps the two, and the offset resets so the
+                        // card stays under the finger in its new cell.
+                        val isDragging = draggingId == list.id
+                        Box(
+                            modifier = Modifier
+                                .zIndex(if (isDragging) 1f else 0f)
+                                .graphicsLayer {
+                                    if (isDragging) {
+                                        translationX = dragOffset.x
+                                        translationY = dragOffset.y
+                                        scaleX = 1.04f
+                                        scaleY = 1.04f
+                                        shadowElevation = 16f
+                                    }
+                                }
+                                .pointerInput(list.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            draggingId = list.id
+                                            dragOffset = Offset.Zero
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragOffset += dragAmount
+                                            val info = gridState.layoutInfo.visibleItemsInfo
+                                            val dragged = info.firstOrNull { it.key == list.id }
+                                                ?: return@detectDragGesturesAfterLongPress
+                                            val centerX = dragged.offset.x + dragged.size.width / 2f + dragOffset.x
+                                            val centerY = dragged.offset.y + dragged.size.height / 2f + dragOffset.y
+                                            val target = info.firstOrNull { item ->
+                                                item.key != list.id &&
+                                                    centerX >= item.offset.x &&
+                                                    centerX <= item.offset.x + item.size.width &&
+                                                    centerY >= item.offset.y &&
+                                                    centerY <= item.offset.y + item.size.height
+                                            } ?: return@detectDragGesturesAfterLongPress
+                                            val from = orderedLists.indexOfFirst { it.id == list.id }
+                                            val to = orderedLists.indexOfFirst { it.id == target.key }
+                                            if (from >= 0 && to >= 0 && from != to) {
+                                                orderedLists = orderedLists.toMutableList().apply {
+                                                    add(to, removeAt(from))
+                                                }
+                                                dragOffset = Offset.Zero
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val id = draggingId
+                                            draggingId = null
+                                            dragOffset = Offset.Zero
+                                            if (id != null) {
+                                                val toIndex = orderedLists.indexOfFirst { it.id == id }
+                                                scope.launch {
+                                                    listsRepository.moveList(id, toIndex)
+                                                }
+                                            }
+                                        },
+                                        onDragCancel = {
+                                            draggingId = null
+                                            dragOffset = Offset.Zero
+                                            orderedLists = lists
+                                        }
+                                    )
+                                }
+                        ) {
+                            ListCard(
+                                listsRepository = listsRepository,
+                                customList = list,
+                                onOpen = { onOpenList(list.id) },
+                                onRename = { renameTarget = list },
+                                onDelete = { deleteTarget = list }
+                            )
+                        }
                     }
                 }
             }
@@ -137,9 +225,9 @@ fun ListsScreen(
             title = "New list",
             initial = "",
             onDismiss = { showCreate = false },
-            onConfirm = { name ->
+            onConfirm = { name, description ->
                 scope.launch {
-                    val id = listsRepository.createList(name)
+                    val id = listsRepository.createList(name, description)
                     showCreate = false
                     onOpenList(id)
                 }
@@ -149,12 +237,13 @@ fun ListsScreen(
 
     renameTarget?.let { target ->
         ListNameDialog(
-            title = "Rename list",
+            title = "Edit list",
             initial = target.name,
+            initialDescription = target.description,
             onDismiss = { renameTarget = null },
-            onConfirm = { name ->
+            onConfirm = { name, description ->
                 scope.launch {
-                    listsRepository.renameList(target.id, name)
+                    listsRepository.updateList(target.id, name, description)
                     renameTarget = null
                 }
             }
@@ -240,7 +329,7 @@ private fun ListCard(
                         onDismissRequest = { menuOpen = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Rename") },
+                            text = { Text("Edit") },
                             leadingIcon = {
                                 Icon(Icons.Filled.Edit, contentDescription = null)
                             },
@@ -276,6 +365,17 @@ private fun ListCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
+            // Step 48: list description.
+            if (customList.description.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = customList.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -284,25 +384,37 @@ private fun ListCard(
 private fun ListNameDialog(
     title: String,
     initial: String,
+    initialDescription: String = "",
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String, String) -> Unit
 ) {
     var name by remember { mutableStateOf(initial) }
+    var description by remember { mutableStateOf(initialDescription) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title, color = TextPrimary) },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { if (it.length <= 60) name = it },
-                placeholder = { Text("List name", color = TextSecondary) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { if (it.length <= 60) name = it },
+                    placeholder = { Text("List name", color = TextSecondary) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { if (it.length <= 200) description = it },
+                    placeholder = { Text("Description (optional)", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+            }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name) },
+                onClick = { onConfirm(name, description) },
                 enabled = name.trim().isNotEmpty()
             ) { Text("Save") }
         },

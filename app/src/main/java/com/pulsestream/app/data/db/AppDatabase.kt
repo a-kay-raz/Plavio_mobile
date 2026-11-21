@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CustomListItem::class,
         WatchedRecord::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -239,5 +239,14 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE watchlist ADD COLUMN year INTEGER NOT NULL DEFAULT 0")
         db.execSQL("ALTER TABLE custom_list_items ADD COLUMN year INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** v16 → v17 (Step 48): description + manual order on custom lists. sortOrder is backfilled from -createdAt so the previous newest-first order is preserved. */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE custom_lists ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE custom_lists ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE custom_lists SET sortOrder = -createdAt")
     }
 }

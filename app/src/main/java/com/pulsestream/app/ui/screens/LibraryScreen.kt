@@ -19,7 +19,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,11 +49,13 @@ import androidx.compose.ui.unit.sp
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.db.DownloadItem
 import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.data.db.CustomList
 import com.pulsestream.app.data.simkl.SimklApi
 import com.pulsestream.app.data.trakt.TraktApi
 import com.pulsestream.app.data.trakt.TraktManager
+import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.SafePosterImage
@@ -109,6 +117,8 @@ fun LibraryScreen(
     val context = LocalContext.current
     val downloadManager = remember { DownloadManager.get(context) }
     val downloads by downloadManager.observeAll().collectAsState(initial = emptyList())
+    // Step 48: live progress for the Downloaded tab.
+    val activeProgress by downloadManager.activeDownloads.collectAsState()
     val completedDownloads = remember(downloads) {
         downloads.filter { it.status == "COMPLETED" }
     }
@@ -262,6 +272,11 @@ fun LibraryScreen(
                     onClick = { libraryTab = "sections" },
                     label = { Text("Sections") }
                 )
+                FilterChip(
+                    selected = libraryTab == "downloaded",
+                    onClick = { libraryTab = "downloaded" },
+                    label = { Text("Downloaded") }
+                )
             }
         }
 
@@ -276,6 +291,21 @@ fun LibraryScreen(
                     watchedKeys = watchedKeys,
                     settings = settings,
                     onOpenDetail = onOpenDetail
+                )
+            }
+            return@Column
+        }
+
+        // Step 48: Downloaded as a real mode — in-progress cards with
+        // pause/resume, then completed downloads grouped per show.
+        if (libraryTab == "downloaded") {
+            Box(Modifier.weight(1f)) {
+                LibraryDownloadedTab(
+                    downloads = downloads,
+                    activeProgress = activeProgress,
+                    manager = downloadManager,
+                    onPlayDownload = onPlayDownload,
+                    onGoToDownloads = onGoToDownloads
                 )
             }
             return@Column
@@ -480,6 +510,183 @@ private fun formatDownloadSize(totalBytes: Long): String {
  * the title's initial, a download badge and the file size — tap plays
  * the file, same as the Downloads screen.
  */
+/**
+ * Step 48: Downloaded as a real Library mode (Nuvio
+ * library/LibraryDownloadedContent.kt, scoped port). In-progress downloads
+ * get live progress cards with pause/resume; completed downloads are
+ * grouped per show (movies in one row), each opening offline playback.
+ * The full Downloads screen stays one tap away via "See all".
+ */
+@Composable
+private fun LibraryDownloadedTab(
+    downloads: List<DownloadItem>,
+    activeProgress: Map<String, DownloadManager.DownloadProgress>,
+    manager: DownloadManager,
+    onPlayDownload: (filePath: String, title: String) -> Unit,
+    onGoToDownloads: () -> Unit
+) {
+    val palette = LocalPalette.current
+    val active = remember(downloads) {
+        downloads.filter { it.status in listOf("QUEUED", "DOWNLOADING", "PAUSED", "FAILED") }
+    }
+    val completed = remember(downloads) {
+        downloads.filter { it.status == "COMPLETED" }
+    }
+    val showGroups = remember(completed) {
+        completed.filter { it.showKey.isNotEmpty() }.groupBy { it.showKey }
+    }
+    val movies = remember(completed) {
+        completed.filter { it.showKey.isEmpty() }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 110.dp)
+    ) {
+        item(key = "dl_tab_header") {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Downloaded",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "See all",
+                    color = palette.accent,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.clickable { onGoToDownloads() }
+                )
+            }
+        }
+
+        if (active.isNotEmpty()) {
+            item(key = "dl_active_title") {
+                SectionTitle("In progress")
+            }
+            items(active, key = { "active_${it.id}" }) { item ->
+                val progress = activeProgress[item.id]
+                val downloaded = progress?.downloadedBytes ?: item.downloadedBytes
+                val total = progress?.totalBytes?.takeIf { it > 0 } ?: item.totalBytes.takeIf { it > 0 } ?: 0L
+                val fraction = if (total > 0) (downloaded.toFloat() / total.toFloat()).coerceIn(0f, 1f) else null
+                GlassCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    item.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    when {
+                                        item.status == "FAILED" -> "Failed — tap resume to retry"
+                                        item.status == "PAUSED" -> "Paused · ${manager.formatBytes(downloaded)}" +
+                                            if (total > 0) " of ${manager.formatBytes(total)}" else ""
+                                        total > 0 -> "${manager.formatBytes(downloaded)} of ${manager.formatBytes(total)}"
+                                        else -> manager.formatBytes(downloaded)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (item.status == "FAILED") MaterialTheme.colorScheme.error else TextSecondary
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    if (item.status in listOf("DOWNLOADING", "QUEUED")) {
+                                        manager.pauseDownload(item.id)
+                                    } else {
+                                        manager.resumeDownload(item.id)
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    if (item.status in listOf("DOWNLOADING", "QUEUED")) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = if (item.status in listOf("DOWNLOADING", "QUEUED")) "Pause" else "Resume",
+                                    tint = TextPrimary
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        if (fraction != null) {
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = palette.accent,
+                                trackColor = Color.White.copy(alpha = 0.12f)
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = palette.accent,
+                                trackColor = Color.White.copy(alpha = 0.12f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        showGroups.forEach { (showKey, items) ->
+            val name = items.firstOrNull()?.seriesName?.takeIf { it.isNotBlank() } ?: showKey
+            item(key = "dl_group_$showKey") {
+                SectionTitle(name)
+            }
+            item(key = "dl_row_$showKey") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    items(items, key = { it.id }) { item ->
+                        DownloadCard(item) {
+                            onPlayDownload(item.filePath, item.title)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (movies.isNotEmpty()) {
+            item(key = "dl_movies_title") {
+                SectionTitle("Movies")
+            }
+            item(key = "dl_movies_row") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    items(movies, key = { it.id }) { item ->
+                        DownloadCard(item) {
+                            onPlayDownload(item.filePath, item.title)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (downloads.isEmpty()) {
+            item(key = "dl_tab_empty") {
+                Text(
+                    "Nothing downloaded yet — download a stream from any title and it will show up here, ready to play offline.",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 28.dp)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun DownloadCard(
     item: com.pulsestream.app.data.db.DownloadItem,
