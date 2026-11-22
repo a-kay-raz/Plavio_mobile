@@ -9,7 +9,6 @@ package com.pulsestream.app.data
 object WhatsNew {
     /** One user-facing change, shown as a single bullet. */
     val changes: List<String> = listOf(
-        "New name, new look — Plavio is now Avio, with a gold accent by default.",
         "CloudStream plugins — add a plugin repo and install providers from Settings.",
         "Home hero with Play and Details — start a movie or the next episode straight from the hero.",
         "Continue Watching, restyled — episode info, time left, and progress right on the card.",
