@@ -123,7 +123,7 @@ fun IntegrationsScreen(
                 val pmConfigured = remember(pmTick) { !settings.premiumizeApiKey.isNullOrBlank() }
                 SettingsGroup(
                     {
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Bolt,
                             title = "TorBox",
                             subtitle = if (torboxConfigured) "API key saved" else "Add your API key for cached streams",
@@ -150,7 +150,7 @@ fun IntegrationsScreen(
                         // Step 43 — Premiumize: same paste-a-key pattern as
                         // TorBox; the key is verified against
                         // /api/account/info before saving.
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Bolt,
                             title = "Premiumize",
                             subtitle = if (pmConfigured) "API key saved" else "Add your API key for cached streams",
@@ -174,7 +174,7 @@ fun IntegrationsScreen(
                         )
                     },
                     {
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Bolt,
                             title = "Real-Debrid",
                             subtitle = if (rdConfigured) "Connected" else "Under testing \u2014 coming soon",
@@ -258,7 +258,7 @@ fun IntegrationsScreen(
                 }
                 SettingsGroup(
                     {
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Bolt,
                             title = "Preferred resolver",
                             subtitle = "Tried first when resolving cached torrents — $resolverLabel",
@@ -273,7 +273,7 @@ fun IntegrationsScreen(
                         )
                     },
                     {
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Bolt,
                             title = "Instant preparation",
                             subtitle = "Cached streams resolved per title — $prepareLabel",
@@ -338,7 +338,7 @@ fun IntegrationsScreen(
                 val omdbConfigured = remember(omdbTick) { !settings.omdbApiKey.isNullOrBlank() }
                 SettingsGroup(
                     {
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Movie,
                             title = "TMDB",
                             subtitle = if (tmdbConfigured) "API key saved" else "Add your API key for richer metadata and ratings",
@@ -362,7 +362,7 @@ fun IntegrationsScreen(
                         )
                     },
                     {
-                        SettingsStaticRow(
+                        V117StaticRow(
                             icon = Icons.Filled.Star,
                             title = "OMDb",
                             subtitle = if (omdbConfigured) "API key saved" else "Add your API key for IMDb ratings",
@@ -784,7 +784,7 @@ private fun LibrarySyncRow(repository: StreamRepository) {
         }
     }
 
-    SettingsStaticRow(
+    V117StaticRow(
         icon = Icons.Filled.Sync,
         title = "Library sync",
         subtitle = when {
