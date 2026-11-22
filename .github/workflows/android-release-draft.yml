@@ -55,7 +55,11 @@ jobs:
           # exit 1 — killed runs 44883021738 + 44883946590 in ~20s
           # before any build; android-ci breaks the same way).
           # platform-tools alone is all this build needs.
-          packages: platform-tools
+          # platforms;android-36: the CS3 runtime AAR requires
+          # compileSdk 36 (checkAarMetadata), so the platform must
+          # be installed explicitly — the runner image is not
+          # guaranteed to ship it.
+          packages: platform-tools platforms;android-36
 
       - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
