@@ -63,6 +63,7 @@ import com.pulsestream.app.data.popularCredits
 import com.pulsestream.app.data.upcomingCredits
 import com.pulsestream.app.ui.components.ExpandableDescription
 import com.pulsestream.app.ui.components.GlowBackground
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.ShimmerPoster
@@ -478,6 +479,7 @@ private fun PersonCreditRail(
             PosterCard(
                 meta = meta,
                 onClick = { onOpenDetail(meta.type, meta.id) },
+                surface = CustomPosterScreen.DETAILS,
                 modifier = Modifier.width(120.dp)
             )
         }
@@ -507,7 +509,8 @@ private fun FilmographyGrid(
         items(uniqueMetas, key = { it.type + "|" + it.id }) { meta ->
             PosterCard(
                 meta = meta,
-                onClick = { onOpenDetail(meta.type, meta.id) }
+                onClick = { onOpenDetail(meta.type, meta.id) },
+                surface = CustomPosterScreen.DETAILS
             )
         }
     }

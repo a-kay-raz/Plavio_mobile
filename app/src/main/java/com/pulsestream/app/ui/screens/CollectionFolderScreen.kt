@@ -35,6 +35,7 @@ import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.OrbitDots
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
@@ -123,7 +124,8 @@ fun CollectionFolderScreen(
                         items(resolved, key = { "${it.type}|${it.id}" }) { preview ->
                             PosterCard(
                                 meta = preview,
-                                onClick = { onOpenDetail("", preview.type, preview.id) }
+                                onClick = { onOpenDetail("", preview.type, preview.id) },
+                                surface = CustomPosterScreen.COLLECTIONS
                             )
                         }
                     }

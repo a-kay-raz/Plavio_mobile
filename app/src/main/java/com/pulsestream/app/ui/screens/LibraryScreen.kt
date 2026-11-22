@@ -61,6 +61,7 @@ import com.pulsestream.app.data.trakt.TraktApi
 import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.OrbitDots
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.SectionTitle
@@ -485,7 +486,8 @@ fun LibraryScreen(
                                 id = item.metaId, type = item.type,
                                 name = item.name, poster = item.poster
                             ),
-                            onClick = { onOpenDetail(item.addonId, item.type, item.metaId) }
+                            onClick = { onOpenDetail(item.addonId, item.type, item.metaId) },
+                            surface = CustomPosterScreen.LIBRARY
                         )
                     }
                 }
@@ -1334,7 +1336,8 @@ private fun FeedRow(
             items(uniqueMetas, key = { "${it.type}_${it.id}" }) { meta ->
                 PosterCard(
                     meta = meta,
-                    onClick = { onOpenDetail("", meta.type, meta.id) }
+                    onClick = { onOpenDetail("", meta.type, meta.id) },
+                    surface = CustomPosterScreen.LIBRARY
                 )
             }
         }

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -191,6 +192,7 @@ fun PosterCard(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     showRatingChip: Boolean = false,
+    surface: CustomPosterScreen = CustomPosterScreen.HOME,
     modifier: Modifier = Modifier
 ) {
     val gestureModifier = if (onLongClick != null) {
@@ -201,21 +203,55 @@ fun PosterCard(
     // Step 70: poster size / corner radius / labels come from the user's
     // Appearance settings (provided at the app root).
     val posterStyle = LocalPosterStyle.current
+    // W10: catalog landscape mode (Nuvio HomePosterCard) — 1.77 cards from
+    // the title's backdrop art, poster as fallback. A custom poster pattern
+    // resolves first (shape = "landscape"); landscapeClearlogo skips the
+    // custom poster and shows the title logo over the backdrop instead.
+    // In portrait the pattern resolves with shape = "poster".
+    val isLandscape = posterStyle.landscapeMode
+    val cardWidth = if (isLandscape) posterStyle.landscapeWidth else posterStyle.cardWidth
+    val cardHeight = if (isLandscape) posterStyle.landscapeHeight else posterStyle.cardHeight
+    val cardShape = RoundedCornerShape(posterStyle.cornerRadius)
+    val pattern = posterStyle.customPosterPatternFor(surface)
+    val resolvedCustom = if (pattern.isNotBlank()) {
+        CustomPosterResolver.resolve(
+            pattern,
+            CustomPosterResolver.extractIds(meta.id),
+            type = if (meta.type == "series") "series" else "movie",
+            shape = if (isLandscape) "landscape" else "poster"
+        )
+    } else null
+    val effectiveCustom = if (isLandscape && posterStyle.landscapeClearlogo) null else resolvedCustom
+    val imageUrl = if (isLandscape) {
+        effectiveCustom ?: meta.background ?: meta.poster
+    } else {
+        resolvedCustom ?: meta.poster
+    }
+    // Custom URLs are full URLs from the user's service — never TMDB-resized.
+    val imageModel = if (imageUrl != null && imageUrl == resolvedCustom) {
+        imageUrl
+    } else {
+        tmdbSizedImage(imageUrl, if (isLandscape) "w780" else "w342")
+    }
+    // Nuvio: the logo overlays the landscape card only when no custom
+    // landscape poster is in use; the name overlays when there is no logo.
+    val showLandscapeOverlay = isLandscape && effectiveCustom == null
     Column(
         modifier = modifier
-            .width(posterStyle.cardWidth)
+            .width(cardWidth)
             .then(gestureModifier)
             .focusable()
-            .tvFocusRing(RoundedCornerShape(posterStyle.cornerRadius))
+            .tvFocusRing(cardShape)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(posterStyle.cardHeight)
-                .clip(RoundedCornerShape(posterStyle.cornerRadius))
+                .height(cardHeight)
+                .clip(cardShape)
+                .cardDepth(cardShape, CardDepthSurface.Posters)
         ) {
             SafePosterImage(
-                model = tmdbSizedImage(meta.poster, "w342"),
+                model = imageModel,
                 contentDescription = meta.name,
                 modifier = Modifier.fillMaxSize()
             )
@@ -226,7 +262,10 @@ fun PosterCard(
             if (meta.type == "movie" &&
                 com.pulsestream.app.data.WatchedMarks.movieKey(meta.id) in watchedKeys
             ) {
-                WatchedPill(Modifier.align(Alignment.BottomStart).padding(6.dp))
+                // Landscape cards carry the logo/name overlay at the
+                // bottom-left, so the pill moves to the bottom-right there.
+                val pillAlign = if (isLandscape) Alignment.BottomEnd else Alignment.BottomStart
+                WatchedPill(Modifier.align(pillAlign).padding(6.dp))
             }
             // H-A rating chip (owner's pick 2026-10-24): a small glass
             // pill on the poster's top-left — mint star, white value.
@@ -262,8 +301,49 @@ fun PosterCard(
                 }
             }
             // Poster only — no corner tag on channel cards.
+            // W10: landscape overlay — logo bottom-left, else the title
+            // (hidden when labels are hidden). A bottom scrim keeps it
+            // legible over bright backdrops.
+            if (showLandscapeOverlay) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
+                            )
+                        )
+                )
+                if (!meta.logo.isNullOrBlank()) {
+                    AsyncImage(
+                        model = meta.logo,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                            .height(28.dp)
+                            .widthIn(max = 120.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else if (!posterStyle.hideLabels) {
+                    Text(
+                        text = meta.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    )
+                }
+            }
         }
-        if (!posterStyle.hideLabels) {
+        // Landscape cards carry the name as an overlay; nothing below.
+        if (!posterStyle.hideLabels && !isLandscape) {
             Spacer(Modifier.height(6.dp))
             Text(
                 text = meta.name,
