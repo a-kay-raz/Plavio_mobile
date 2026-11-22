@@ -2998,9 +2998,10 @@ class StreamRepository(
      * (e.g. offline first launch) is retried on the next launch.
      */
     suspend fun ensurePreinstalledAddons() = withContext(Dispatchers.IO) {
-        // NOTE: no PlavioHD here — the house addon is the LOCKED
-        // addon.plavio.site (ensureLockedAddon()); the public hd.plavio.site
-        // is not pre-installed anymore (owner's order 2026-10-24).
+        // NOTE: no PlavioHD here — the locked house addon
+        // (addon.plavio.site) is removed (owner's order 2026-11-22);
+        // the public hd.plavio.site is not pre-installed anymore
+        // (owner's order 2026-10-24).
         val targets = listOf(
             "https://v3-cinemeta.strem.io/manifest.json",
             "https://opensubtitles-v3.strem.io/manifest.json",
@@ -3053,29 +3054,19 @@ class StreamRepository(
     // ---- Locked house addon (owner's orders 2026-10-24) ----
 
     /**
-     * The locked PlavioHD (addon.plavio.site) is the app's house addon:
-     * pre-installed and ON by default. Its server refuses every request
-     * that doesn't carry the app's gate key (see StremioApi), so it works
-     * only inside Avio; configuration lives on its website, never in
-     * the app. Installed once per manifest id — after that the user's own
-     * toggle/delete rules; never force-fed again.
+     * The locked PlavioHD house addon (addon.plavio.site) is removed
+     * (owner's order 2026-11-22: remove whatever is pre-added).
+     * Deletes ONLY the row the app itself pre-installed; a copy the
+     * user added by hand stays theirs. Idempotent.
      */
-    suspend fun ensureLockedAddon() = withContext(Dispatchers.IO) {
-        val url = "https://addon.plavio.site/manifest.json"
+    suspend fun removeLockedPlavioHd() = withContext(Dispatchers.IO) {
         try {
-            val manifest = addonRequest { api.fetchManifest(StremioApi.normalizeBaseUrl(url)) }
-            val existing = db.addonDao().getAll().firstOrNull { it.id == manifest.id }
-            if (existing != null) {
-                settings.setPreinstallDone(manifest.id)
-                return@withContext
-            }
-            if (settings.isPreinstallDone(manifest.id)) return@withContext
-            addAddonFromUrl(url).onSuccess { addon ->
-                db.addonDao().upsert(addon.copy(preinstalled = true, enabled = true))
-                settings.setPreinstallDone(manifest.id)
-            }
+            val row = db.addonDao().getAll().firstOrNull {
+                it.preinstalled && it.baseUrl.contains("addon.plavio.site")
+            } ?: return@withContext
+            removeAddon(row.id)
         } catch (_: Exception) {
-            // Offline or dead URL — try again next launch.
+            // Cleanup must never block startup.
         }
     }
 
@@ -3102,7 +3093,7 @@ class StreamRepository(
 
     /**
      * Ships a small set of addons with the app for users who don't hunt
-     * manifest URLs (owner's order 2026-10-23). All start OFF — the house addon is the locked PlavioHD (ensureLockedAddon). Once
+     * manifest URLs (owner's order 2026-10-23). All start OFF. Once
      * installed it behaves exactly like a hand-added addon (toggle, edit,
      * delete). Each is attempted once per manifest id — a user who deletes
      * one is never force-fed it again. Pipe is bundled through its
@@ -3113,8 +3104,7 @@ class StreamRepository(
         val targets = listOf(
             "https://hdhub.thevolecitor.qzz.io/manifest.json",
             "https://pipe.boringways.workers.dev/eyJzdCI6Imh0dHAifQ/manifest.json",
-            "https://cncverse.dpdns.org/manifest.json",
-            "https://pengu.uk/manifest.json"
+            "https://cncverse.dpdns.org/manifest.json"
         )
         for (url in targets) {
             try {
@@ -3133,6 +3123,22 @@ class StreamRepository(
             } catch (_: Exception) {
                 // Offline or dead URL — try again next launch.
             }
+        }
+    }
+
+    /**
+     * PenguPlay is removed from the bundle (owner's order 2026-11-22).
+     * Deletes ONLY the row the app itself pre-installed; a copy the
+     * user added by hand stays theirs. Idempotent.
+     */
+    suspend fun removeBundledPenguPlay() = withContext(Dispatchers.IO) {
+        try {
+            val row = db.addonDao().getAll().firstOrNull {
+                it.preinstalled && it.baseUrl.contains("pengu.uk")
+            } ?: return@withContext
+            removeAddon(row.id)
+        } catch (_: Exception) {
+            // Cleanup must never block startup.
         }
     }
 

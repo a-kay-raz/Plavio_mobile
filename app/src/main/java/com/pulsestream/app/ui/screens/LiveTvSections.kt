@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,18 +52,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.pulsestream.app.data.LiveTvChannel
 import com.pulsestream.app.data.LiveTvOnDemandUiState
-import com.pulsestream.app.data.LiveTvSportsEvent
-import com.pulsestream.app.data.LiveTvSportsState
-import com.pulsestream.app.data.LiveTvSportsUiState
 import com.pulsestream.app.data.LiveTvVodEpisode
 import com.pulsestream.app.data.LiveTvVodEpisodesState
 import com.pulsestream.app.data.LiveTvVodItem
 import com.pulsestream.app.data.LiveTvVodKind
 import com.pulsestream.app.data.filterLiveTvVodItems
-import com.pulsestream.app.data.formatSportsStart
-import com.pulsestream.app.data.liveTvSportsLeagues
 import com.pulsestream.app.ui.theme.GlassWhite
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
@@ -72,17 +65,13 @@ import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
- * Live TV Sports + On Demand sections (Nuvio `livetv/LiveTvSports.kt` +
- * `livetv/LiveTvOnDemand.kt` UI, LV3). Rendered by LiveScreen when the
- * section switcher picks Sports or On Demand; they live in this file so
- * LiveScreen.kt stays focused on channels.
+ * Live TV On Demand section (Nuvio `livetv/LiveTvOnDemand.kt` UI, LV3).
+ * Rendered by LiveScreen when the section switcher picks On Demand; it
+ * lives in this file so LiveScreen.kt stays focused on channels.
  *
- * Sports: ESPN public scoreboards (no login). On Demand: Xtream VOD +
- * series from the Step 31 provider login.
+ * On Demand: Xtream VOD + series from the Step 31 provider login.
  */
 
-internal const val LIVE_TV_SPORTS_FILTER_ALL = "all"
-internal const val LIVE_TV_SPORTS_FILTER_LIVE = "live"
 
 /** FilterChip colors matching the Avio dark aesthetic (same as LiveScreen's chipColors). */
 @Composable
@@ -93,343 +82,6 @@ private fun liveTvSectionChipColors() = FilterChipDefaults.filterChipColors(
     labelColor = TextSecondary,
     selectedLeadingIconColor = LocalPalette.current.accent
 )
-
-// ---------------------------------------------------------------------------------------------
-// Sports
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-fun LiveTvSportsSection(
-    sportsState: LiveTvSportsUiState,
-    matchedChannels: Map<String, List<LiveTvChannel>>,
-    filter: String,
-    onFilterSelected: (String) -> Unit,
-    onChannelClick: (LiveTvChannel) -> Unit,
-    onRefresh: () -> Unit,
-) {
-    val leagues = remember(sportsState.events) {
-        val present = sportsState.events.map { it.league.id }.toSet()
-        liveTvSportsLeagues.filter { it.id in present }
-    }
-    val counts = remember(sportsState.events) {
-        buildMap {
-            put(LIVE_TV_SPORTS_FILTER_ALL, sportsState.events.size)
-            put(LIVE_TV_SPORTS_FILTER_LIVE, sportsState.events.count { it.state == LiveTvSportsState.Live })
-            sportsState.events.groupingBy { it.league.id }.eachCount().forEach { (id, count) -> put(id, count) }
-        }
-    }
-    val hasLive = sportsState.events.any { it.state == LiveTvSportsState.Live }
-    val visible = remember(sportsState.events, filter) {
-        sportsState.events.filter { event ->
-            when (filter) {
-                LIVE_TV_SPORTS_FILTER_LIVE -> event.state == LiveTvSportsState.Live
-                LIVE_TV_SPORTS_FILTER_ALL -> true
-                else -> event.league.id == filter
-            }
-        }
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 104.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item(key = "sports|filters") {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item(key = "sports|filter|all") {
-                    FilterChip(
-                        selected = filter == LIVE_TV_SPORTS_FILTER_ALL,
-                        onClick = { onFilterSelected(LIVE_TV_SPORTS_FILTER_ALL) },
-                        label = { Text("All (${counts[LIVE_TV_SPORTS_FILTER_ALL] ?: 0})") },
-                        colors = liveTvSectionChipColors()
-                    )
-                }
-                if (hasLive) {
-                    item(key = "sports|filter|live") {
-                        FilterChip(
-                            selected = filter == LIVE_TV_SPORTS_FILTER_LIVE,
-                            onClick = { onFilterSelected(LIVE_TV_SPORTS_FILTER_LIVE) },
-                            label = { Text("Live (${counts[LIVE_TV_SPORTS_FILTER_LIVE] ?: 0})") },
-                            colors = liveTvSectionChipColors()
-                        )
-                    }
-                }
-                leagues.forEach { league ->
-                    item(key = "sports|filter|${league.id}") {
-                        FilterChip(
-                            selected = filter == league.id,
-                            onClick = { onFilterSelected(league.id) },
-                            label = { Text("${league.label} (${counts[league.id] ?: 0})") },
-                            colors = liveTvSectionChipColors()
-                        )
-                    }
-                }
-            }
-        }
-        if (sportsState.isLoading && !sportsState.hasLoaded) {
-            item(key = "sports|loading") {
-                Box(
-                    Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = LocalPalette.current.accent, strokeWidth = 2.dp)
-                }
-            }
-        } else if (visible.isEmpty()) {
-            item(key = "sports|empty") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        sportsState.errorMessage
-                            ?: "No matches in the next 48 hours. Scores refresh automatically.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                    if (sportsState.errorMessage != null) {
-                        TextButton(onClick = onRefresh) {
-                            Text("Retry", color = LocalPalette.current.accent)
-                        }
-                    }
-                }
-            }
-        } else {
-            items(visible, key = { "sports:${it.league.id}:${it.id}" }) { event ->
-                LiveTvSportsEventCard(
-                    event = event,
-                    channels = matchedChannels["${event.league.id}:${event.id}"].orEmpty(),
-                    nowMillis = System.currentTimeMillis(),
-                    onChannelClick = onChannelClick
-                )
-            }
-        }
-        if (sportsState.errorMessage != null && visible.isNotEmpty()) {
-            item(key = "sports|error") {
-                Text(
-                    "⚠ ${sportsState.errorMessage}",
-                    color = Color(0xFFFFB74D),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveTvSportsEventCard(
-    event: LiveTvSportsEvent,
-    channels: List<LiveTvChannel>,
-    nowMillis: Long,
-    onChannelClick: (LiveTvChannel) -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = { channels.firstOrNull()?.let(onChannelClick) },
-        enabled = channels.isNotEmpty(),
-        color = LocalPalette.current.panel,
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = event.league.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextSecondary,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LiveTvSportsStatus(event = event, nowMillis = nowMillis)
-            }
-            if (event.competitors.size >= 2) {
-                event.competitors.forEach { competitor ->
-                    LiveTvSportsCompetitorRow(
-                        competitor = competitor,
-                        showScore = event.state != LiveTvSportsState.Upcoming,
-                        dimmed = event.state == LiveTvSportsState.Finished &&
-                            event.competitors.any { it.isWinner } && !competitor.isWinner,
-                    )
-                }
-            } else {
-                Text(
-                    text = event.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            if (event.broadcasts.isNotEmpty()) {
-                Text(
-                    text = "On ${event.broadcasts.joinToString(", ")}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (channels.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    channels.forEach { channel ->
-                        LiveTvSportsChannelChip(channel = channel, onClick = { onChannelClick(channel) })
-                    }
-                }
-            } else if (event.state != LiveTvSportsState.Finished) {
-                Text(
-                    text = "No channel found for this match.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary.copy(alpha = 0.7f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveTvSportsStatus(event: LiveTvSportsEvent, nowMillis: Long) {
-    when (event.state) {
-        LiveTvSportsState.Live -> Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = "LIVE",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFE53935))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
-            if (event.statusDetail.isNotBlank()) {
-                Text(
-                    text = event.statusDetail,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextSecondary,
-                    maxLines = 1,
-                )
-            }
-        }
-
-        LiveTvSportsState.Upcoming -> Text(
-            text = formatSportsStart(event.startMillis, nowMillis),
-            style = MaterialTheme.typography.labelMedium,
-            color = LocalPalette.current.accent,
-            fontWeight = FontWeight.SemiBold,
-        )
-
-        LiveTvSportsState.Finished -> Text(
-            text = event.statusDetail.ifBlank { formatSportsStart(event.startMillis, nowMillis) },
-            style = MaterialTheme.typography.labelMedium,
-            color = TextSecondary,
-        )
-    }
-}
-
-@Composable
-private fun LiveTvSportsCompetitorRow(
-    competitor: com.pulsestream.app.data.LiveTvSportsCompetitor,
-    showScore: Boolean,
-    dimmed: Boolean,
-) {
-    val textColor = if (dimmed) TextSecondary else TextPrimary
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(
-            modifier = Modifier.size(26.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (!competitor.logoUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = competitor.logoUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.SportsSoccer,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-        Text(
-            text = competitor.name,
-            style = MaterialTheme.typography.titleSmall,
-            color = textColor,
-            fontWeight = if (competitor.isWinner) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (showScore && !competitor.score.isNullOrBlank()) {
-            Text(
-                text = competitor.score,
-                style = MaterialTheme.typography.titleMedium,
-                color = textColor,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LiveTvSportsChannelChip(
-    channel: LiveTvChannel,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(LocalPalette.current.accent.copy(alpha = 0.15f))
-            .clickable(onClick = onClick)
-            .padding(start = 6.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(GlassWhite),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (!channel.logoUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = channel.logoUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(2.dp),
-                    contentScale = ContentScale.Fit,
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = LocalPalette.current.accent,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-        }
-        Text(
-            text = channel.name,
-            style = MaterialTheme.typography.labelLarge,
-            color = LocalPalette.current.accent,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
-    }
-}
 
 // ---------------------------------------------------------------------------------------------
 // On Demand

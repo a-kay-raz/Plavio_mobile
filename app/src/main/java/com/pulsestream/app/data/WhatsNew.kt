@@ -17,7 +17,7 @@ object WhatsNew {
         "Settings reorganised — Appearance, Layout, Content & Discovery, Playback, Downloads and more, with search.",
         "Smart Streams — results are ranked so the best source comes first.",
         "Downloads manager — per-show downloads with resolution and concurrency controls, plus a custom location.",
-        "Live TV — Xtream Codes, Stalker Portal and M3U playlists, with EPG and sports.",
+        "Live TV — Xtream Codes, Stalker Portal and M3U playlists, with EPG.",
         "Trakt and Simkl — two-way watch-history sync and scrobbling.",
         "Media servers — Jellyfin, Emby, Plex and Silo libraries in one place.",
         "Debrid — Real-Debrid, Premiumize and TorBox for cached streams.",

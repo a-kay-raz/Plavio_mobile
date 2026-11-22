@@ -124,13 +124,15 @@ class PulseApp : Application(), ImageLoaderFactory {
             com.pulsestream.app.data.cloudstream.CloudStreamStorage.initialize(this@PulseApp)
             com.pulsestream.app.data.cloudstream.CloudStreamRepository.initialize()
         }
-        // The house addon is the LOCKED PlavioHD (addon.plavio.site):
-        // pre-installed ON; the public one is no longer pre-installed and
-        // its pre-installed row is removed (owner's orders 2026-10-24).
-        // Then the beginner bundle (all OFF by default).
-        appScope.launch { repository.ensureLockedAddon() }
+        // Pre-added addons are removed (owner's order 2026-11-22): the
+        // locked PlavioHD house addon and the bundled PenguPlay — their
+        // pre-installed rows are deleted. The public PlavioHD row is
+        // removed too (owner's order 2026-10-24). Then the beginner
+        // bundle (all OFF by default).
+        appScope.launch { repository.removeLockedPlavioHd() }
         appScope.launch { repository.removePreinstalledPublicHd() }
         appScope.launch { repository.ensureBundledAddons() }
+        appScope.launch { repository.removeBundledPenguPlay() }
         // Trakt/Simkl library sync on launch, at most every 6 hours, only
         // when an account is linked (issue #3). Fire-and-forget.
         appScope.launch {
