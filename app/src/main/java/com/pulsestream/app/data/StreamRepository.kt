@@ -451,8 +451,8 @@ class StreamRepository(
         }
 
     /**
-     * Trending movies + series for the Trailers tab. PlavioMeta first (its
-     * metas carry trailerStreams), then any other enabled catalog addon.
+     * Trending movies + series for the Trailers tab. Cinemeta first
+     * (metaRank order), then any other enabled catalog addon.
      * Returns catalog items only — trailer YouTube ids resolve lazily per
      * tap via [getMetaFromAny], so the tab loads fast.
      */
@@ -1694,10 +1694,11 @@ class StreamRepository(
                 )
         }
 
-    // PlavioMeta moved off Vercel (plaviometa.vercel.app is dead — 402
-    // DEPLOYMENT_DISABLED) to meta.plavio.site, manifest id
-    // "com.plavio.catalogs" (name PMeta). Old matches stay so an existing
-    // install of the old host still ranks first until it is replaced.
+    // PlavioMeta (manifest id "com.plavio.catalogs", name PMeta) moved
+    // off Vercel (plaviometa.vercel.app is dead — 402
+    // DEPLOYMENT_DISABLED) to meta.plavio.site. It is no longer the
+    // default meta source — Cinemeta is — but the matcher stays for the
+    // fallback rank and for the removal in ensurePreinstalledAddons.
     private fun isPlavioMeta(addon: InstalledAddon): Boolean =
         addon.id.contains("plaviometa", ignoreCase = true) ||
                 addon.id == "com.plavio.catalogs" ||
@@ -1709,16 +1710,18 @@ class StreamRepository(
                 addon.baseUrl.contains("cinemeta", ignoreCase = true)
 
     /**
-     * Rank for metadata/catalog priority. PlavioMeta is always the default
-     * source: its posters/details come first, Cinemeta is the fallback,
-     * everything else keeps its relative order after.
+     * Rank for metadata/catalog priority. Cinemeta is the default source
+     * (TMDB data, IMDb ids): its posters/details come first. PlavioMeta
+     * is only a fallback when the user re-installs it by hand — the app
+     * no longer bundles it. Everything else keeps its relative order
+     * after.
      */
     private fun metaRank(addon: InstalledAddon): Int {
         val plavio = isPlavioMeta(addon)
         val cine = isCinemeta(addon)
         return when {
-            plavio -> 0
-            cine -> 1
+            cine -> 0
+            plavio -> 1
             else -> 2
         }
     }
@@ -1739,16 +1742,7 @@ class StreamRepository(
     }
 
     /**
-     * PlavioMeta base URL (the user's configured URL when they set a TMDB
-     * key). Powers /related and /person, which need TMDB server-side.
-     */
-    suspend fun plavioMetaBaseUrl(): String? = withContext(Dispatchers.IO) {
-        enabledAddons().firstOrNull { isPlavioMeta(it) }?.baseUrl
-    }
-
-    /**
-     * Every meta-capable addon in preference order (PlavioMeta first —
-     * it stays the default and the richest path, never the only one).
+     * Every meta-capable addon in preference order (Cinemeta first).
      * Metadata flexibility (owner's standing order 2026-10-26): the
      * related rows and actor pages follow whichever installed metadata
      * addon can serve them, so AIOMetadata / Cinemeta / TMDB-addon
@@ -1762,13 +1756,12 @@ class StreamRepository(
     /**
      * "More like this" + "More from <actor>" sections for a title.
      * First, /related is tried on every meta addon in preference order
-     * (the serving addon's data wins — PlavioMeta's endpoint is simply
-     * the richest). When no addon serves /related, the rows are built
-     * app-side from STANDARD protocol data only: the title's own full
-     * meta (genres, cast) plus the meta addons' genre catalogs and
-     * search endpoints. A row appears only when real data backs it.
-     * No TMDB key is involved anywhere — everything flows through the
-     * installed addons themselves.
+     * (the serving addon's data wins). When no addon serves /related, the
+     * rows are built app-side from STANDARD protocol data only: the
+     * title's own full meta (genres, cast) plus the meta addons' genre
+     * catalogs and search endpoints. A row appears only when real data
+     * backs it. No TMDB key is involved anywhere — everything flows
+     * through the installed addons themselves.
      */
     suspend fun getRelated(
         type: String,
@@ -1861,10 +1854,10 @@ class StreamRepository(
 
     /**
      * Actor filmography. /person is tried on every meta addon in
-     * preference order (PlavioMeta first — richest). When no addon
-     * serves /person for this id, [name] unlocks the generic fallback:
-     * the addons' own search by actor name, split into movies/series —
-     * the same standard-protocol trick as the related rows.
+     * preference order. When no addon serves /person for this id, [name]
+     * unlocks the generic fallback: the addons' own search by actor name,
+     * split into movies/series — the same standard-protocol trick as the
+     * related rows.
      */
     suspend fun getPerson(personId: Int, name: String? = null): PersonDetail? =
         withContext(Dispatchers.IO) {
@@ -2015,6 +2008,12 @@ class StreamRepository(
                 }
                 return@withContext null
             }
+            // TMDB-native ids (tmdb:movie:123) used to resolve server-side
+            // in PlavioMeta. Cinemeta only serves IMDb ids, so convert via
+            // the user's TMDB key when one is set; without a key the
+            // original id still goes to every addon (a re-installed
+            // PlavioMeta or AIOMetadata can still answer it).
+            val metaId = resolveTmdbId(id) ?: id
             // Meta used to be fetched addon-by-addon in order, 15s each —
             // N meta addons could stall the detail page for N x 15s. Fetch
             // from all of them at once; the first hit in preference order
@@ -2024,12 +2023,25 @@ class StreamRepository(
                 addons.map { addon ->
                     async {
                         withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
-                            runCatching { api.fetchMeta(addon.baseUrl, type, id) }.getOrNull()
+                            runCatching { api.fetchMeta(addon.baseUrl, type, metaId) }.getOrNull()
                         }
                     }
                 }.awaitAll().firstOrNull { it != null }
             }
         }
+
+    /**
+     * Resolves a TMDB-native id (tmdb:movie:123) to its IMDb id via the
+     * user's TMDB key. Null when the id isn't TMDB-native, the key is
+     * unset, or the lookup fails.
+     */
+    private suspend fun resolveTmdbId(id: String): String? {
+        val match = Regex("^tmdb:(movie|tv|series):([0-9]+)$", RegexOption.IGNORE_CASE)
+            .matchEntire(id.trim()) ?: return null
+        val mediaType = if (match.groupValues[1].lowercase() == "movie") "movie" else "tv"
+        val tmdbId = match.groupValues[2].toLongOrNull() ?: return null
+        return TmdbClient.getImdbId(settings, mediaType, tmdbId)
+    }
 
     /**
      * Streams may live in different addons than catalogs/metadata.
@@ -2822,9 +2834,11 @@ class StreamRepository(
         }
     }
     /**
-     * Auto-installs the bundled addons (PlavioMeta + Cinemeta + OpenSubtitles v3
+     * Auto-installs the bundled addons (Cinemeta + OpenSubtitles v3
      * + SubSense) once.
-     * PlavioMeta is our first-party TMDB metadata addon; Cinemeta stays as fallback.
+     * Cinemeta is the default TMDB metadata addon (IMDb ids). PlavioMeta
+     * is no longer bundled (owner's order 2026-11-22) — see the cleanup
+     * below, which removes existing installs once Cinemeta is present.
      * SubSense aggregates subtitles from OpenSubtitles, SubDL, SubSource,
      * Podnapisi and more for wider subtitle coverage.
      * Each addon is attempted at most once (tracked per manifest id), so a
@@ -2836,7 +2850,6 @@ class StreamRepository(
         // addon.plavio.site (ensureLockedAddon()); the public hd.plavio.site
         // is not pre-installed anymore (owner's order 2026-10-24).
         val targets = listOf(
-            "https://meta.plavio.site/manifest.json",
             "https://v3-cinemeta.strem.io/manifest.json",
             "https://opensubtitles-v3.strem.io/manifest.json",
             "https://subsense.nepiraw.com/manifest.json"
@@ -2865,13 +2878,19 @@ class StreamRepository(
                 // Offline or dead URL — try again next launch.
             }
         }
-        // Upstream moved PlavioMeta off Vercel (plaviometa.vercel.app
-        // answers 402 DEPLOYMENT_DISABLED) to meta.plavio.site. Once the
-        // new home is installed, drop any stale install of the dead host
-        // so meta lookups never waste their per-addon timeout on it.
+        // PlavioMeta is replaced by Cinemeta (owner's order 2026-11-22).
+        // Once Cinemeta is installed, drop any PlavioMeta install (either
+        // host) so meta lookups never waste their per-addon timeout on
+        // it — the concurrent meta fetch waits for every installed meta
+        // addon, so a slow ex-default would still stall Details. This
+        // also covers the dead Vercel host (plaviometa.vercel.app answers
+        // 402 DEPLOYMENT_DISABLED); both hosts match isPlavioMeta.
+        // A user who re-installs PlavioMeta by hand gets it removed again
+        // on the next launch while Cinemeta is present — that is the
+        // replacement, not a bug.
         val installed = db.addonDao().getAll()
-        if (installed.any { it.baseUrl.contains("meta.plavio.site", ignoreCase = true) }) {
-            for (dead in installed.filter { it.baseUrl.contains("plaviometa.vercel.app", ignoreCase = true) }) {
+        if (installed.any { isCinemeta(it) }) {
+            for (dead in installed.filter { isPlavioMeta(it) }) {
                 db.addonDao().deleteById(dead.id)
                 db.catalogCacheDao().deleteByAddonId(dead.id)
                 invalidateAddonCaches(dead.id)

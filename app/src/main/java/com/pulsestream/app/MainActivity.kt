@@ -1812,9 +1812,9 @@ private fun PulseNavGraph(
                 favoritePeopleRepository = favoritePeopleRepository,
                 onBack = { navController.popBackStack() },
                 onOpenDetail = { type, metaId ->
-                    // PlavioMeta addon id — detail resolves meta/streams from
+                    // Cinemeta addon id — detail resolves meta/streams from
                     // any capable addon via the base-URL hint chain.
-                    openResolvedDetail("com.plavio.catalogs", type, metaId)
+                    openResolvedDetail("com.linvo.cinemeta", type, metaId)
                 }
             )
         }

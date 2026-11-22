@@ -1090,7 +1090,7 @@ class SettingsStore(
      * Clears every preinstall_done_* marker. Called when the database had
      * to be recreated from corruption: the DB is empty but the flags
      * survived, which would silently skip reinstalling the bundled addons
-     * (PlavioMeta/Cinemeta/OpenSubtitles/SubSense). Clearing them lets
+     * (Cinemeta/OpenSubtitles/SubSense). Clearing them lets
      * ensurePreinstalledAddons() run again.
      */
     fun clearPreinstallFlags() {
