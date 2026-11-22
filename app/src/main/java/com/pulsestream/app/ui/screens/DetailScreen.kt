@@ -168,6 +168,12 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import android.graphics.Bitmap
+import android.view.LayoutInflater
+import android.view.TextureView
+import androidx.compose.runtime.mutableFloatStateOf
+import com.pulsestream.app.data.LetterboxTracker
+import com.pulsestream.app.data.TrailerLetterbox
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -3135,9 +3141,12 @@ private data class PlaybackIds(
  */
 /**
  * Hero trailer player (Nuvio `HeroTrailerPlayerSurface`): a bare ExoPlayer
- * with no controls, FIT so the trailer fills the hero box. Video-only
+ * with no controls, ZOOM (centre-crop) so the 16:9 trailer fills the
+ * portrait hero instead of letterboxing into a horizontal strip. Video-only
  * YouTube qualities are merged with their separate audio track, the same
  * merge the full player applies via `PlaybackRequest.mergeAudioUrl`.
+ * The surface is a TextureView so frames can be sampled for the letterbox
+ * zoom, which crops baked-in black bars out of the picture.
  */
 /** Last hero-trailer mute choice (Nuvio HeroTrailerAudioState): the mute toggle survives across titles. */
 @Volatile
@@ -3188,21 +3197,62 @@ private fun HeroTrailerPlayer(
             player.release()
         }
     }
+    // Nuvio HeroTrailerPlayerSurface: the trailer fills the portrait hero
+    // (centre-crop, like the texture transform Nuvio applies) instead of
+    // FIT, which showed the 16:9 video as a horizontal strip with black
+    // bars above and below. The surface is a TextureView (layout
+    // trailer_player_view) so frames can be sampled for the letterbox zoom
+    // below, which crops baked-in black bars out of the picture.
+    var textureView by remember { mutableStateOf<TextureView?>(null) }
+    var letterboxZoom by remember { mutableFloatStateOf(1f) }
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).also { pv ->
+            // PlayerView in Media3 1.4.1 has no setVideoSurfaceType — the
+            // surface type comes from the layout's app:surface_type.
+            (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null, false) as PlayerView).also { pv ->
                 pv.player = player
                 pv.useController = false
-                pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                textureView = pv.videoSurfaceView as? TextureView
                 pv.layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             }
         },
-        update = { pv -> pv.player = player },
+        update = { pv ->
+            pv.player = player
+            textureView = pv.videoSurfaceView as? TextureView
+        },
         modifier = modifier
     )
+    // Letterbox sampling (same pattern as TrailerPlayerScreen): every
+    // 400ms while playing, past the first 20% of the trailer, downscale
+    // the current frame and measure its bars; four stable samples agree
+    // and the surface zooms in to crop them out.
+    LaunchedEffect(player, textureView) {
+        val tv = textureView ?: return@LaunchedEffect
+        letterboxZoom = 1f
+        val tracker = LetterboxTracker()
+        while (true) {
+            delay(TrailerLetterbox.SAMPLE_INTERVAL_MS)
+            val duration = player.duration
+            if (!player.isPlaying || !TrailerLetterbox.isSampleWindowOver(player.currentPosition, duration)) continue
+            val frame = runCatching { tv.bitmap }.getOrNull() ?: continue
+            val scaled = Bitmap.createScaledBitmap(
+                frame, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT, true
+            )
+            if (scaled != frame) frame.recycle()
+            val pixels = IntArray(TrailerLetterbox.SAMPLE_WIDTH * TrailerLetterbox.SAMPLE_HEIGHT)
+            scaled.getPixels(pixels, 0, TrailerLetterbox.SAMPLE_WIDTH, 0, 0, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT)
+            scaled.recycle()
+            val bar = TrailerLetterbox.detectBar(pixels, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT) ?: continue
+            tracker.onSample(bar)?.let { letterboxZoom = it }
+        }
+    }
+    LaunchedEffect(letterboxZoom) {
+        textureView?.let { it.scaleX = letterboxZoom; it.scaleY = letterboxZoom }
+    }
 }
 
 /**
