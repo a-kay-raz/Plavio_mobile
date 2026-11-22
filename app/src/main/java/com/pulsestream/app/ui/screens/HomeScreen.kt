@@ -767,13 +767,12 @@ fun HomeScreen(
                                                     repository.deleteSavedPosition(item.key)
                                                 }
                                             },
+                                            onClick = { onWatchingClick(item) },
                                             onLongClick = {
                                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 cwLongPressTarget = item
                                             }
-                                        ) {
-                                            onWatchingClick(item)
-                                        }
+                                        )
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
