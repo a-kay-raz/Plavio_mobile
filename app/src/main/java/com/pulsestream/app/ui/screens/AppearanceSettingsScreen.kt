@@ -151,6 +151,7 @@ fun AppearanceSettingsScreen(
                                                     contentDescription = "${theme.label} selected",
                                                     tint = if (theme == AccentTheme.WHITE ||
                                                         theme == AccentTheme.AMBER ||
+                                                        theme == AccentTheme.GOLD ||
                                                         theme == AccentTheme.EMERALD
                                                     ) Color.Black else Color.White,
                                                     modifier = Modifier.size(24.dp)
