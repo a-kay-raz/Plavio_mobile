@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
  * Nuvio v1.17 Advanced hub, grouped like the source page's
  * sections: General, Debugging (crash reports — Nuvio's Sentry
  * toggle lives in its Debugging section) and Cache (the two cache
- * clears). Nuvio's Startup/Network rows are not added: Plavio has
+ * clears). Nuvio's Startup/Network rows are not added: Avio has
  * no DNS setting and no CW/metadata cache clears to put there.
  * Behaviour unchanged — the toggle logic is the same as the old
  * root rows.
@@ -97,7 +97,7 @@ fun AdvancedSettingsScreen(
                         SettingsToggleRow(
                             icon = Icons.Filled.Info,
                             title = "Anonymous usage counting",
-                            subtitle = "On by default. Counts installs and active users on Plavio's own server — a random ID only, no personal data, no Google.",
+                            subtitle = "On by default. Counts installs and active users on Avio's own server — a random ID only, no personal data, no Google.",
                             checked = telemetryEnabled,
                             onCheckedChange = {
                                 com.pulsestream.app.data.AppStats.setEnabled(context, it)

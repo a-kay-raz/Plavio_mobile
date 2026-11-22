@@ -18,7 +18,7 @@ import com.pulsestream.app.data.db.WatchlistItem
  * 2. Library series' episodes airing in the window — full meta per
  *    series, via NextUpResolver's shared 6h cache (same enrichment
  *    pipeline as Step 49), watched episodes excluded.
- * 3. Library items' own release dates — SKIPPED: Plavio's watchlist
+ * 3. Library items' own release dates — SKIPPED: Avio's watchlist
  *    stores only a year (Step 47), too coarse for a 45-day window.
  * 4. Home catalog rows' items releasing in the window.
  *

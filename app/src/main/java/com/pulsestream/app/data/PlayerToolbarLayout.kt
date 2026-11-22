@@ -4,7 +4,7 @@ package com.pulsestream.app.data
  * Step 63 — Player toolbar customization (P25).
  * Scoped port of Nuvio player/PlayerToolbarLayout.kt and
  * player/LegacyPlayerButtonLayout.kt, restricted to the buttons
- * Plavio's player actually has.
+ * Avio's player actually has.
  *
  * Bottom pill (in Nuvio's legacy order): PiP, Quality, Subs, Audio,
  * Chapters, Resize, Speed, Sources, Episodes, Live channels.
@@ -14,8 +14,8 @@ package com.pulsestream.app.data
  *
  * Not ported: Nuvio's RATE / SWITCH_ENGINE / VIDEO_SETTINGS /
  * SUBMIT_INTRO / PARTY / CAST / PICTURE_IN_PICTURE (top) buttons —
- * Plavio has no rating, engine switch, party or cast; video settings
- * is iOS-only in Nuvio; PiP lives in Plavio's pill, not the top.
+ * Avio has no rating, engine switch, party or cast; video settings
+ * is iOS-only in Nuvio; PiP lives in Avio's pill, not the top.
  *
  * Layouts encode as "id:v,id:h" strings in SettingsStore, so an
  * unknown/missing button falls back to visible in its default spot.

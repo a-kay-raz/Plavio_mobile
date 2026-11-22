@@ -116,7 +116,7 @@ import com.pulsestream.app.BuildConfig
 import com.pulsestream.app.R
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.cloud.GoogleDriveSyncManager
-import com.pulsestream.app.data.cloud.PlavioAccountManager
+import com.pulsestream.app.data.cloud.AvioAccountManager
 import com.pulsestream.app.data.simkl.SimklApi
 import com.pulsestream.app.data.update.UpdateChecker
 import com.pulsestream.app.data.update.UpdateInfo
@@ -190,28 +190,28 @@ fun SettingsScreen(
     val signedIn = remember { syncManager.isSignedIn() }
     val accountEmail = remember { syncManager.getAccountEmail() }
     val lastBackup = remember { syncManager.getLastBackupTime() }
-    // Plavio account (v0.14.0): the card must reflect THIS sign-in too —
+    // Avio account (v0.14.0): the card must reflect THIS sign-in too —
     // it previously read only the Google state and showed "Not signed
-    // in" for Plavio-account users (owner's report 2026-10-25).
-    val plavioManager = remember { PlavioAccountManager(context, repository) }
-    val plavioEmail = remember {
-        if (PlavioAccountManager.isConfigured() && plavioManager.isSignedIn()) {
-            plavioManager.accountEmail()
+    // in" for Avio-account users (owner's report 2026-10-25).
+    val avioManager = remember { AvioAccountManager(context, repository) }
+    val avioEmail = remember {
+        if (AvioAccountManager.isConfigured() && avioManager.isSignedIn()) {
+            avioManager.accountEmail()
         } else {
             null
         }
     }
-    val plavioLastSync = remember(plavioEmail) {
-        if (plavioEmail != null) plavioManager.lastSyncTime() else null
+    val avioLastSync = remember(avioEmail) {
+        if (avioEmail != null) avioManager.lastSyncTime() else null
     }
-    val anySignedIn = signedIn || plavioEmail != null
+    val anySignedIn = signedIn || avioEmail != null
     // The user's own chosen username (set in Account) wins over the
     // email-derived name (owner's order 2026-10-22).
     val profileUserName = remember { settings.profileUserName }
     val accountName = remember(accountEmail, profileUserName) {
         profileUserName.takeIf { it.isNotBlank() } ?: accountEmail?.let { deriveDisplayName(it) }
     }
-    val displayName = accountName ?: plavioEmail?.let { deriveDisplayName(it) }
+    val displayName = accountName ?: avioEmail?.let { deriveDisplayName(it) }
     val installedAddons by repository.addons.collectAsState(initial = emptyList())
     val enabledAddons = remember(installedAddons) { installedAddons.count { it.enabled } }
     val reducedMotion by com.pulsestream.app.data.MotionPreferences.reduced.collectAsState()
@@ -476,7 +476,7 @@ fun SettingsScreen(
             SettingsToggleRow(
                 icon = Icons.Filled.Notifications,
                 title = "New episode alerts",
-                subtitle = "On by default. A few times a day Plavio quietly checks the series in your watchlist and notifies you when a new episode is out.",
+                subtitle = "On by default. A few times a day Avio quietly checks the series in your watchlist and notifies you when a new episode is out.",
                 checked = episodeNotifs,
                 onCheckedChange = { enabled ->
                     settings.episodeNotifications = enabled
@@ -586,7 +586,7 @@ fun SettingsScreen(
             SettingsToggleRow(
                 icon = Icons.Filled.Info,
                 title = "Anonymous usage counting",
-                subtitle = "On by default. Counts installs and active users on Plavio's own server — a random ID only, no personal data, no Google.",
+                subtitle = "On by default. Counts installs and active users on Avio's own server — a random ID only, no personal data, no Google.",
                 checked = telemetryEnabled,
                 onCheckedChange = {
                     com.pulsestream.app.data.AppStats.setEnabled(context, it)
@@ -746,7 +746,7 @@ fun SettingsScreen(
                             )
                             Text(
                                 when {
-                                    plavioEmail != null -> plavioEmail
+                                    avioEmail != null -> avioEmail
                                     signedIn && accountEmail != null -> accountEmail
                                     signedIn -> "Google account"
                                     else -> "Tap to sign in and enable backup & sync"
@@ -758,8 +758,8 @@ fun SettingsScreen(
                             )
                             Text(
                                 when {
-                                    plavioEmail != null -> plavioLastSync?.let { "Synced · $it" }
-                                        ?: "Plavio account · backup & sync on"
+                                    avioEmail != null -> avioLastSync?.let { "Synced · $it" }
+                                        ?: "Avio account · backup & sync on"
                                     signedIn -> lastBackup?.let { "Last backup: $it" }
                                         ?: "Signed in · backup & sync on"
                                     else -> "Backup & sync off"
@@ -831,7 +831,7 @@ fun SettingsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Plavio",
+                        text = "Avio",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),
@@ -1021,7 +1021,7 @@ fun settingsSwitchColors(): SwitchColors =
 private val SettingsMuted = Color(0xFF969CA3)
 
 /**
- * Custom gradient switch (Nuvio's SettingsGradientSwitch, Plavio
+ * Custom gradient switch (Nuvio's SettingsGradientSwitch, Avio
  * accent): 52x32dp track, 24dp thumb, 180ms tween. The track wears the
  * current accent's gradient brush while ON; the thumb is white ON,
  * muted OFF. Visual only in rows — the row itself handles the tap;
@@ -1439,11 +1439,11 @@ fun AboutCard() {
         ) {
             Image(
                 painter = painterResource(id = R.mipmap.app_logo),
-                contentDescription = "Plavio logo",
+                contentDescription = "Avio logo",
                 modifier = Modifier.size(88.dp).clip(RoundedCornerShape(26.dp))
             )
             // Name + version text REMOVED (owner's order 2026-10-22):
-            // the logo already says Plavio, and the updater card below
+            // the logo already says Avio, and the updater card below
             // already shows the version — the pair only duplicated both.
             Spacer(Modifier.height(14.dp))
             Text(

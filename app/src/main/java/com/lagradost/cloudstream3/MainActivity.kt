@@ -2,7 +2,7 @@ package com.lagradost.cloudstream3
 
 import com.lagradost.cloudstream3.utils.Event
 
-/** Event-only host facade; navigation remains owned by Plavio. */
+/** Event-only host facade; navigation remains owned by Avio. */
 class MainActivity {
     companion object {
         val afterPluginsLoadedEvent = Event<Boolean>()

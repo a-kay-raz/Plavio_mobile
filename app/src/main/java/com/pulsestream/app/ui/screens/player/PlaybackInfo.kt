@@ -36,7 +36,7 @@ import kotlinx.coroutines.delay
 /**
  * Playback info (Nuvio PlaybackInfoModal, ExoPlayer half only — no mpv):
  * codec, resolution, frame rate, bitrate and live network speed while
- * playing. Shown as a bottom sheet (Plavio's in-player panel shape).
+ * playing. Shown as a bottom sheet (Avio's in-player panel shape).
  */
 data class PlayerMediaInfo(
     val videoCodec: String? = null,

@@ -26,7 +26,7 @@ internal object MobileReleaseManifest {
             segments[3] == "download" &&
             (segments[4] == "v$version" ||
                 segments[4].matches(Regex("v${Regex.escape(version)}-dev-[0-9]+"))) &&
-            segments[5] == "Plavio-v$version-arm64.apk") { "APK does not match stable mobile version" }
+            segments[5] == "Avio-v$version-arm64.apk") { "APK does not match stable mobile version" }
         return UpdateInfo(version, json.optString("notes").take(16_000), url, json.optBoolean("major", false))
     }
 }

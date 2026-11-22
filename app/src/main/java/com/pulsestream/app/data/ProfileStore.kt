@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.Flow
  * local half). A profile is a row in the global database plus its own
  * database file (library/progress) and its own settings file
  * (per-profile settings). Nuvio syncs profiles through Supabase RPCs;
- * Plavio has no profile backend, so there is deliberately no sync
+ * Avio has no profile backend, so there is deliberately no sync
  * half here — profiles live on this device only.
  *
  * PINs are a local salted SHA-256 (Nuvio verifies server-side). No

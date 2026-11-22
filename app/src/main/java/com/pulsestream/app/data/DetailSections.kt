@@ -10,7 +10,7 @@ import org.json.JSONObject
  * and the list order persists. `tabLayout` shows a sticky tab row
  * that scrolls to a section instead of one long scroll. Nuvio also
  * stores background mode / hero trailer / episode card style here —
- * Plavio already has those as their own settings (Steps 24, 29), so
+ * Avio already has those as their own settings (Steps 24, 29), so
  * this file owns only the section order, visibility and tab layout.
  */
 enum class DetailSectionKey(val title: String, val canBeTabbed: Boolean) {

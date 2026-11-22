@@ -5,7 +5,7 @@ import android.content.Context
 /**
  * In-app per-title star ratings, stored locally (Nuvio
  * `ratings/UserRatingsRepository`, local-only: Nuvio syncs ratings through
- * tracking providers, Plavio has no rating-write path there, so the stars
+ * tracking providers, Avio has no rating-write path there, so the stars
  * live in their own prefs file, keyed by the show/movie meta id).
  */
 class UserRatings(context: Context) {

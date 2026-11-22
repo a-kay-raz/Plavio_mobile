@@ -107,7 +107,7 @@ class StreamRepository(
     var pendingPlayback: PlaybackRequest? = null
 
     /**
-     * Deep-link handoff: a plavio-addons:// VIEW intent carries a share-bundle
+     * Deep-link handoff: an avio-addons:// VIEW intent carries a share-bundle
      * link. MainActivity stashes the raw link here; AddonsScreen opens its
      * import dialog pre-filled with it, then clears it.
      */
@@ -189,7 +189,7 @@ class StreamRepository(
 
     /**
      * Honest install-failure text for the setup/onboarding screens. A server
-     * that answers at all is NOT the user's connection — e.g. PlavioMeta's
+     * that answers at all is NOT the user's connection — e.g. AvioMeta's
      * Vercel deployment disabled answers HTTP 402 (DEPLOYMENT_DISABLED), and
      * blaming the network then is wrong. Only a failure to reach the host
      * at all (DNS/connect/timeout) is a connection problem.
@@ -505,7 +505,7 @@ class StreamRepository(
      * leg). The whole library is fetched once per session and paged
      * client-side, 100 per page like the addon skip= pages — the server
      * clients have no paging of their own. Server items carry no genre
-     * data in Plavio's model, so a genre filter is ignored here rather
+     * data in Avio's model, so a genre filter is ignored here rather
      * than emptying the page; the screen resets a stale addon genre when
      * a server source is picked. A removed server yields an empty page;
      * an unreachable one yields an empty page too (the clients swallow
@@ -788,7 +788,7 @@ class StreamRepository(
         saveHomeRowPrefs(prefs.copy(heroEnabled = enabled))
     }
 
-    /** Show the addon name under each row title ("PlavioMeta: Trending" style). */
+    /** Show the addon name under each row title ("AvioMeta: Trending" style). */
     suspend fun setHomeShowCatalogType(show: Boolean) {
         val prefs = homeRowPrefs()
         saveHomeRowPrefs(prefs.copy(showCatalogType = show))
@@ -1021,7 +1021,7 @@ class StreamRepository(
                                     val previews = items
                                         .distinctBy { normalizeSearchTitle(it.name) }
                                         .take(CLOUDSTREAM_HOME_CATEGORY_LIMIT)
-                                        .map { it.toPlavioMetaPreview() }
+                                        .map { it.toAvioMetaPreview() }
                                     if (previews.isEmpty()) return@mapNotNull null
                                     CatalogRow(
                                         addonId = cloudStreamRowAddonId(providerId),
@@ -1041,8 +1041,8 @@ class StreamRepository(
         } ?: emptyList()
     }
 
-    /** A CS3 search/main-page hit as a Plavio catalog poster. Its id is the `plavio-cs-api:` route. */
-    private fun CloudStreamSearchItem.toPlavioMetaPreview(): MetaPreview = MetaPreview(
+    /** A CS3 search/main-page hit as an Avio catalog poster. Its id is the `avio-cs-api:` route. */
+    private fun CloudStreamSearchItem.toAvioMetaPreview(): MetaPreview = MetaPreview(
         id = data,
         type = type.tvTypeString,
         name = name,
@@ -1052,8 +1052,8 @@ class StreamRepository(
         releaseInfo = year?.toString(),
     )
 
-    /** A CS3 loaded title as a Plavio detail page. Movies get one video; series get one per episode. */
-    private fun CloudStreamLoadItem.toPlavioMetaDetail(): MetaDetail {
+    /** A CS3 loaded title as an Avio detail page. Movies get one video; series get one per episode. */
+    private fun CloudStreamLoadItem.toAvioMetaDetail(): MetaDetail {
         val isSeries = type.tvTypeString == "series"
         val cs3Id = "${CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX}$providerId|$data"
         val videos = if (isSeries) {
@@ -1462,7 +1462,7 @@ class StreamRepository(
                                 addonId = cloudStreamRowAddonId(providerId),
                                 addonName = "CS3 • ${plugin.metadata.name}",
                                 baseUrl = "",
-                                meta = item.toPlavioMetaPreview(),
+                                meta = item.toAvioMetaPreview(),
                             )
                         }
                 } catch (cancel: CancellationException) { throw cancel }
@@ -1478,7 +1478,7 @@ class StreamRepository(
         searchRemoteProgressive(query, type).last()
 
     /**
-     * Server-side search (Plavio backend /search): one call per type. The
+     * Server-side search (Avio backend /search): one call per type. The
      * backend fans out to keyless sources with retries, merges them
      * deterministically and caches only real results — so the same query
      * returns the same answer for everyone, and no TMDB key is ever
@@ -1499,7 +1499,7 @@ class StreamRepository(
                             StremioParser.parseCatalog(text, t).map { meta ->
                                 CachedMeta(
                                     addonId = SERVER_SEARCH_ADDON_ID,
-                                    addonName = "Plavio Search",
+                                    addonName = "Avio Search",
                                     baseUrl = "",
                                     meta = meta.copy(type = t)
                                 )
@@ -1553,7 +1553,7 @@ class StreamRepository(
      * Step 71: sectioned search — the same legs as [searchAllWithStatus]
      * (local cache, then server, falling back to the per-addon fan-out),
      * grouped into one section per addon (Nuvio's orderedSections, per-addon
-     * scope). "Plavio Search" (the server leg) leads when it has results;
+     * scope). "Avio Search" (the server leg) leads when it has results;
      * addon sections follow in enabled-addons order, so the order matches
      * the remote fan-out. Local + remote merge inside each addon (local
      * first, deduped by addonId+meta.id) and rank within the section, so a
@@ -1581,7 +1581,7 @@ class StreamRepository(
                     add(
                         SearchSection(
                             SERVER_SEARCH_ADDON_ID,
-                            "Plavio Search",
+                            "Avio Search",
                             rankSearchResults(serverItems, query)
                         )
                     )
@@ -1652,7 +1652,7 @@ class StreamRepository(
                         addonId = cloudStreamRowAddonId(providerId),
                         addonName = "CS3 • ${plugin.metadata.name}",
                         baseUrl = "",
-                        meta = item.toPlavioMetaPreview(),
+                        meta = item.toAvioMetaPreview(),
                     )
                 }
                 .distinctBy { it.addonId + it.meta.id }
@@ -1728,7 +1728,7 @@ class StreamRepository(
      * already found.
      *
      * Before ranking, the same title offered by several addons (e.g.
-     * PlavioMeta and Cinemeta both carrying tt… ids) collapses into ONE
+     * AvioMeta and Cinemeta both carrying tt… ids) collapses into ONE
      * row — the preferred source's copy. Entries whose known years
      * conflict (remakes) are never merged.
      */
@@ -1781,7 +1781,7 @@ class StreamRepository(
         }
 
         // Search ordering (keyless since v0.14.0 — the app-side TMDB key
-        // feature was removed; PlavioMeta's server key covers enrichment):
+        // feature was removed; AvioMeta's server key covers enrichment):
         // match tier first, then IMDb rating, then year, then addon rank.
         return deduped.sortedWith(
             compareBy<CachedMeta> { matchTier(it.meta.name) }
@@ -1846,12 +1846,12 @@ class StreamRepository(
                 )
         }
 
-    // PlavioMeta (manifest id "com.plavio.catalogs", name PMeta) moved
+    // AvioMeta (manifest id "com.plavio.catalogs", name PMeta) moved
     // off Vercel (plaviometa.vercel.app is dead — 402
     // DEPLOYMENT_DISABLED) to meta.plavio.site. It is no longer the
     // default meta source — Cinemeta is — but the matcher stays for the
     // fallback rank and for the removal in ensurePreinstalledAddons.
-    private fun isPlavioMeta(addon: InstalledAddon): Boolean =
+    private fun isAvioMeta(addon: InstalledAddon): Boolean =
         addon.id.contains("plaviometa", ignoreCase = true) ||
                 addon.id == "com.plavio.catalogs" ||
                 addon.baseUrl.contains("plaviometa", ignoreCase = true) ||
@@ -1863,17 +1863,17 @@ class StreamRepository(
 
     /**
      * Rank for metadata/catalog priority. Cinemeta is the default source
-     * (TMDB data, IMDb ids): its posters/details come first. PlavioMeta
+     * (TMDB data, IMDb ids): its posters/details come first. AvioMeta
      * is only a fallback when the user re-installs it by hand — the app
      * no longer bundles it. Everything else keeps its relative order
      * after.
      */
     private fun metaRank(addon: InstalledAddon): Int {
-        val plavio = isPlavioMeta(addon)
+        val avio = isAvioMeta(addon)
         val cine = isCinemeta(addon)
         return when {
             cine -> 0
-            plavio -> 1
+            avio -> 1
             else -> 2
         }
     }
@@ -2071,7 +2071,7 @@ class StreamRepository(
     /**
      * People matching a search query (owner's order 2026-10-26 — search
      * by actor). First, the /person-search route is asked on every meta
-     * addon in preference order (PlavioMeta serves it since v2.5.7): a
+     * addon in preference order (AvioMeta serves it since v2.5.7): a
      * real person index beats guessing from cast lists, and an answer
      * from a supporting addon — even an empty one — is final. Only when
      * NO installed meta addon serves the route does the cast-scan
@@ -2134,7 +2134,7 @@ class StreamRepository(
      */
     suspend fun getMetaFromAny(hintBaseUrl: String?, type: String, id: String): MetaDetail? =
         withContext(Dispatchers.IO) {
-            // CS3 (Phase 2): Home/search poster ids are `plavio-cs-api:`
+            // CS3 (Phase 2): Home/search poster ids are `avio-cs-api:`
             // routes (owner unknown — resolved by scanning runnable
             // providers); saved/library ids are `cs3:<providerId>|<data>`
             // direct routes. A CS3 id never matches a Stremio addon, so
@@ -2142,10 +2142,10 @@ class StreamRepository(
             // A CS3 load has no outer budget of its own — the plugin's
             // load timeout is 120s — so cap it at the same 15s a Stremio
             // addon gets, or a slow provider hangs the detail page.
-            if (id.startsWith("plavio-cs-api:")) {
+            if (id.startsWith("avio-cs-api:")) {
                 return@withContext withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
                     CloudStreamRepository.loadByRoute(id)
-                        .getOrNull()?.toPlavioMetaDetail()
+                        .getOrNull()?.toAvioMetaDetail()
                 }
             }
             if (id.startsWith(CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX)) {
@@ -2155,16 +2155,16 @@ class StreamRepository(
                 if (providerId.isNotEmpty() && data.isNotEmpty()) {
                     return@withContext withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
                         CloudStreamRepository.load(providerId, data)
-                            .getOrNull()?.toPlavioMetaDetail()
+                            .getOrNull()?.toAvioMetaDetail()
                     }
                 }
                 return@withContext null
             }
             // TMDB-native ids (tmdb:movie:123) used to resolve server-side
-            // in PlavioMeta. Cinemeta only serves IMDb ids, so convert via
+            // in AvioMeta. Cinemeta only serves IMDb ids, so convert via
             // the user's TMDB key when one is set; without a key the
             // original id still goes to every addon (a re-installed
-            // PlavioMeta or AIOMetadata can still answer it).
+            // AvioMeta or AIOMetadata can still answer it).
             val metaId = resolveTmdbId(id) ?: id
             // Meta used to be fetched addon-by-addon in order, 15s each —
             // N meta addons could stall the detail page for N x 15s. Fetch
@@ -2988,7 +2988,7 @@ class StreamRepository(
     /**
      * Auto-installs the bundled addons (Cinemeta + OpenSubtitles v3
      * + SubSense) once.
-     * Cinemeta is the default TMDB metadata addon (IMDb ids). PlavioMeta
+     * Cinemeta is the default TMDB metadata addon (IMDb ids). AvioMeta
      * is no longer bundled (owner's order 2026-11-22) — see the cleanup
      * below, which removes existing installs once Cinemeta is present.
      * SubSense aggregates subtitles from OpenSubtitles, SubDL, SubSource,
@@ -3013,10 +3013,10 @@ class StreamRepository(
                 // Migrate only the exact historical bare PlavioHD host. A user
                 // configured URL (including options/query/key) is never replaced.
                 val existing = db.addonDao().getAll().firstOrNull { it.id == manifest.id }
-                val legacyPlavioHd = "https://plaviohd.edon.workers.dev/manifest.json"
-                val previousPlavioHd = "https://plaviohd.vercel.app/manifest.json"
+                val legacyAvioHd = "https://plaviohd.edon.workers.dev/manifest.json"
+                val previousAvioHd = "https://plaviohd.vercel.app/manifest.json"
                 if (url == "https://hd.plavio.site/manifest.json" &&
-                    (existing?.baseUrl == legacyPlavioHd || existing?.baseUrl == previousPlavioHd)) {
+                    (existing?.baseUrl == legacyAvioHd || existing?.baseUrl == previousAvioHd)) {
                     db.addonDao().upsert(existing.copy(baseUrl = baseUrl))
                     invalidateAddonCaches(existing.id)
                 }
@@ -3030,19 +3030,19 @@ class StreamRepository(
                 // Offline or dead URL — try again next launch.
             }
         }
-        // PlavioMeta is replaced by Cinemeta (owner's order 2026-11-22).
-        // Once Cinemeta is installed, drop any PlavioMeta install (either
+        // AvioMeta is replaced by Cinemeta (owner's order 2026-11-22).
+        // Once Cinemeta is installed, drop any AvioMeta install (either
         // host) so meta lookups never waste their per-addon timeout on
         // it — the concurrent meta fetch waits for every installed meta
         // addon, so a slow ex-default would still stall Details. This
         // also covers the dead Vercel host (plaviometa.vercel.app answers
-        // 402 DEPLOYMENT_DISABLED); both hosts match isPlavioMeta.
-        // A user who re-installs PlavioMeta by hand gets it removed again
+        // 402 DEPLOYMENT_DISABLED); both hosts match isAvioMeta.
+        // A user who re-installs AvioMeta by hand gets it removed again
         // on the next launch while Cinemeta is present — that is the
         // replacement, not a bug.
         val installed = db.addonDao().getAll()
         if (installed.any { isCinemeta(it) }) {
-            for (dead in installed.filter { isPlavioMeta(it) }) {
+            for (dead in installed.filter { isAvioMeta(it) }) {
                 db.addonDao().deleteById(dead.id)
                 db.catalogCacheDao().deleteByAddonId(dead.id)
                 invalidateAddonCaches(dead.id)
@@ -3056,7 +3056,7 @@ class StreamRepository(
      * The locked PlavioHD (addon.plavio.site) is the app's house addon:
      * pre-installed and ON by default. Its server refuses every request
      * that doesn't carry the app's gate key (see StremioApi), so it works
-     * only inside Plavio; configuration lives on its website, never in
+     * only inside Avio; configuration lives on its website, never in
      * the app. Installed once per manifest id — after that the user's own
      * toggle/delete rules; never force-fed again.
      */
@@ -3162,7 +3162,7 @@ class StreamRepository(
         /** Budget for the server-side search call (one request per type). */
         private const val SERVER_SEARCH_TIMEOUT_MS = 12_000L
         /** Synthetic addon id stamped on server-side search results. */
-        private const val SERVER_SEARCH_ADDON_ID = "plavio-server-search"
+        private const val SERVER_SEARCH_ADDON_ID = "avio-server-search"
         /** Per-addon budget inside the sequential getMetaFromAny walk. */
         private const val META_FETCH_TIMEOUT_MS = 15_000L
         /** Freshness of cached M3U playlists (memory + disk). */
@@ -3404,7 +3404,7 @@ class StreamRepository(
     private fun parseBackup(json: String): ParsedBackup {
         require(json.toByteArray(Charsets.UTF_8).size <= MAX_BACKUP_BYTES) { "Backup exceeds the 10 MiB safety limit." }
         val root = JSONObject(json)
-        require(root.opt("format") is String && root.getString("format") == "plavio-backup") { "Not a Plavio backup file." }
+        require(root.opt("format") is String && root.getString("format") == "plavio-backup") { "Not an Avio backup file." }
         val versionValue = root.opt("version")
         require(versionValue is Number) { "Backup version is missing or invalid." }
         val version = versionValue.toInt()

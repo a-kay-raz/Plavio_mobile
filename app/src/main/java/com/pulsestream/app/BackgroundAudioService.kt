@@ -70,7 +70,7 @@ class BackgroundAudioService : Service() {
     }
 
     companion object {
-        const val TAG = "PlavioBackgroundAudio"
+        const val TAG = "AvioBackgroundAudio"
         const val ACTION_START_FOREGROUND = "com.pulsestream.app.bg_audio.START_FOREGROUND"
 
         internal fun publish(context: Context, notification: Notification) {
@@ -98,7 +98,7 @@ private sealed interface BackgroundAudioServiceCommand {
 
 private object BackgroundAudioServiceController {
     private val executor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "PlavioBackgroundAudio").apply { isDaemon = true }
+        Thread(runnable, "AvioBackgroundAudio").apply { isDaemon = true }
     }
 
     fun publish(context: Context, notification: Notification) {

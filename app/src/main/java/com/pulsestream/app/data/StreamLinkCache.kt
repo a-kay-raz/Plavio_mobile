@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /**
  * Last played stream link, cached per title (Nuvio
- * `streams/StreamLinkCacheRepository`, simplified for Plavio: plain
+ * `streams/StreamLinkCacheRepository`, simplified for Avio: plain
  * org.json, no serialization compiler plugin).
  *
  * Replaying a title within the TTL reuses the last played link instead of

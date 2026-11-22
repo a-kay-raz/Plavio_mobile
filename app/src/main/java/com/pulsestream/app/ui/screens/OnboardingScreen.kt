@@ -67,10 +67,10 @@ private data class OnboardingStep(
 private val STEPS = listOf(
     OnboardingStep(
         icon = Icons.Filled.PlayArrow,
-        title = "Welcome to Plavio",
-        body = "Plavio is your own streaming hub — movies, shows and live TV, " +
+        title = "Welcome to Avio",
+        body = "Avio is your own streaming hub — movies, shows and live TV, " +
             "all in one beautiful dark app. No accounts, no subscriptions. " +
-            "You choose the sources, Plavio plays them."
+            "You choose the sources, Avio plays them."
     ),
     OnboardingStep(
         icon = Icons.Filled.Source,

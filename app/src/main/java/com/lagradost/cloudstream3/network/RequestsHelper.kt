@@ -16,7 +16,7 @@ private val defaultHeaders = mapOf("user-agent" to USER_AGENT)
 /**
  * Initializes the NiceHttp global client expected by CloudStream extensions.
  *
- * CloudStream performs this from its Application/Activity lifecycle. Plavio hosts
+ * CloudStream performs this from its Application/Activity lifecycle. Avio hosts
  * the CloudStream runtime inside its own process, so the same initialization
  * must be performed explicitly here.
  */

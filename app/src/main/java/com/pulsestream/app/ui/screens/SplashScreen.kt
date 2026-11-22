@@ -51,7 +51,7 @@ private const val SPLASH_TOTAL_MS = 2150
 // Sample G "Orbit Build" timeline (locked by the owner 2026-10-26,
 // supersedes Sample B): the weave's two squares start apart on an
 // orbit and spiral into the locked weave, the glow blooms behind
-// them, a shine sweep crosses the locked mark, the Plavio wordmark
+// them, a shine sweep crosses the locked mark, the Avio wordmark
 // rises whole, the weave-gradient line grows center-out under it,
 // and the tagline fades in last.
 private const val ORBIT_MS = 850
@@ -84,7 +84,7 @@ private fun easeOutCubic(x: Float): Float = 1f - (1f - x).pow(3)
  * Launch animation — Sample G "Orbit Build" (owner-locked 2026-10-26,
  * ships in v0.14.5, supersedes Sample B): the weave's two halves
  * spiral in from an orbit and lock, the glow blooms, a shine sweep
- * crosses the locked mark, "Plavio" rises whole, weave-gradient
+ * crosses the locked mark, "Avio" rises whole, weave-gradient
  * line grows under the word, tagline fades in. ~2.15s, then hands
  * off to Home. Splash-waits-for-feed is unchanged (owner's order
  * 2026-10-24): the animation is the minimum stay; the orbit spins
@@ -217,7 +217,7 @@ fun SplashScreen(feedReady: Boolean, onDone: () -> Unit) {
             Spacer(Modifier.height(10.dp))
             // The wordmark rises whole (no per-letter build).
             Text(
-                text = "Plavio",
+                text = "Avio",
                 color = TextPrimary,
                 fontSize = 40.sp,
                 fontWeight = FontWeight.Bold,

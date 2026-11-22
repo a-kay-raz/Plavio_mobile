@@ -37,7 +37,7 @@ import com.pulsestream.app.ui.theme.TextSecondary
 
 /**
  * Step 41 — shuffle sheet (Nuvio shuffle/EpisodeShuffleSheet.kt,
- * Plavio-native): a random-episode preview with an include-watched toggle,
+ * Avio-native): a random-episode preview with an include-watched toggle,
  * counts, "Shuffle again" (no-repeat session) and "Play random episode".
  * The picker lives with the caller (one session per Detail visit / player
  * request) so re-opens keep the no-repeat history.

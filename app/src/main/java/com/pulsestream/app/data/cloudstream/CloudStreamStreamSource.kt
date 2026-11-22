@@ -6,12 +6,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
 /**
- * Resolves Plavio streams from installed CloudStream providers.
+ * Resolves Avio streams from installed CloudStream providers.
  *
  * Flow per provider: IMDb id → `loadByExternalId` → search fallback by title
  * when the direct load misses → pick the episode matching the requested
  * season/episode (movies and live use the title itself) → `loadLinks` →
- * Plavio [StreamItem]s. Providers run concurrently; one provider failing never
+ * Avio [StreamItem]s. Providers run concurrently; one provider failing never
  * fails the others.
  *
  * The search fallback needs a title, which [StreamRepository.streamResultsFlow]
@@ -19,13 +19,13 @@ import kotlinx.coroutines.coroutineScope
  * plus the title's year through [year] when known (releaseInfo). Without a
  * title there is no fallback, only the direct IMDb load.
  *
- * Plavio retarget of the TV port's CloudStreamStreamSource: Hilt dropped
- * (Plavio has no DI framework) and the TV AddonStreams return type replaced
- * with Plavio's [StreamResult]. The direct `cs3:<providerId>|<data>` route is
+ * Avio retarget of the TV port's CloudStreamStreamSource: Hilt dropped
+ * (Avio has no DI framework) and the TV AddonStreams return type replaced
+ * with Avio's [StreamResult]. The direct `cs3:<providerId>|<data>` route is
  * kept for Phase 2 Home sections; nothing produces such ids in Phase 1.
  */
 object CloudStreamStreamSource {
-    private const val TAG = "PlavioCS3"
+    private const val TAG = "AvioCS3"
 
     const val CS3_VIDEO_ID_PREFIX = "cs3:"
 
@@ -84,12 +84,12 @@ object CloudStreamStreamSource {
             sources.map { source -> plugin to source }
         }
         val streams = paired.map { (plugin, source) ->
-            source.toPlavioStreamItem(
+            source.toAvioStreamItem(
                 providerName = plugin.metadata.name,
                 pluginId = plugin.metadata.id.value,
             )
         }
-        val subtitles = paired.flatMap { (_, source) -> source.toPlavioSubtitles() }
+        val subtitles = paired.flatMap { (_, source) -> source.toAvioSubtitles() }
         StreamResult(streams = streams, subtitles = subtitles)
     }
 

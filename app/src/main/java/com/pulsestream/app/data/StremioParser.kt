@@ -112,7 +112,7 @@ object StremioParser {
                 }
             } ?: emptyList()
             // Genre options live on the {name:"genre", options:[...]} extra
-            // (PlavioMeta/Cinemeta declare them); kept for the Discover
+            // (AvioMeta/Cinemeta declare them); kept for the Discover
             // genre picker. Catalogs without a genre extra get none.
             val genreOptions = (c["extra"] as? JsonArray)?.mapNotNull { x ->
                 val obj = x as? JsonObject ?: return@mapNotNull null
@@ -201,7 +201,7 @@ object StremioParser {
     }
 
     /**
-     * Cast list. PlavioMeta (TMDB mode) serves objects [{id,name,photo}];
+     * Cast list. AvioMeta (TMDB mode) serves objects [{id,name,photo}];
      * keyless/Cinemeta mode serves plain name strings. Both are accepted;
      * string entries get id=0 (filmography unavailable).
      */
@@ -227,7 +227,7 @@ object StremioParser {
     }
 
     /**
-     * YouTube trailer references. PlavioMeta serves `trailerStreams`
+     * YouTube trailer references. AvioMeta serves `trailerStreams`
      * ([{title, ytId}]); the Stremio-standard `trailers` array carries the
      * YouTube id in `source` ([{source, type}]). Both shapes are accepted.
      */
@@ -303,7 +303,7 @@ object StremioParser {
         } ?: emptyList()
     }
 
-    /** Parses PlavioMeta /related/{type}/{id}.json: { sections: [{id,title,metas}] }. */
+    /** Parses AvioMeta /related/{type}/{id}.json: { sections: [{id,title,metas}] }. */
     fun parseRelated(text: String, fallbackType: String): List<RelatedSection> {
         val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
             ?: return emptyList()
@@ -322,7 +322,7 @@ object StremioParser {
         }
     }
 
-    /** Parses PlavioMeta /person/{id}.json: { person, movies, series }. */
+    /** Parses AvioMeta /person/{id}.json: { person, movies, series }. */
     fun parsePerson(text: String): PersonDetail? {
         val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
             ?: return null
@@ -338,7 +338,7 @@ object StremioParser {
             photo = p.str("photo"),
             movies = metas("movies", "movie"),
             series = metas("series", "series"),
-            // Step 58: PlavioMeta may serve the Nuvio person fields
+            // Step 58: AvioMeta may serve the Nuvio person fields
             // (snake_case or camelCase); absent stays null and the
             // repository merges them from TMDB when a key is set.
             biography = p.str("biography"),

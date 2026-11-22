@@ -4,7 +4,7 @@ import kotlin.random.Random
 
 /**
  * Step 41 — random episode picker (Nuvio shuffle/RandomEpisodePicker.kt,
- * ported to Plavio's Video + WatchedMarks keys). No-repeat within a
+ * ported to Avio's Video + WatchedMarks keys). No-repeat within a
  * session: picks avoid already-shown ids until the pool is exhausted,
  * then the shown set resets (excluding the last pick).
  */

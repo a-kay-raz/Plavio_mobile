@@ -50,7 +50,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Trakt + Simkl link cards. Moved here from AccountScreen (v0.11.2+)
- * so Account can host the Plavio cloud login instead.
+ * so Account can host the Avio cloud login instead.
  */
 @Composable
 fun TraktSimklSection(settings: SettingsStore) {
@@ -234,7 +234,7 @@ fun TraktSimklSection(settings: SettingsStore) {
             title = { Text("Unlink Simkl?", color = TextPrimary) },
             text = {
                 Text(
-                    "Plavio will stop syncing your watched history to Simkl.",
+                    "Avio will stop syncing your watched history to Simkl.",
                     color = TextSecondary
                 )
             },
@@ -277,7 +277,7 @@ fun TraktSimklSection(settings: SettingsStore) {
             title = { Text("Unlink Trakt?", color = TextPrimary) },
             text = {
                 Text(
-                    "Plavio will stop syncing your watched history to Trakt.",
+                    "Avio will stop syncing your watched history to Trakt.",
                     color = TextSecondary
                 )
             },
@@ -318,7 +318,7 @@ fun TraktCodeDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "Approve Plavio in the browser, then paste the code shown on the page below.",
+                    "Approve Avio in the browser, then paste the code shown on the page below.",
                     color = TextSecondary,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )

@@ -464,7 +464,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Auto-backup to Plavio Cloud when app goes to background (if logged in)
+        // Auto-backup to Avio Cloud when app goes to background (if logged in)
         // Note: CloudManager needs settings/repository; auto-backup is handled
         // via the AccountScreen's lifecycle instead to avoid circular dependencies.
     }
@@ -569,7 +569,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * plavio-addons:// deep link (manifest VIEW intent-filter): stash the
+     * avio-addons:// deep link (manifest VIEW intent-filter): stash the
      * bundle link on the repository. PulseNav navigates to the Addons tab and
      * AddonsScreen opens its import dialog pre-filled — both cold start and
      * while the app is already running funnel through here.
@@ -794,7 +794,7 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Deep link: a plavio-addons:// link opened the app (cold start or while
+    // Deep link: an avio-addons:// link opened the app (cold start or while
     // running — MainActivity stashed it via handleAddonDeepLink). Jump to the
     // Addons tab; AddonsScreen picks up the pending bundle and opens its
     // import dialog pre-filled. Skipped on splash/onboarding so the startup
@@ -1917,7 +1917,7 @@ private fun PulseNavGraph(
             text = {
                 androidx.compose.foundation.layout.Column {
                     androidx.compose.material3.Text(
-                        "This source uses protected headers, which stay in Plavio — " +
+                        "This source uses protected headers, which stay in Avio — " +
                             "the other app may not be able to play this link."
                     )
                     androidx.compose.foundation.layout.Spacer(

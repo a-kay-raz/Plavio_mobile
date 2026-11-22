@@ -11,7 +11,7 @@ const val PREFERENCES_NAME: String = "rebuild_preference"
 /**
  * Minimal persistent storage ABI used by extensions.
  *
- * Plavio rewrite of the TV port's Jackson-backed DataStore on org.json /
+ * Avio rewrite of the TV port's Jackson-backed DataStore on org.json /
  * SharedPreferences (no Jackson in this file): values are stored as JSON
  * strings in the "rebuild_preference" prefs file, exactly like before, so
  * the filename and the swallow-on-error contract are unchanged.

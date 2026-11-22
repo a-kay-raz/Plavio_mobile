@@ -7,7 +7,7 @@ import androidx.media3.common.MimeTypes
  *
  * Both the player (PlayerScreen.buildExo) and the stream prober
  * (StreamProber) MUST use [buildPlaybackHeaders] so probing matches
- * playback exactly — a mismatch means "Plavio Pick" can bless a stream
+ * playback exactly — a mismatch means "Avio Pick" can bless a stream
  * that then fails in the player.
  */
 object PlaybackHeaders {

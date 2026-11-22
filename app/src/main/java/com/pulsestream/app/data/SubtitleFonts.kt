@@ -9,8 +9,8 @@ import java.util.UUID
 
 /**
  * Step 38 — custom subtitle fonts (Nuvio features/player/SubtitleFonts.kt,
- * ported to Plavio's file layout; org.json replaces the serialization plugin
- * Plavio does not apply).
+ * ported to Avio's file layout; org.json replaces the serialization plugin
+ * Avio does not apply).
  *
  * Built-in ids: "default" | "sans" | "serif" | "mono". Imported fonts are
  * stored as files under filesDir/subtitle-fonts/ with a fonts.json registry;

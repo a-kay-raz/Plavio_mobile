@@ -33,7 +33,7 @@ object UpdateChecker {
     // raw.githubusercontent. It used to point at upstream's GitLab pointer,
     // which offered upstream builds (v0.14.27, major) — signed with
     // upstream's key, so they fail to install over the fork and would
-    // replace it with stock Plavio.
+    // replace it with stock Avio.
     private const val STABLE_URL = "https://raw.githubusercontent.com/a-kay-raz/Plavio_mobile/main/stable.json"
     private const val PREFS = "pulse_update"
     private const val KEY_LAST_CHECK = "last_check_ms"
@@ -122,7 +122,7 @@ object UpdateChecker {
         val conn = (URL(STABLE_URL).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15000
             readTimeout = 15000
-            setRequestProperty("User-Agent", "Plavio/${BuildConfig.VERSION_NAME}")
+            setRequestProperty("User-Agent", "Avio/${BuildConfig.VERSION_NAME}")
         }
         val info = try {
             if (conn.responseCode != 200) throw UpdateCheckFailure(

@@ -1,4 +1,4 @@
-# Plavio
+# Avio
 
 🌐 **Website:** https://plavio.site
 
@@ -7,7 +7,7 @@ A beautiful open-source streaming app for Android with a built-in player. Instal
 ## Features
 
 - **Install addons** — paste any addon manifest URL (`…/manifest.json`) and browse its catalogs
-- **Multi-addon merging** — separate addons can provide catalogs, metadata, and streams; Plavio combines them (details are fetched from every metadata addon, sources merged from every stream addon)
+- **Multi-addon merging** — separate addons can provide catalogs, metadata, and streams; Avio combines them (details are fetched from every metadata addon, sources merged from every stream addon)
 - **Movies, series & live TV** — details, posters, backdrops, genres, ratings; a dedicated Live tab for TV channels
 - **Episode browser** — season / episode picker for series
 - **One-tap Play** — the Play button starts the first available stream instantly
@@ -29,9 +29,9 @@ Download the latest APK from the [Releases](../../releases) page and install it 
 
 1. Open **Addons** → tap **+**
 2. Paste the addon's manifest URL (it usually ends with `/manifest.json`)
-3. Plavio validates it and adds its catalogs to your Home screen
+3. Avio validates it and adds its catalogs to your Home screen
 
-Plavio ships with catalog, metadata, and subtitle addons pre-installed so it works out of the box — add more any time, or switch any addon off from the Addons screen.
+Avio ships with catalog, metadata, and subtitle addons pre-installed so it works out of the box — add more any time, or switch any addon off from the Addons screen.
 
 ## Build from source
 
@@ -49,8 +49,8 @@ Install Android SDK Platform 35 and Build Tools 35.0.0. The first build needs
 internet access to download dependencies.
 
 Debug builds use Android's local debug key by default. To sign with the existing
-owner key, set `PLAVIO_SIGNING_STORE`, `PLAVIO_SIGNING_STORE_PASSWORD`,
-`PLAVIO_SIGNING_KEY_ALIAS`, and `PLAVIO_SIGNING_KEY_PASSWORD` in your private
+owner key, set `AVIO_SIGNING_STORE`, `AVIO_SIGNING_STORE_PASSWORD`,
+`AVIO_SIGNING_KEY_ALIAS`, and `AVIO_SIGNING_KEY_PASSWORD` in your private
 `~/.gradle/gradle.properties`. Release builds are unsigned unless that key is
 configured. No private keystore is included. A build with a different signing
 key cannot update an already-installed owner-signed app; do not uninstall it
@@ -83,7 +83,7 @@ app/src/main/java/com/pulsestream/app/
 
 ## Data use and privacy
 
-Plavio can be used without a Plavio Cloud account. Signing in enables profile restore and automatic versioned backups of portable settings, watchlist, Continue Watching, custom lists/membership and addon metadata to its Supabase-backed service. Ordinary snapshots omit supported integration secrets and protect configured addon URL components. You can separately enable passphrase-protected, end-to-end encrypted sync of supported integration keys and full configured addon URLs; another device needs the same passphrase to unlock them after profile restore. Ordinary library metadata is not covered by that credential encryption. Downloads, device permissions and cloud-login sessions are not portable backup content. Profile switching uses replace-and-restore with local recovery, but is not a parental-control or device-security boundary; real multi-device conflicts and backend authorization remain to be verified. Optional telemetry is disabled by default; enabling it allows Firebase Analytics/Crashlytics collection and optional install-statistics requests. See the [Privacy Policy](https://plavio.site/privacy.html) for data fields, third-party requests, retention uncertainties and controls.
+Avio can be used without an Avio Cloud account. Signing in enables profile restore and automatic versioned backups of portable settings, watchlist, Continue Watching, custom lists/membership and addon metadata to its Supabase-backed service. Ordinary snapshots omit supported integration secrets and protect configured addon URL components. You can separately enable passphrase-protected, end-to-end encrypted sync of supported integration keys and full configured addon URLs; another device needs the same passphrase to unlock them after profile restore. Ordinary library metadata is not covered by that credential encryption. Downloads, device permissions and cloud-login sessions are not portable backup content. Profile switching uses replace-and-restore with local recovery, but is not a parental-control or device-security boundary; real multi-device conflicts and backend authorization remain to be verified. Optional telemetry is disabled by default; enabling it allows Firebase Analytics/Crashlytics collection and optional install-statistics requests. See the [Privacy Policy](https://plavio.site/privacy.html) for data fields, third-party requests, retention uncertainties and controls.
 
 The app ships with configured addons. Addon URLs and requests can contain credentials or viewing/search identifiers; addon operators receive the requests sent to their servers. Do not publicly share an addon URL containing a key or token. Addon bundle sharing blocks URLs that appear to contain credentials, but detection is heuristic and not exhaustive.
 
