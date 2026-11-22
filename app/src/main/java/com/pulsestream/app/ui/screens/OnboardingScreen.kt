@@ -56,7 +56,7 @@ import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
-private const val PLAVIO_META_MANIFEST = "https://meta.plavio.site/manifest.json"
+private const val CINEMETA_MANIFEST = "https://v3-cinemeta.strem.io/manifest.json"
 
 private data class OnboardingStep(
     val icon: ImageVector,
@@ -75,8 +75,8 @@ private val STEPS = listOf(
     OnboardingStep(
         icon = Icons.Filled.Source,
         title = "Add your first source",
-        body = "Sources are small addons that bring you catalogs. PlavioMeta is " +
-            "the free starter — trending movies, shows, anime and live picks. " +
+        body = "Sources are small addons that bring you catalogs. Cinemeta is " +
+            "the free starter — trending movies, shows and anime. " +
             "One tap installs it; you can add more anytime in Addons."
     ),
     OnboardingStep(
@@ -91,7 +91,7 @@ private val STEPS = listOf(
  * First-run 3-step welcome. Skippable, shows exactly once
  * (SettingsStore.onboardingDone persists the flag).
  *
- * Step 2 offers the PlavioMeta one-tap install — the button really
+ * Step 2 offers the Cinemeta one-tap install — the button really
  * installs the addon through the same path as Addons > Add.
  */
 @Composable
@@ -180,7 +180,7 @@ fun OnboardingScreen(
                         lineHeight = MaterialTheme.typography.bodyLarge.lineHeight
                     )
 
-                    // Step 2: the real one-tap PlavioMeta install.
+                    // Step 2: the real one-tap Cinemeta install.
                     if (s == 1) {
                         Spacer(Modifier.height(24.dp))
                         when {
@@ -188,7 +188,7 @@ fun OnboardingScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     OrbitDots(modifier = Modifier.size(26.dp))
                                     Spacer(Modifier.width(12.dp))
-                                    Text("Installing PlavioMeta…", color = TextSecondary)
+                                    Text("Installing Cinemeta…", color = TextSecondary)
                                 }
                             }
                             installedName != null -> {
@@ -214,11 +214,11 @@ fun OnboardingScreen(
                                         installError = null
                                         scope.launch {
                                             val result =
-                                                repository.addAddonFromUrl(PLAVIO_META_MANIFEST)
+                                                repository.addAddonFromUrl(CINEMETA_MANIFEST)
                                             installing = false
                                             if (result.isSuccess) {
                                                 installedName =
-                                                    result.getOrNull()?.name ?: "PlavioMeta"
+                                                    result.getOrNull()?.name ?: "Cinemeta"
                                             } else {
                                                 installError = repository.addonInstallFailureMessage(
                                                     result.exceptionOrNull()
@@ -233,7 +233,7 @@ fun OnboardingScreen(
                                     shape = RoundedCornerShape(50)
                                 ) {
                                     Text(
-                                        "Install PlavioMeta",
+                                        "Install Cinemeta",
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(
                                             horizontal = 12.dp,

@@ -1,7 +1,5 @@
 package com.pulsestream.app.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,9 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.NewReleases
-import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -116,52 +112,18 @@ private fun SupportRows() {
 }
 
 /**
- * Legal rows: open-source licenses, Privacy Policy and Terms of Service.
+ * Legal rows: open-source licenses.
  */
 @Composable
 private fun LegalRows(
     onGoToLicenses: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     SettingsGroup(
         {
             LegalRow(
                 icon = Icons.Filled.Description,
                 title = "Open source licenses",
                 onClick = onGoToLicenses
-            )
-        },
-        {
-            LegalRow(
-                icon = Icons.Filled.PrivacyTip,
-                title = "Privacy Policy",
-                onClick = {
-                    // Devices with no browser must not force-close.
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://www.plavio.site/privacy.html")
-                            )
-                        )
-                    }
-                }
-            )
-        },
-        {
-            LegalRow(
-                icon = Icons.Filled.Gavel,
-                title = "Terms of Service",
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://www.plavio.site/terms.html")
-                            )
-                        )
-                    }
-                }
             )
         }
     )
