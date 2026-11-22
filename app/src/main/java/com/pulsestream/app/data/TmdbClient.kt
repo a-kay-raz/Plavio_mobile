@@ -109,7 +109,7 @@ object TmdbClient {
             val root = json.parseToJsonElement(response).jsonObject
             val tmdbCast = root["cast"]?.jsonArray ?: return@withContext cast
             
-            val photoMap = mutableMapOf<String, Pair<Int, String?>>()
+            val photoMap = mutableMapOf<String, Triple<Int, String?, String?>>()
             val tmdbFullCast = mutableListOf<CastMember>()
             for (el in tmdbCast) {
                 val obj = el.jsonObject
@@ -117,10 +117,14 @@ object TmdbClient {
                 val id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
                 val profile = obj["profile_path"]?.jsonPrimitive?.content
                 val photoUrl = if (profile != null) "$IMG_BASE$profile" else null
-                photoMap[name.lowercase()] = Pair(id, photoUrl)
+                val character = obj["character"]?.jsonPrimitive?.contentOrNull
+                    ?.takeIf { it.isNotBlank() }
+                photoMap[name.lowercase()] = Triple(id, photoUrl, character)
                 // Build full cast list (up to 15) from TMDB
                 if (tmdbFullCast.size < 15) {
-                    tmdbFullCast.add(CastMember(id = id, name = name, photo = photoUrl))
+                    tmdbFullCast.add(
+                        CastMember(id = id, name = name, photo = photoUrl, character = character)
+                    )
                 }
             }
             
@@ -134,7 +138,8 @@ object TmdbClient {
                 if (match != null) {
                     member.copy(
                         id = if (member.id == 0) match.first else member.id,
-                        photo = member.photo ?: match.second
+                        photo = member.photo ?: match.second,
+                        character = member.character ?: match.third
                     )
                 } else member
             }

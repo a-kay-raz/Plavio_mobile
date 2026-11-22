@@ -214,7 +214,8 @@ object StremioParser {
                     CastMember(
                         id = (el["id"] as? JsonPrimitive)?.intOrNull ?: 0,
                         name = name,
-                        photo = el.str("photo")
+                        photo = el.str("photo"),
+                        character = el.str("character")
                     )
                 }
                 is JsonPrimitive -> el.contentOrNull?.takeIf { it.isNotBlank() }?.let {
