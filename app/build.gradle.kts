@@ -72,6 +72,15 @@ android {
         checkReleaseBuilds = true
         warningsAsErrors = false // Update advisories are reviewed, not silently auto-upgraded.
     }
+    // Build #24: okhttp-dnsoverhttps 5.3.2 and jspecify 1.0.0 both ship
+    // META-INF/versions/9/OSGI-INF/MANIFEST.MF — duplicate at
+    // :app:mergeMobileReleaseJavaResource. It is an OSGi bundle manifest,
+    // unused at runtime; exclude it.
+    packaging {
+        resources {
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
     signingConfigs {
         // Optional owner signing; no machine-specific keystore is required to build.
         val signingStore = providers.gradleProperty("PLAVIO_SIGNING_STORE").orNull
