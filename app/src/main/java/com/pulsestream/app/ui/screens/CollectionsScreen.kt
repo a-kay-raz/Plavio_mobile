@@ -42,7 +42,6 @@ import com.pulsestream.app.data.db.Collection
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
@@ -83,8 +82,8 @@ fun CollectionsScreen(
                     if (collections.isNotEmpty()) {
                         Text(
                             text = "${collections.size} ${if (collections.size == 1) "collection" else "collections"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = V117Muted
                         )
                     }
                 }
@@ -97,7 +96,7 @@ fun CollectionsScreen(
                 Text(
                     text = "No collections yet — create one to group catalogs, TMDB lists and Trakt lists into folders.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
+                    color = V117Muted,
                     modifier = Modifier.padding(16.dp)
                 )
             } else {
@@ -193,12 +192,12 @@ private fun CollectionRow(
                         if (collection.pinToTop) append("Pinned to top · ")
                         append("Folders are managed inside")
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = V117Muted
                 )
             }
             IconButton(onClick = { menuOpen = true }) {
-                Icon(Icons.Filled.MoreVert, contentDescription = "Collection options", tint = TextSecondary)
+                Icon(Icons.Filled.MoreVert, contentDescription = "Collection options", tint = V117Muted)
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
