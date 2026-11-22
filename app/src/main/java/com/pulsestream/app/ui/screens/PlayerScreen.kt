@@ -16,6 +16,7 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -24,6 +25,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,7 +77,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
@@ -85,7 +86,6 @@ import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tv
@@ -1087,8 +1087,30 @@ fun PlayerScreen(
     var speedMenuOpen by remember { mutableStateOf(false) }
     /** True while the hold-for-speed gesture is boosting playback (v0.12.0). */
     var holdSpeedActive by remember { mutableStateOf(false) }
-    /** Current hold-boost step (2..5) shown in the hold pill (v0.12.1). */
-    var holdSpeedStep by remember { mutableIntStateOf(2) }
+    /** Current hold-boost speed shown in the hold pill: the Hold speed
+     * setting at engage, sliding up to 5x while held (v0.12.1). */
+    var holdSpeedStep by remember { mutableFloatStateOf(2f) }
+    /** Accumulated double-tap seek (Nuvio handleDoubleTapSeek): repeated
+     * taps in the same direction add up from one baseline; the 800ms
+     * reset job clears it. */
+    var accumulatedSeekDirection by remember { mutableStateOf<Int?>(null) }
+    var accumulatedSeekBaselineMs by remember { mutableLongStateOf(0L) }
+    var accumulatedSeekAmountMs by remember { mutableLongStateOf(0L) }
+    var accumulatedSeekResetJob by remember { mutableStateOf<Job?>(null) }
+    /** Pinch zoom factor on the video surface (Nuvio pinchVideoZoom):
+     * 0.8–2.0x, snapped to 1.0x within 0.04. */
+    var videoZoom by remember { mutableFloatStateOf(1f) }
+    var rawVideoZoom by remember { mutableFloatStateOf(1f) }
+    /** Pre-resolved next-episode streams (Nuvio preloadNextEpisodeSources):
+     * fetched while the countdown card shows, consumed by playEpisode. */
+    var prefetchedNextStreams by remember { mutableStateOf<Pair<String, com.pulsestream.app.data.StreamResult>?>(null) }
+    var prefetchingNextId by remember { mutableStateOf<String?>(null) }
+    /** Skip-button auto-hide (Nuvio SkipIntroButton): manually dismissed
+     * for this segment, auto-hidden after 10s with controls down, and
+     * the 0..1 progress of that countdown. */
+    var skipDismissed by remember { mutableStateOf(false) }
+    var skipAutoHidden by remember { mutableStateOf(false) }
+    val skipProgress = remember { Animatable(0f) }
     /** Main-thread scope for the delayed single-tap toggle in videoGestures. */
     val gestureUiScope = rememberCoroutineScope()
     var indicator by remember { mutableStateOf<PlayerIndicator?>(null) }
@@ -1393,7 +1415,42 @@ fun PlayerScreen(
 
     fun seekByWithFeedback(deltaMs: Long) {
         seekBy(deltaMs)
-        pokeIndicator(PlayerIndicator.Seek(if (deltaMs >= 0) "+10s" else "−10s"))
+        val seconds = (kotlin.math.abs(deltaMs) / 1000L)
+        pokeIndicator(PlayerIndicator.Seek((if (deltaMs >= 0) "+" else "−") + "${seconds}s"))
+    }
+
+    /**
+     * Double-tap seek (Nuvio handleDoubleTapSeek): direction -1 = back,
+     * +1 = forward; the step is the Skip seconds setting. Repeated taps
+     * in the same direction accumulate from one baseline (so three quick
+     * taps jump 3x the step); the accumulated state resets 800ms after
+     * the last tap.
+     */
+    fun doubleTapSeek(direction: Int) {
+        val stepMs = (if (direction < 0) settings.skipBackwardSeconds else settings.skipForwardSeconds) * 1000L
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        if (accumulatedSeekDirection == direction) {
+            accumulatedSeekAmountMs += stepMs
+        } else {
+            accumulatedSeekDirection = direction
+            accumulatedSeekBaselineMs = pos
+            accumulatedSeekAmountMs = stepMs
+        }
+        val dur = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val target = if (direction < 0) {
+            (accumulatedSeekBaselineMs - accumulatedSeekAmountMs).coerceAtLeast(0L)
+        } else {
+            (accumulatedSeekBaselineMs + accumulatedSeekAmountMs).coerceIn(0L, dur)
+        }
+        player.seekTo(target)
+        val seconds = accumulatedSeekAmountMs / 1000L
+        pokeIndicator(PlayerIndicator.Seek((if (direction >= 0) "+" else "−") + "${seconds}s"))
+        accumulatedSeekResetJob?.cancel()
+        accumulatedSeekResetJob = gestureUiScope.launch {
+            delay(800)
+            accumulatedSeekDirection = null
+            accumulatedSeekAmountMs = 0L
+        }
     }
 
     fun toggleControls() {
@@ -1434,6 +1491,9 @@ fun PlayerScreen(
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
         settings.resizeMode = aspectMode
+        // Nuvio cycleResizeMode: a resize reset clears the pinch zoom.
+        videoZoom = 1f
+        rawVideoZoom = 1f
         playerView?.resizeMode = aspectMode
         pokeIndicator(PlayerIndicator.Message("Aspect: $aspectLabel"))
     }
@@ -2493,9 +2553,12 @@ fun PlayerScreen(
         if (disposed.get()) return
         episodesOpen = false
         switchingMedia = true
+        // Pre-resolved while the countdown card showed: skip the fetch.
+        val prefetched = prefetchedNextStreams?.takeIf { it.first == video.id }?.second
+        prefetchedNextStreams = null
         ioScope.launch {
             val type = currentRequest.type
-            val result = withTimeoutOrNull(20_000) {
+            val result = prefetched ?: withTimeoutOrNull(20_000) {
                 repository.streamResultsFlow(type, video.id).firstOrNull { it.streams.any { stream -> com.pulsestream.app.data.isPlayableLiveStreamUrl(stream.url) } }
             }
             // Back to the main thread: everything below touches Compose state.
@@ -2604,6 +2667,9 @@ fun PlayerScreen(
             // Drag state (same semantics as the old drag detector):
             // -1 undecided, 0 = seek, 1 = volume, 2 = brightness.
             var dragMode = -1
+            // Pinch zoom interrupts any drag/hold: the gesture ends
+            // without settling (Nuvio interruptedByPinch).
+            var pinchInterrupted = false
             var seekBase = 0L
             var seekTarget = -1L
             var volBase = 0f
@@ -2627,17 +2693,48 @@ fun PlayerScreen(
                 }
                 if (event == null) {
                     // Threshold reached with the finger still down and no
-                    // drag in progress: engage the speed hold.
+                    // drag in progress: engage the speed hold at the Hold
+                    // speed setting (default 2x).
                     holdEngaged = true
                     prevSpeed = player.playbackParameters.speed
                     slideBaseX = accX
-                    holdSpeedStep = 2
-                    runCatching { player.setPlaybackSpeed(2f) }
+                    holdSpeedStep = settings.holdSpeedValue
+                    runCatching { player.setPlaybackSpeed(settings.holdSpeedValue) }
                     holdSpeedActive = true
                     continue
                 }
                 val change = event.changes.firstOrNull { it.id == down.id } ?: continue
                 lastEventMs = change.uptimeMillis
+                // Pinch zoom (Nuvio playerSurfacePinchGestures, folded
+                // into this one state machine so consumption stays
+                // single-owner): a second finger abandons any drag/hold
+                // and zooms the video 0.8–2.0x, snapped to 1.0x within
+                // 0.04. The gesture ends without settling when a finger
+                // lifts.
+                if (event.changes.count { it.pressed } > 1) {
+                    if (holdEngaged) {
+                        holdEngaged = false
+                        holdSpeedActive = false
+                        runCatching { player.setPlaybackSpeed(prevSpeed) }
+                    }
+                    pinchInterrupted = true
+                    val zoom = event.calculateZoom()
+                    if (zoom != 1f && zoom > 0f) {
+                        rawVideoZoom = (rawVideoZoom * zoom).coerceIn(0.8f, 2.0f)
+                        val next = if (abs(rawVideoZoom - 1f) < 0.04f) 1f else rawVideoZoom
+                        if (next != videoZoom) {
+                            videoZoom = next
+                            pokeIndicator(PlayerIndicator.Message("${(next * 100f).roundToInt()}%"))
+                        }
+                    }
+                    event.changes.forEach { it.consume() }
+                    continue
+                }
+                if (pinchInterrupted) {
+                    // A finger lifted after pinching: end without settling.
+                    upChange = change
+                    break
+                }
                 if (!change.pressed) {
                     // Pointer went up (Compose 1.7 no longer distinguishes
                     // a system cancel here — it also arrives as !pressed).
@@ -2649,11 +2746,14 @@ fun PlayerScreen(
                 accX += delta.x
                 accY += delta.y
                 if (holdEngaged) {
-                    // Slide right = step up, left = step down (floor 2x).
-                    val step = 2 + ((accX - slideBaseX) / stepPx).toInt().coerceIn(0, 3)
+                    // Slide right = step up 1x per ~60dp from the hold
+                    // base (floor = base, max 5x); left steps back down.
+                    val step = (settings.holdSpeedValue +
+                        ((accX - slideBaseX) / stepPx).toInt().toFloat())
+                        .coerceIn(settings.holdSpeedValue, 5f)
                     if (step != holdSpeedStep) {
                         holdSpeedStep = step
-                        runCatching { player.setPlaybackSpeed(step.toFloat()) }
+                        runCatching { player.setPlaybackSpeed(step) }
                     }
                 } else {
                     if (dragMode == -1 && (abs(accX) > slop || abs(accY) > slop)) {
@@ -2661,10 +2761,22 @@ fun PlayerScreen(
                         // drag): swallow the drag — mode 3 settles as a
                         // no-op, never a seek/volume/brightness change and
                         // never a tap.
+                        // Nuvio zones: left <40% brightness, right >60%
+                        // volume, centre seek-only; the top/bottom 25%
+                        // bars vertical gestures, and the 24dp side edges
+                        // bar horizontal seek (system back zone).
+                        val edgePx = 24.dp.toPx()
+                        val inTopBottomEdge = downPos.y <= size.height * 0.25f ||
+                            downPos.y >= size.height * 0.75f
+                        val inSideEdge = downPos.x <= edgePx ||
+                            downPos.x >= size.width - edgePx
                         dragMode = if (!settings.touchGesturesEnabled) 3
                         else if (abs(accX) > abs(accY)) {
-                            if (settings.swipeToSeekEnabled) 0 else 3
-                        } else if (downPos.x < size.width / 2f) 2 else 1
+                            if (settings.swipeToSeekEnabled && !inSideEdge) 0 else 3
+                        } else if (inTopBottomEdge) 3
+                        else if (downPos.x < size.width * 0.4f) 2
+                        else if (downPos.x > size.width * 0.6f) 1
+                        else 3
                         seekBase = player.currentPosition
                         seekTarget = -1L
                         volBase = displayVolumePercent().toFloat()
@@ -2674,10 +2786,17 @@ fun PlayerScreen(
                     if (dragMode != -1) {
                         change.consume()
                         when (dragMode) {
-                            0 -> { // horizontal swipe: seek proportional to swipe distance
+                            0 -> { // horizontal swipe: tiered seek (Nuvio:
+                                // ≥60min → 120s, ≥30min → 90s, else 60s
+                                // per full-width swipe).
                                 val dur = player.duration
                                 if (dur > 0) {
-                                    seekTarget = (seekBase + accX / size.width * dur)
+                                    val sensitivitySeconds = when {
+                                        dur >= 3_600_000L -> 120f
+                                        dur >= 1_800_000L -> 90f
+                                        else -> 60f
+                                    }
+                                    seekTarget = (seekBase + accX / size.width * sensitivitySeconds * 1000f)
                                         .toLong().coerceIn(0L, dur)
                                     val deltaMs = seekTarget - player.currentPosition
                                     pokeIndicator(
@@ -2725,8 +2844,9 @@ fun PlayerScreen(
                 }
             }
 
-            // Gesture finished — settle the outcome.
-            when {
+            // Gesture finished — settle the outcome. A pinch-interrupted
+            // gesture settles nothing (Nuvio interruptedByPinch).
+            if (!pinchInterrupted) when {
                 holdEngaged -> {
                     holdSpeedActive = false
                     runCatching { player.setPlaybackSpeed(prevSpeed) }
@@ -2736,9 +2856,10 @@ fun PlayerScreen(
                 }
                 dragMode == -1 -> {
                     // A tap: a second tap inside the double-tap window
-                    // seeks by the Skip seconds setting by side; a lone
-                    // tap toggles the controls once the window expires
-                    // (same timing as the old detectTapGestures behaviour).
+                    // seeks by the Skip seconds setting (accumulating);
+                    // centre double-tap toggles the controls. A lone tap
+                    // toggles the controls once the window expires (same
+                    // timing as the old detectTapGestures behaviour).
                     // Gestures off: no double-tap seek, tap only.
                     val now = upChange?.uptimeMillis ?: downTime
                     val window = viewConfiguration.doubleTapTimeoutMillis
@@ -2746,8 +2867,12 @@ fun PlayerScreen(
                         pendingToggle?.cancel()
                         pendingToggle = null
                         lastTapUpMs = 0L
-                        if (downPos.x < size.width / 2f) seekByWithFeedback(-settings.skipBackwardSeconds * 1000L)
-                        else seekByWithFeedback(settings.skipForwardSeconds * 1000L)
+                        // Nuvio zones: <40% back, >60% forward, centre toggles.
+                        when {
+                            downPos.x < size.width * 0.4f -> doubleTapSeek(-1)
+                            downPos.x > size.width * 0.6f -> doubleTapSeek(1)
+                            else -> toggleControls()
+                        }
                     } else {
                         lastTapUpMs = now
                         pendingToggle = gestureUiScope.launch {
@@ -2769,8 +2894,12 @@ fun PlayerScreen(
             },
             onDoubleTap = { offset ->
                 if (!locked && settings.touchGesturesEnabled) {
-                    if (offset.x < size.width / 2f) seekByWithFeedback(-settings.skipBackwardSeconds * 1000L)
-                    else seekByWithFeedback(settings.skipForwardSeconds * 1000L)
+                    // Nuvio zones: <40% back, >60% forward, centre toggles.
+                    when {
+                        offset.x < size.width * 0.4f -> doubleTapSeek(-1)
+                        offset.x > size.width * 0.6f -> doubleTapSeek(1)
+                        else -> toggleControls()
+                    }
                 }
             }
         )
@@ -2830,6 +2959,35 @@ fun PlayerScreen(
             movieRecsAutoHidden = true
         } else {
             movieRecsAutoHidden = false
+        }
+    }
+
+    // Pinch zoom resets whenever a new title/episode starts.
+    LaunchedEffect(currentRequest.videoId) {
+        videoZoom = 1f
+        rawVideoZoom = 1f
+    }
+
+    // Skip-button auto-hide (Nuvio SkipIntroButton): the 10s countdown
+    // runs only while the controls are hidden; showing them pauses it
+    // and brings the button back. Dismissal and the countdown reset
+    // whenever the active segment changes.
+    LaunchedEffect(activeSegment?.type, activeSegment?.startMs, activeSegment?.endMs) {
+        skipDismissed = false
+        skipAutoHidden = false
+        skipProgress.snapTo(0f)
+    }
+    LaunchedEffect(activeSegment?.type, activeSegment?.startMs, activeSegment?.endMs, showControls, skipDismissed) {
+        val seg = activeSegment
+        if (seg != null && !skipDismissed && !showControls && !skipAutoHidden) {
+            skipProgress.animateTo(
+                1f,
+                tween(
+                    durationMillis = ((1f - skipProgress.value) * 10_000).toInt().coerceAtLeast(1),
+                    easing = LinearEasing,
+                ),
+            )
+            skipAutoHidden = true
         }
     }
 
@@ -2930,6 +3088,24 @@ fun PlayerScreen(
                 )
             ) {
                 nextEpisodeCard = nextEp
+                // Pre-resolve the next episode's sources while the 3s
+                // countdown runs (Nuvio preloadNextEpisodeSources), so
+                // Play now / auto-advance plays instantly instead of
+                // fetching after the countdown ends.
+                if (prefetchingNextId != nextEp.id && prefetchedNextStreams?.first != nextEp.id) {
+                    prefetchingNextId = nextEp.id
+                    val nextType = currentRequest.type
+                    ioScope.launch {
+                        val res = withTimeoutOrNull(20_000) {
+                            repository.streamResultsFlow(nextType, nextEp.id)
+                                .firstOrNull { it.streams.any { s -> com.pulsestream.app.data.isPlayableLiveStreamUrl(s.url) } }
+                        }
+                        withContext(Dispatchers.Main) {
+                            prefetchingNextId = null
+                            if (res != null) prefetchedNextStreams = nextEp.id to res
+                        }
+                    }
+                }
             } else if (nextEpisodeCard != null && !shouldShowNextEpisodeCard(
                     positionMs, durationMs, skipSegments,
                     settings.nextEpisodeThresholdMode,
@@ -2941,6 +3117,7 @@ fun PlayerScreen(
                 // countdown effect cancels with it.
                 nextEpisodeCard = null
                 nextEpisodeCountdown = null
+                prefetchedNextStreams = null
             }
             // Auto-play next episode: when a series episode ends and the
             // setting is on, advance automatically — unless the countdown
@@ -3515,7 +3692,12 @@ fun PlayerScreen(
                     }
                     applySubtitleStyle(pv)
                 },
-                modifier = Modifier.fillMaxSize()
+                // Pinch zoom (Nuvio setVideoZoom): scales the whole
+                // PlayerView surface 0.8–2.0x.
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = videoZoom
+                    scaleY = videoZoom
+                }
             )
         }
 
@@ -3757,6 +3939,40 @@ fun PlayerScreen(
                     }
                 }
             }
+            // Side vertical bars (Nuvio GestureFeedbackOverlay): volume
+            // on the right, brightness on the left; the top-centre pill
+            // above carries the exact percentage.
+            val sideBarFraction = when (ind) {
+                is PlayerIndicator.Volume -> (ind.percent / 200f).coerceIn(0f, 1f)
+                is PlayerIndicator.Brightness -> (ind.percent / 100f).coerceIn(0f, 1f)
+                else -> null
+            }
+            if (sideBarFraction != null) {
+                val isBoostedBar = ind is PlayerIndicator.Volume && ind.percent > 100
+                val barColor = if (isBoostedBar) Color(0xFFFF5252) else Color.White
+                val barAlignment = if (ind is PlayerIndicator.Volume) Alignment.CenterEnd else Alignment.CenterStart
+                Box(
+                    Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                    contentAlignment = barAlignment
+                ) {
+                    Box(
+                        Modifier
+                            .width(6.dp)
+                            .height(104.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .graphicsLayer { alpha = indAlpha.value },
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(sideBarFraction)
+                                .background(barColor)
+                        )
+                    }
+                }
+            }
         }
 
         // Hold-for-speed pill: pinned top-center only while the hold boost
@@ -3782,7 +3998,7 @@ fun PlayerScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            "${holdSpeedStep}x",
+                            speedLabel(holdSpeedStep),
                             color = TextPrimary,
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
@@ -3797,29 +4013,63 @@ fun PlayerScreen(
         // hides under it (Play now does the same job).
         val endCardVisible = nextEpisodeCard != null ||
             (movieRecs.isNotEmpty() && !movieRecsDismissed && !movieRecsAutoHidden)
-        // Skip intro / recap / outro button (IntroDB).
+        // Skip intro / recap / outro button (Nuvio SkipIntroButton):
+        // glass 16dp, SkipNext 20dp + label, 3dp progress bar for the
+        // 10s auto-hide, dismissible with the X. Hidden while an end
+        // card owns the slot (Play now does the same job).
         if (!endCardVisible) {
             activeSegment?.let { seg ->
-                Box(
-                    Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
-                    contentAlignment = Alignment.BottomEnd
-                ) {
-                    TextButton(
-                        onClick = {
-                            autoSkippedSegments = autoSkippedSegments + seg
-                            player.seekTo(seg.endMs + 400)
-                            activeSegment = null
-                        },
-                        modifier = Modifier.background(
-                            Color.Black.copy(alpha = 0.72f),
-                            RoundedCornerShape(10.dp)
-                        )
+                if (!skipDismissed && (!skipAutoHidden || showControls)) {
+                    Box(
+                        Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
+                        contentAlignment = Alignment.BottomEnd
                     ) {
-                        Text(
-                            seg.type.buttonLabel(),
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column(
+                            Modifier
+                                .widthIn(max = 320.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .liquidGlass(RoundedCornerShape(16.dp), frost = 0.12f, darken = 0.03f)
+                                .clickable {
+                                    autoSkippedSegments = autoSkippedSegments + seg
+                                    player.seekTo(seg.endMs + 400)
+                                    activeSegment = null
+                                }
+                        ) {
+                            Row(
+                                Modifier.padding(start = 18.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.SkipNext,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    seg.type.buttonLabel(),
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                                IconButton(
+                                    onClick = { skipDismissed = true },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Filled.Close, "Dismiss", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            if (!showControls) {
+                                Box(
+                                    Modifier.fillMaxWidth().height(3.dp)
+                                        .background(Color.White.copy(alpha = 0.15f))
+                                ) {
+                                    Box(
+                                        Modifier.fillMaxWidth(skipProgress.value).height(3.dp)
+                                            .background(Color.White.copy(alpha = 0.85f))
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -3855,6 +4105,7 @@ fun PlayerScreen(
                                 endedHandledFor = currentRequest.videoId
                                 nextEpisodeCard = null
                                 nextEpisodeCountdown = null
+                                prefetchedNextStreams = null
                             },
                             modifier = Modifier.size(28.dp)
                         ) {
@@ -4232,10 +4483,12 @@ fun PlayerScreen(
                     }
                     if (!currentRequest.isLive) {
                         CenterControlButton(
-                            Icons.Filled.Replay10, "Back 10 seconds",
-                            onClick = { seekByWithFeedback(-10_000) },
-                            modifier = Modifier.then(act("rew") { seekByWithFeedback(-10_000) })
-                        )
+                            label = "Back ${settings.skipBackwardSeconds} seconds",
+                            onClick = { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L) },
+                            modifier = Modifier.then(act("rew") { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L) })
+                        ) {
+                            SkipStepIcon(settings.skipBackwardSeconds, forward = false)
+                        }
                     }
                     Box(
                         modifier = Modifier
@@ -4262,10 +4515,12 @@ fun PlayerScreen(
                     }
                     if (!currentRequest.isLive) {
                         CenterControlButton(
-                            Icons.Filled.Forward10, "Forward 10 seconds",
-                            onClick = { seekByWithFeedback(10_000) },
-                            modifier = Modifier.then(act("fwd") { seekByWithFeedback(10_000) })
-                        )
+                            label = "Forward ${settings.skipForwardSeconds} seconds",
+                            onClick = { seekByWithFeedback(settings.skipForwardSeconds * 1000L) },
+                            modifier = Modifier.then(act("fwd") { seekByWithFeedback(settings.skipForwardSeconds * 1000L) })
+                        ) {
+                            SkipStepIcon(settings.skipForwardSeconds, forward = true)
+                        }
                     }
                     if (canZap()) {
                         CenterControlButton(
