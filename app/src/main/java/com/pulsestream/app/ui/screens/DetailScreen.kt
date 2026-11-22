@@ -2,7 +2,13 @@ package com.pulsestream.app.ui.screens
 
 import android.view.ViewGroup
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import coil.compose.AsyncImage
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,6 +84,10 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
@@ -105,6 +115,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,7 +131,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
@@ -138,8 +154,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -203,6 +222,8 @@ import com.pulsestream.app.ui.tv.tvSheetFocus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
+import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -756,6 +777,105 @@ private fun DetailContent(
     val isTvDetail = rememberIsTv()
     val playButtonFocus = remember { FocusRequester() }
     var playFocusLanded by remember { mutableStateOf(false) }
+    // --- Nuvio cinematic hero (v1.17 DetailHero) ---
+    // Height = width x 1.33, clamped 420-760dp on phone (TV keeps the
+    // old 51%-of-screen hero). Parallax 0.5x + scale 1.08 on the art;
+    // overscroll stretch-zoom via HeroStretchState below.
+    val heroHeight = if (isTvDetail) {
+        (LocalConfiguration.current.screenHeightDp * 0.51f).dp
+    } else {
+        ((LocalConfiguration.current.screenWidthDp * 1.33f).dp).coerceIn(420.dp, 760.dp)
+    }
+    val heroHeightPx = with(LocalDensity.current) { heroHeight.roundToPx() }
+    val heroStretchState = rememberHeroStretchState(listState)
+    // Scroll offset for the parallax: the hero is item 0, so the offset
+    // is the first item's scroll until the hero is fully past.
+    val heroScrollOffsetPx = remember(listState, heroHeightPx) {
+        {
+            if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset
+            else heroHeightPx
+        }
+    }
+    // Floating glass header (Nuvio DetailFloatingHeader): fades in once
+    // the hero has collapsed past the header's own height.
+    val floatingHeaderHeightPx = with(LocalDensity.current) { (detailStatusDp + 56.dp).roundToPx() }
+    val isHeroCollapsed by remember(listState, heroHeightPx, floatingHeaderHeightPx) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 ||
+                (listState.firstVisibleItemIndex == 0 &&
+                    listState.firstVisibleItemScrollOffset > heroHeightPx - floatingHeaderHeightPx)
+        }
+    }
+    val headerProgress by animateFloatAsState(
+        targetValue = if (isHeroCollapsed) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (isHeroCollapsed) 150 else 100,
+            easing = LinearOutSlowInEasing
+        ),
+        label = "detail_floating_header_progress"
+    )
+    // Continue Watching, hoisted: the Play label, the episode progress
+    // bars and the resume auto-select below all read the same list.
+    val continueWatching by repository.continueWatching.collectAsState(initial = emptyList())
+    // The episode with unfinished progress for this title, if any
+    // (Nuvio seriesPrimaryAction): the Play capsule resumes it.
+    val resumeEpisode: Video? = remember(meta, continueWatching) {
+        if (meta.type != "series") null
+        else {
+            continueWatching
+                .filter { entry ->
+                    entry.season > 0 && entry.episode > 0 && entry.positionMs > 0 &&
+                        (entry.durationMs <= 0 || entry.positionMs < entry.durationMs)
+                }
+                .filter { entry ->
+                    entry.videoId.contains(meta.id) || entry.key.contains(meta.id) ||
+                        entry.imdbId == meta.id
+                }
+                .maxByOrNull { it.updatedAt }
+                ?.let { entry ->
+                    meta.videos.firstOrNull { it.season == entry.season && it.episode == entry.episode }
+                }
+        }
+    }
+    // Resume auto-select: open on the episode with progress, so Play
+    // actually plays what its label promises — but only while the
+    // selection is still the default first episode (a manual pick is
+    // never overridden).
+    var resumeApplied by remember(meta.id) { mutableStateOf(false) }
+    LaunchedEffect(meta.id, resumeEpisode) {
+        val video = resumeEpisode ?: return@LaunchedEffect
+        if (resumeApplied) return@LaunchedEffect
+        val defaultSeason = seasons.firstOrNull()
+        val defaultVideo = defaultSeason?.let { season ->
+            meta.videos.filter { it.season == season }
+                .sortedWith(compareBy({ it.episode }, { it.title })).firstOrNull()
+        }
+        if (vm.selectedSeason == defaultSeason && vm.selectedVideo?.id == defaultVideo?.id) {
+            vm.selectSeason(video.season, meta)
+            vm.selectEpisode(video)
+        }
+        resumeApplied = true
+    }
+    // Per-episode watch progress (0..1) for the episode cards: matched
+    // by video id, or by season/episode + title identity.
+    fun episodeProgress(video: Video): Float? {
+        val entry = continueWatching
+            .filter { entry ->
+                entry.videoId == video.id ||
+                    (entry.season == video.season && entry.episode == video.episode &&
+                        entry.season > 0 &&
+                        (entry.videoId.contains(meta.id) || entry.key.contains(meta.id) ||
+                            entry.imdbId == meta.id))
+            }
+            .maxByOrNull { it.updatedAt }
+        return entry?.takeIf { it.durationMs > 0 && it.positionMs > 0 }?.let {
+            (it.positionMs.toFloat() / it.durationMs).coerceIn(0f, 1f)
+        }
+    }
+    // Episode card style (Nuvio MetaEpisodeCardStyle): horizontal rail
+    // or vertical list. Session-scoped for now — a SettingsStore key
+    // (episodeCardStyle) is a follow-up for the settings batch.
+    var episodeCardStyle by rememberSaveable { mutableStateOf("rail") }
     val context = androidx.compose.ui.platform.LocalContext.current
     val browsingPrivacy = remember(context) { BrowsingPrivacy(context) }
     // Ratings (Nuvio D5/M4): provider scores + your local star rating.
@@ -946,11 +1066,17 @@ private fun DetailContent(
             }
             val canPlay = vm.streamsState !is StreamsUiState.Error
             // Resume: check if there's playback progress for this title
-            val continueWatching by repository.continueWatching.collectAsState(initial = emptyList())
+            // (continueWatching is hoisted to DetailContent scope).
             val resumeState = continueWatching.find { it.videoId == meta.id || it.key.contains(meta.id) }
             val hasResume = resumeState != null && resumeState.positionMs > 0 && resumeState.durationMs > 0
             val resumeProgress = if (hasResume) resumeState!!.positionMs.toFloat() / resumeState!!.durationMs else 0f
-            val playText = if (hasResume) "Continue Watching" else "Watch Now"
+            // Dynamic Play label (Nuvio seriesPrimaryAction): a series
+            // with an unfinished episode resumes that episode by name.
+            val playText = when {
+                resumeEpisode != null -> "S${resumeEpisode.season} E${resumeEpisode.episode} · ${resumeEpisode.title}"
+                hasResume -> "Continue Watching"
+                else -> "Watch Now"
+            }
             // Play button: full width capsule. Tap = play, long-press = open sources.
             PlayButton(
                 onClick = { vm.onPlayPressed() },
@@ -992,6 +1118,39 @@ private fun DetailContent(
                     )
                 }
             }
+            // Title-level watched toggle (series only; Nuvio
+            // DetailActionButtons "Mark watched"): flips every episode
+            // of every season. Movies have no public watched setter in
+            // StreamRepository, so they get no toggle in this batch.
+            if (isSeries && meta.videos.isNotEmpty()) {
+                val allWatched = meta.videos.all { video ->
+                    com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
+                }
+                TextButton(
+                    onClick = {
+                        val target = !allWatched
+                        scope.launch {
+                            seasons.forEach { season ->
+                                repository.setSeasonWatched(meta.id, season, meta.videos, target)
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                ) {
+                    Icon(
+                        if (allWatched) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (allWatched) "Mark all unwatched" else "Mark all watched",
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
           }
         }
     }
@@ -999,21 +1158,30 @@ private fun DetailContent(
     val overviewBlock: LazyListScope.() -> Unit = {
             item {
                 Column {
-                    // Nuvio ExpandableDescription: 4 lines collapsed, expands in place.
-                    ExpandableDescription(
-                        text = meta.description!!,
-                        collapsedMaxLines = 4,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)
-                    )
-                    if (meta.genres.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            Modifier.padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Facts pills (Nuvio DetailMetaInfo order): release,
+                    // seasons, episodes, runtime, age, IMDb. Genres live
+                    // in the hero now, not here.
+                    val overviewFacts = buildList {
+                        meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(formatEpisodeDate(it)) }
+                        if (isSeries) {
+                            val seasonCount = meta.videos.mapNotNull { it.season.takeIf { s -> s > 0 } }.distinct().size
+                            if (seasonCount > 0) add("$seasonCount Season${if (seasonCount == 1) "" else "s"}")
+                            val episodeCount = meta.videos.distinctBy { "${it.season}:${it.episode}" }.size
+                            if (episodeCount > 0) add("$episodeCount Episode${if (episodeCount == 1) "" else "s"}")
+                        }
+                        formatRuntimeForDisplay(meta.runtime)?.let { add(it) }
+                        meta.certification?.takeIf { it.isNotBlank() }?.let { add(it) }
+                        meta.imdbRating?.takeIf { it.isNotBlank() }?.let { add("IMDb $it") }
+                    }
+                    if (overviewFacts.isNotEmpty()) {
+                        FlowRow(
+                            Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            meta.genres.take(4).forEach { genre ->
+                            overviewFacts.forEach { fact ->
                                 Text(
-                                    genre,
+                                    fact,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = TextPrimary,
                                     modifier = Modifier
@@ -1023,6 +1191,12 @@ private fun DetailContent(
                             }
                         }
                     }
+                    // Nuvio ExpandableDescription: 4 lines collapsed, expands in place.
+                    ExpandableDescription(
+                        text = meta.description!!,
+                        collapsedMaxLines = 4,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (overviewFacts.isNotEmpty()) 12.dp else 16.dp)
+                    )
                 }
             }
     }
@@ -1514,6 +1688,15 @@ private fun DetailContent(
                             tint = TextSecondary
                         )
                     }
+                    // Episode card style (Nuvio MetaEpisodeCardStyle):
+                    // horizontal rail or vertical list.
+                    IconButton(onClick = { episodeCardStyle = if (episodeCardStyle == "list") "rail" else "list" }) {
+                        Icon(
+                            if (episodeCardStyle == "list") Icons.Filled.ViewModule else Icons.Filled.ViewList,
+                            contentDescription = if (episodeCardStyle == "list") "Rail view" else "List view",
+                            tint = TextSecondary
+                        )
+                    }
                 }
             }
             // Spoiler filters on their own row: sharing the header Row
@@ -1583,33 +1766,84 @@ private fun DetailContent(
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
-            item(key = "episodes_rail") {
-                LazyRow(
-                    state = episodesRailState,
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    itemsIndexed(episodes, key = { index, video -> "${video.id}_$index" }) { _, video ->
-                        val selected = vm.selectedVideo?.id == video.id
-                        val episodeRevealed = video.id in revealedEpisodeIds
-                        val hideDetails = BrowsingPrivacy.shouldHideEpisodeDetails(hideEpisodeDetails, episodeRevealed)
-                        val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
-                        EpisodeCardA(
-                            video = video,
-                            selected = selected,
-                            hideDetails = hideDetails,
-                            isWatched = isWatched,
-                            spoilerMode = hideEpisodeDetails,
-                            isTv = isTvDetail,
-                            blurThumbnail = blurUnwatched && !isWatched,
-                            onClick = { vm.selectEpisode(video) },
-                            onLongClick = { episodeActionVideo = video },
-                            onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
-                            onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
+            if (episodeCardStyle == "list") {
+                // List style (Nuvio MetaEpisodeCardStyle.List): vertical
+                // cards under a sticky season header.
+                stickyHeader(key = "episodes_list_header") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(LocalPalette.current.background)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            if (vm.selectedSeason == 0) "Specials" else "Season ${vm.selectedSeason}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "${episodes.size} episode${if (episodes.size == 1) "" else "s"}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextSecondary
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                items(episodes, key = { "ep_list_${it.id}" }) { video ->
+                    val selected = vm.selectedVideo?.id == video.id
+                    val episodeRevealed = video.id in revealedEpisodeIds
+                    val hideDetails = BrowsingPrivacy.shouldHideEpisodeDetails(hideEpisodeDetails, episodeRevealed)
+                    val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
+                    EpisodeListCard(
+                        video = video,
+                        selected = selected,
+                        hideDetails = hideDetails,
+                        isWatched = isWatched,
+                        spoilerMode = hideEpisodeDetails,
+                        isTv = isTvDetail,
+                        blurThumbnail = blurUnwatched && !isWatched,
+                        runtime = formatRuntimeForDisplay(meta.runtime),
+                        progress = episodeProgress(video),
+                        onClick = { vm.selectEpisode(video) },
+                        onLongClick = { episodeActionVideo = video },
+                        onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
+                        onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+            } else {
+                item(key = "episodes_rail") {
+                    LazyRow(
+                        state = episodesRailState,
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(episodes, key = { index, video -> "${video.id}_$index" }) { _, video ->
+                            val selected = vm.selectedVideo?.id == video.id
+                            val episodeRevealed = video.id in revealedEpisodeIds
+                            val hideDetails = BrowsingPrivacy.shouldHideEpisodeDetails(hideEpisodeDetails, episodeRevealed)
+                            val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
+                            EpisodeCardA(
+                                video = video,
+                                selected = selected,
+                                hideDetails = hideDetails,
+                                isWatched = isWatched,
+                                spoilerMode = hideEpisodeDetails,
+                                isTv = isTvDetail,
+                                blurThumbnail = blurUnwatched && !isWatched,
+                                runtime = formatRuntimeForDisplay(meta.runtime),
+                                progress = episodeProgress(video),
+                                onClick = { vm.selectEpisode(video) },
+                                onLongClick = { episodeActionVideo = video },
+                                onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
+                                onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
             }
     }
 
@@ -1694,10 +1928,14 @@ private fun DetailContent(
         }
     }
 
+    // The LazyColumn sits in a Box so the floating glass header can
+    // overlay it once the hero collapses (Nuvio DetailFloatingHeader).
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         state = listState,
         modifier = Modifier
             .fillMaxSize()
+            .nestedScroll(heroStretchState.nestedScrollConnection)
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(
                     constraints.copy(
@@ -1712,42 +1950,71 @@ private fun DetailContent(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item {
-            // D-A hero (owner's pick 2026-10-24, replacing Sample A):
-            // the BACKDROP leads, edge-to-edge at 51% of the screen;
-            // the poster rests as a small card on the fade at the
-            // bottom-left, with title, facts line and genres beside it.
-            // The stream-data pills live below the hero now, in a
-            // fixed-height slot, so Watch Now never shifts. The action
-            // row (back / watchlist / add-to-list) floats over the top,
-            // unchanged. The fade keeps the cinematic navy of the
-            // shipped heroes — it is what makes the white overlay text
-            // read in both theme modes. No backdrop -> the poster itself
-            // is the hero art and no small card is drawn.
-            val heroHeight = (LocalConfiguration.current.screenHeightDp * 0.51f).dp
+            // Nuvio cinematic hero (v1.17 DetailHero): height = width x
+            // 1.33 clamped 420-760dp on phone; parallax 0.5x + scale
+            // 1.08 + overscroll stretch-zoom; 7-stop fade to the theme
+            // background; title displayLarge centred (logo 60% width /
+            // 80dp when the meta carries one); genres only in the hero
+            // (max 3) — the full facts pills live in the Overview
+            // section. The 74dp poster-in-hero is gone on phone; when
+            // there is no backdrop the poster itself IS the hero art.
+            // TV keeps the old layout (poster card + left-aligned title).
             val heroArt = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster
             val hasBackdrop = !meta.background.isNullOrBlank()
             val trailerUrl = heroTrailerUrl
+            val fadeColor = LocalPalette.current.background
+            val trailerFadeAlpha by animateFloatAsState(
+                targetValue = if (heroTrailerReady) 1f else 0f,
+                animationSpec = tween(300),
+                label = "hero_trailer_fade"
+            )
+            var logoLoadError by remember(meta.id, meta.logo) { mutableStateOf(false) }
+            val logoUrl = meta.logo?.takeIf { it.isNotBlank() && !logoLoadError }
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(heroHeight)
+                    .heroStretchHeight(heroHeight) { heroStretchState.stretchPx }
+                    .graphicsLayer { clip = true }
             ) {
-                SafePosterImage(
-                    model = heroArt,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                // Hero trailer (Nuvio D2): once resolved, the trailer plays
-                // over the backdrop and fades in when ready; the fade below
-                // stays on top so the title text keeps reading.
-                if (trailerUrl != null && !heroTrailerFinished) {
-                    val trailerAlpha by animateFloatAsState(
-                        targetValue = if (heroTrailerReady) 1f else 0f,
-                        label = "heroTrailerAlpha"
+                // Backdrop (or the poster itself when there is no
+                // backdrop), with parallax + scale + stretch-zoom.
+                if (heroArt != null) {
+                    SafePosterImage(
+                        model = heroArt,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(heroHeight)
+                            .heroStretchZoom { heroStretchState.stretchPx }
+                            .graphicsLayer {
+                                translationY = heroScrollOffsetPx() * 0.5f
+                                scaleX = 1.08f
+                                scaleY = 1.08f
+                            },
+                        contentScale = ContentScale.Crop
                     )
+                } else {
                     Box(
-                        Modifier.fillMaxSize().graphicsLayer { alpha = trailerAlpha }
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                    )
+                }
+                // Hero trailer: once resolved, the trailer plays over the
+                // backdrop and fades in when ready; the fade below stays
+                // on top so the title text keeps reading.
+                if (trailerUrl != null && !heroTrailerFinished) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .heroStretchZoom { heroStretchState.stretchPx }
+                            .graphicsLayer {
+                                translationY = heroScrollOffsetPx() * 0.5f
+                                scaleX = 1.08f
+                                scaleY = 1.08f
+                                alpha = trailerFadeAlpha
+                            }
                     ) {
                         HeroTrailerPlayer(
                             videoUrl = trailerUrl,
@@ -1759,16 +2026,29 @@ private fun DetailContent(
                         )
                     }
                 }
-                // The fade: clear until ~40%, then cinematic navy, so
-                // the overlaid text reads in both theme modes.
+                // 7-stop fade to the theme background (Nuvio DetailHero).
                 Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            0.40f to Color.Transparent,
-                            1.0f to Color(0xFF060B16).copy(alpha = 0.95f)
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(320.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.00f to Color.Transparent,
+                                    0.16f to fadeColor.copy(alpha = 0.04f),
+                                    0.32f to fadeColor.copy(alpha = 0.14f),
+                                    0.50f to fadeColor.copy(alpha = 0.34f),
+                                    0.68f to fadeColor.copy(alpha = 0.62f),
+                                    0.84f to fadeColor.copy(alpha = 0.84f),
+                                    1.00f to fadeColor
+                                )
+                            )
                         )
-                    )
                 )
+                // Top action row: back / watchlist / mute / add-to-list.
+                // The watchlist button's long-press opens the Add-to-list
+                // sheet (Nuvio DetailActionButtons save long-press).
                 Row(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp + detailStatusDp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1780,13 +2060,19 @@ private fun DetailContent(
                         Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
                     }
                     Spacer(Modifier.weight(1f))
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster, com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo))
-                            }
-                        },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .combinedClickable(
+                                onClick = {
+                                    scope.launch {
+                                        repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster, com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo))
+                                    }
+                                },
+                                onLongClick = { showAddToList = true }
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             if (watchItem != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
@@ -1821,66 +2107,110 @@ private fun DetailContent(
                         )
                     }
                 }
-                Row(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    // The poster rests as a small card on the fade's
-                    // bottom-left — only when the hero art is the
-                    // backdrop; in the poster fallback the hero IS the
-                    // poster, so no card is drawn.
-                    if (hasBackdrop && !meta.poster.isNullOrBlank()) {
-                        SafePosterImage(
-                            model = meta.poster,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .width(74.dp)
-                                .aspectRatio(0.675f)
-                                .shadow(12.dp, RoundedCornerShape(12.dp))
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(Modifier.width(12.dp))
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            meta.name,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        val factsLine = buildList {
-                            meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(formatEpisodeDate(it)) }
-                            formatRuntimeForDisplay(meta.runtime)?.let { add(it) }
-                            meta.imdbRating?.takeIf { it.isNotBlank() }?.let { add("★ $it") }
-                        }.joinToString("  •  ")
-                        if (factsLine.isNotBlank()) {
-                            Spacer(Modifier.height(3.dp))
+                // Bottom: centred title/logo + genres + ratings (phone);
+                // TV keeps the poster card + left-aligned title.
+                if (isTvDetail) {
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        if (hasBackdrop && !meta.poster.isNullOrBlank()) {
+                            SafePosterImage(
+                                model = meta.poster,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .width(74.dp)
+                                    .aspectRatio(0.675f)
+                                    .shadow(12.dp, RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                com.pulsestream.app.ui.components.accentStarText(factsLine, LocalPalette.current.accent),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFC7D2DE),
-                                maxLines = 1,
+                                meta.name,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val factsLine = buildList {
+                                meta.releaseInfo?.takeIf { it.isNotBlank() }?.let { add(formatEpisodeDate(it)) }
+                                formatRuntimeForDisplay(meta.runtime)?.let { add(it) }
+                                meta.imdbRating?.takeIf { it.isNotBlank() }?.let { add("★ $it") }
+                            }.joinToString("  •  ")
+                            if (factsLine.isNotBlank()) {
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    com.pulsestream.app.ui.components.accentStarText(factsLine, LocalPalette.current.accent),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFFC7D2DE),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (meta.genres.isNotEmpty()) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    meta.genres.take(3).joinToString(", "),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFF8FA2B5),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            DetailRatingsRow(
+                                ratings = providerRatings,
+                                userStars = userStars,
+                                onClick = { ratingsSheetOpen = true }
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (logoUrl != null) {
+                            AsyncImage(
+                                model = logoUrl,
+                                contentDescription = meta.name,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.6f)
+                                    .height(80.dp),
+                                contentScale = ContentScale.Fit,
+                                onError = { logoLoadError = true }
+                            )
+                        } else {
+                            Text(
+                                meta.name,
+                                style = MaterialTheme.typography.displayLarge,
+                                color = TextPrimary,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
                         if (meta.genres.isNotEmpty()) {
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(8.dp))
                             Text(
-                                meta.genres.take(3).joinToString(", "),
+                                meta.genres.take(3).joinToString(" • "),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF8FA2B5),
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        // Ratings row (Nuvio DetailRatingsRow): provider scores +
-                        // your stars; tap opens the breakdown + Rate sheet.
                         Spacer(Modifier.height(6.dp))
                         DetailRatingsRow(
                             ratings = providerRatings,
@@ -1932,6 +2262,26 @@ private fun DetailContent(
                 DetailSectionKey.COLLECTION -> collectionBlock()
                 DetailSectionKey.MORE_LIKE_THIS -> relatedBlock()
             }
+        }
+    }
+        // Floating glass header (Nuvio DetailFloatingHeader): 56dp, fades
+        // in once the hero collapses; logo/title centred + save toggle.
+        // The back button lives here when collapsed; the hero's own top
+        // row covers it while the hero is visible.
+        if (headerProgress > 0.01f) {
+            DetailFloatingHeader(
+                meta = meta,
+                isSaved = watchItem != null,
+                progress = headerProgress,
+                topPadding = detailStatusDp,
+                onBack = onBack,
+                onToggleSaved = {
+                    scope.launch {
+                        repository.toggleWatchlist(addonId, meta.type, meta.id, meta.name, meta.poster, com.pulsestream.app.data.parseReleaseYear(meta.releaseInfo))
+                    }
+                },
+                modifier = Modifier.zIndex(2f)
+            )
         }
     }
 
@@ -2611,7 +2961,7 @@ private fun DetailRatingsRow(
     Text(
         text = com.pulsestream.app.ui.components.accentStarText(text, LocalPalette.current.accent),
         style = MaterialTheme.typography.bodyMedium,
-        color = Color(0xFFC7D2DE),
+        color = TextSecondary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.clickable(onClick = onClick)
@@ -3463,6 +3813,8 @@ private fun EpisodeCardA(
     spoilerMode: Boolean,
     isTv: Boolean,
     blurThumbnail: Boolean = false,
+    runtime: String? = null,
+    progress: Float? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
@@ -3533,6 +3885,24 @@ private fun EpisodeCardA(
                     )
                 }
             }
+            // Watch progress along the thumb's bottom edge (Nuvio
+            // DetailSeriesContent): only while unfinished.
+            if (progress != null && progress > 0f && progress < 1f) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(Color.White.copy(alpha = 0.30f))
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .background(palette.accent)
+                    )
+                }
+            }
         }
         Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
             if (hideDetails) {
@@ -3565,11 +3935,17 @@ private fun EpisodeCardA(
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        formatEpisodeDate(video.released),
-                        color = TextSecondary,
-                        style = MaterialTheme.typography.labelSmall
-                    )
+                    val metaLine = listOfNotNull(
+                        formatEpisodeDate(video.released).takeIf { it.isNotBlank() },
+                        runtime
+                    ).joinToString("  •  ")
+                    if (metaLine.isNotBlank()) {
+                        Text(
+                            metaLine,
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                     Spacer(Modifier.weight(1f))
                     if (spoilerMode && !isTv) {
                         Text(
@@ -3625,6 +4001,324 @@ private fun DetailSectionTabRow(
                 onClick = { onTabClick(key) },
                 text = { Text(key.title) }
             )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// W3 Detail batch (Nuvio v1.17): hero stretch-zoom, floating header and
+// the vertical episode List card.
+// ---------------------------------------------------------------------------
+
+// Overscroll stretch-zoom for the detail hero (Nuvio
+// HeroStretchOverscroll.kt, ported verbatim apart from the KMP
+// expect/actual split): pulling down at the top stretches the hero up
+// to 200px with 0.55x drag resistance that falls off as the stretch
+// grows; releasing springs back. NOTE: like Nuvio, the stretch value
+// is pixel-denominated — available.y arrives in px and the 200 cap is
+// treated as px (about 77dp at 2.6 density), not converted.
+private val HERO_STRETCH_MAX = 200.dp
+
+@Stable
+private class HeroStretchState(private val scope: CoroutineScope) {
+    val stretch = Animatable(0f)
+    val stretchPx: Float get() = stretch.value
+
+    val nestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (stretch.value > 0f && available.y < 0f) {
+                val consume = minOf(-available.y, stretch.value)
+                scope.launch { stretch.snapTo(stretch.value - consume) }
+                return Offset(0f, -consume)
+            }
+            return Offset.Zero
+        }
+
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource
+        ): Offset {
+            if (available.y > 0f) {
+                val resistance = 0.55f * (1f - stretch.value / HERO_STRETCH_MAX.value)
+                scope.launch {
+                    stretch.snapTo(
+                        (stretch.value + available.y * resistance).coerceAtMost(HERO_STRETCH_MAX.value)
+                    )
+                }
+                return Offset(0f, available.y)
+            }
+            return Offset.Zero
+        }
+
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            if (stretch.value > 0f) {
+                stretch.animateTo(
+                    0f,
+                    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 320f)
+                )
+            }
+            return Velocity.Zero
+        }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            if (stretch.value > 0f) {
+                stretch.animateTo(
+                    0f,
+                    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 320f)
+                )
+            }
+            return Velocity.Zero
+        }
+    }
+}
+
+@Composable
+private fun rememberHeroStretchState(listState: LazyListState): HeroStretchState {
+    val scope = rememberCoroutineScope()
+    return remember(listState) { HeroStretchState(scope) }
+}
+
+private fun Modifier.heroStretchHeight(baseHeight: Dp, stretchPx: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val height = baseHeight.roundToPx() + stretchPx().coerceAtLeast(0f).roundToInt()
+        val placeable = measurable.measure(
+            constraints.copy(minHeight = height, maxHeight = height)
+        )
+        layout(placeable.width, placeable.height) {
+            placeable.place(0, 0)
+        }
+    }
+
+private fun Modifier.heroStretchZoom(stretchPx: () -> Float): Modifier =
+    graphicsLayer {
+        val zoom = 1f + stretchPx().coerceAtLeast(0f) / size.height.coerceAtLeast(1f)
+        transformOrigin = TransformOrigin(0.5f, 0f)
+        scaleX = zoom
+        scaleY = zoom
+    }
+
+// Floating glass header (Nuvio DetailFloatingHeader): a 56dp bar that
+// fades in once the hero collapses — back button, centred logo (or
+// title) and a save toggle. Plavio's liquidGlass tints rather than
+// blurring the backdrop, so the bar reads as frosted glass over the
+// scrolling list (no live backdrop-blur pass exists in this codebase).
+@Composable
+private fun DetailFloatingHeader(
+    meta: MetaDetail,
+    isSaved: Boolean,
+    progress: Float,
+    topPadding: Dp,
+    onBack: () -> Unit,
+    onToggleSaved: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var logoLoadError by remember(meta.id, meta.logo) { mutableStateOf(false) }
+    val logoUrl = meta.logo?.takeIf { it.isNotBlank() && !logoLoadError }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = progress
+                translationY = (-20 * (1f - progress)).dp.toPx()
+            }
+            .liquidGlass(RectangleShape)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = topPadding, start = 16.dp, end = 16.dp)
+                .height(56.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+            }
+            Box(
+                Modifier.weight(1f).padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (logoUrl != null) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = meta.name,
+                        modifier = Modifier.fillMaxWidth(0.6f).height(42.dp),
+                        contentScale = ContentScale.Fit,
+                        onError = { logoLoadError = true }
+                    )
+                } else {
+                    Text(
+                        meta.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            IconButton(onClick = onToggleSaved, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    if (isSaved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                    contentDescription = if (isSaved) "Saved" else "Save",
+                    tint = TextPrimary
+                )
+            }
+        }
+    }
+}
+
+// Vertical episode card (Nuvio MetaEpisodeCardStyle.List): full-width,
+// 120dp tall, thumb left with S·E + watched badges and a progress bar,
+// title/date/runtime/overview right.
+@Composable
+private fun EpisodeListCard(
+    video: Video,
+    selected: Boolean,
+    hideDetails: Boolean,
+    isWatched: Boolean,
+    spoilerMode: Boolean,
+    isTv: Boolean = false,
+    blurThumbnail: Boolean = false,
+    runtime: String? = null,
+    progress: Float? = null,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    onReveal: () -> Unit,
+    onHide: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalPalette.current
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(120.dp)
+            .liquidGlass(RoundedCornerShape(18.dp))
+            .border(
+                if (selected) 1.5.dp else 0.5.dp,
+                if (selected) palette.accent else Color.White.copy(alpha = 0.10f),
+                RoundedCornerShape(18.dp)
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        Row(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .width(120.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
+            ) {
+                if (!hideDetails && video.thumbnail != null) {
+                    SafePosterImage(
+                        video.thumbnail,
+                        null,
+                        Modifier
+                            .fillMaxSize()
+                            .then(if (blurThumbnail) Modifier.blur(14.dp) else Modifier)
+                    )
+                } else {
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.linearGradient(listOf(Color(0xFF2A3448), Color(0xFF121826)))
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "S${video.season} · E${video.episode}",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Box(
+                    Modifier.padding(9.dp)
+                        .background(Color(0xBF05080E), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        "S${video.season} · E${video.episode}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (isWatched && !hideDetails) {
+                    WatchedPill(Modifier.align(Alignment.TopEnd).padding(9.dp))
+                }
+                if (progress != null && progress > 0f && progress < 1f) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .background(Color.White.copy(alpha = 0.30f))
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                .background(palette.accent)
+                        )
+                    }
+                }
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (hideDetails) {
+                    Text(
+                        "Episode details hidden",
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (!isTv) {
+                        TextButton(onClick = onReveal) { Text("Reveal") }
+                    }
+                } else {
+                    Text(
+                        "${video.episode}. ${video.title}",
+                        color = TextPrimary,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val metaLine = listOfNotNull(
+                        formatEpisodeDate(video.released).takeIf { it.isNotBlank() },
+                        runtime
+                    ).joinToString("  •  ")
+                    if (metaLine.isNotBlank()) {
+                        Text(
+                            metaLine,
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                    if (!video.overview.isNullOrBlank()) {
+                        Text(
+                            video.overview!!,
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (spoilerMode && !isTv) {
+                        Text(
+                            "Hide details",
+                            color = palette.accent,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable(onClick = onHide)
+                        )
+                    }
+                }
+            }
         }
     }
 }
