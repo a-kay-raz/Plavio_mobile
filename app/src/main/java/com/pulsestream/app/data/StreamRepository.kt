@@ -16,6 +16,8 @@ import com.pulsestream.app.data.db.WatchlistItem
 import com.pulsestream.app.data.simkl.SimklSyncEngine
 import com.pulsestream.app.data.cloudstream.CloudStreamRepository
 import com.pulsestream.app.data.cloudstream.CloudStreamStreamSource
+import com.pulsestream.app.data.cloudstream.CloudStreamLoadItem
+import com.pulsestream.app.data.cloudstream.CloudStreamSearchItem
 import com.pulsestream.app.data.servers.MediaServerOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -755,6 +758,158 @@ class StreamRepository(
         }
     }
 
+    // ---- CloudStream (CS3) home discovery — Phase 2 ----
+
+    /** Row addonId for a CS3 provider: the plugin id slots into the addonId position of the row key. */
+    fun cloudStreamRowAddonId(pluginId: String): String = "cs3:$pluginId"
+
+    fun isCloudStreamRowAddonId(addonId: String): Boolean = addonId.startsWith("cs3:")
+
+    /**
+     * Resolves the persisted CS3 home provider selection (Infuse's
+     * restored-gate pattern). First-run defaulting (unset -> first runnable
+     * provider, sorted by name) runs exactly once, gated by the persisted
+     * [SettingsStore.cloudStreamProviderSelectionRestored] flag. A stale
+     * stored id (provider removed/disabled) is repaired to the first
+     * runnable provider on every call — that only fires when the choice is
+     * impossible, never when it is merely unselected. Returns "" (unset),
+     * "all", "off", or a runnable plugin id.
+     */
+    fun resolveCloudStreamHomeSelection(): String {
+        val runnable = CloudStreamRepository.runnablePlugins()
+            .sortedBy { it.metadata.name.lowercase() }
+        val stored = settings.cloudStreamProviderId
+        if (!settings.cloudStreamProviderSelectionRestored) {
+            settings.cloudStreamProviderSelectionRestored = true
+            when {
+                runnable.isEmpty() -> {
+                    if (stored.isNotBlank() && stored != "off") settings.cloudStreamProviderId = ""
+                }
+                stored.isBlank() ||
+                    (stored != "all" && stored != "off" &&
+                        runnable.none { it.metadata.id.value == stored }) -> {
+                    settings.cloudStreamProviderId = runnable.first().metadata.id.value
+                }
+            }
+        } else if (stored.isNotBlank() && stored != "all" && stored != "off" &&
+            runnable.none { it.metadata.id.value == stored }
+        ) {
+            // Stale repair: the stored provider is gone (removed/disabled).
+            settings.cloudStreamProviderId =
+                if (runnable.isEmpty()) "" else runnable.first().metadata.id.value
+        }
+        return settings.cloudStreamProviderId
+    }
+
+    /** Persists a Home pill choice: "all", "off", or a runnable plugin id. */
+    fun setCloudStreamHomeSelection(selection: String) {
+        settings.cloudStreamProviderId = selection
+    }
+
+    /** CS3 row addonIds visible on Home under the current selection. */
+    private fun selectedCloudStreamRowAddonIds(): Set<String> {
+        val selection = resolveCloudStreamHomeSelection()
+        if (selection.isBlank() || selection == "off") return emptySet()
+        return CloudStreamRepository.runnablePlugins()
+            .filter { selection == "all" || it.metadata.id.value == selection }
+            .map { cloudStreamRowAddonId(it.metadata.id.value) }.toSet()
+    }
+
+    /**
+     * Phase 2: CS3 home sections — one row per (provider, main-page
+     * category), titled "CS3 • <Provider> - <Category>" (Infuse
+     * loadCloudSections). Per-provider isolation: one bad provider never
+     * breaks the others; Semaphore(2), 30s per provider, 35s total, cap 18
+     * items per category, deduped by normalized title.
+     */
+    private suspend fun loadCloudStreamHomeRows(): List<CatalogRow> {
+        val selection = resolveCloudStreamHomeSelection()
+        if (selection.isBlank() || selection == "off") return emptyList()
+        val runnable = CloudStreamRepository.runnablePlugins()
+            .sortedBy { it.metadata.name.lowercase() }
+            .filter { selection == "all" || it.metadata.id.value == selection }
+        if (runnable.isEmpty()) return emptyList()
+        return withTimeoutOrNull(CLOUDSTREAM_HOME_TOTAL_TIMEOUT_MS) {
+            coroutineScope {
+                val gate = Semaphore(2)
+                runnable.map { plugin ->
+                    async {
+                        gate.withPermit {
+                            withTimeoutOrNull(CLOUDSTREAM_HOME_PROVIDER_TIMEOUT_MS) {
+                                val providerId = plugin.metadata.id.value
+                                val sections = CloudStreamRepository.getMainPage(providerId, 1)
+                                    .getOrNull() ?: return@withTimeoutOrNull emptyList<CatalogRow>()
+                                sections.mapNotNull { (category, items) ->
+                                    val previews = items
+                                        .distinctBy { normalizeSearchTitle(it.name) }
+                                        .take(CLOUDSTREAM_HOME_CATEGORY_LIMIT)
+                                        .map { it.toPlavioMetaPreview() }
+                                    if (previews.isEmpty()) return@mapNotNull null
+                                    CatalogRow(
+                                        addonId = cloudStreamRowAddonId(providerId),
+                                        addonName = plugin.metadata.name,
+                                        baseUrl = "",
+                                        catalogName = "CS3 • ${plugin.metadata.name} - $category",
+                                        type = previews.first().type,
+                                        catalogId = category,
+                                        items = previews,
+                                    )
+                                }
+                            } ?: emptyList()
+                        }
+                    }
+                }.awaitAll().flatten()
+            }
+        } ?: emptyList()
+    }
+
+    /** A CS3 search/main-page hit as a Plavio catalog poster. Its id is the `plavio-cs-api:` route. */
+    private fun CloudStreamSearchItem.toPlavioMetaPreview(): MetaPreview = MetaPreview(
+        id = data,
+        type = type.tvTypeString,
+        name = name,
+        poster = posterUrl,
+        background = backgroundUrl,
+        description = description,
+        releaseInfo = year?.toString(),
+    )
+
+    /** A CS3 loaded title as a Plavio detail page. Movies get one video; series get one per episode. */
+    private fun CloudStreamLoadItem.toPlavioMetaDetail(): MetaDetail {
+        val isSeries = type.tvTypeString == "series"
+        val cs3Id = "${CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX}$providerId|$data"
+        val videos = if (isSeries) {
+            episodes.map { ep ->
+                Video(
+                    id = "${CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX}$providerId|${ep.data}",
+                    title = ep.name,
+                    season = ep.season ?: 0,
+                    episode = ep.episode ?: 0,
+                    overview = ep.description,
+                    thumbnail = ep.posterUrl,
+                )
+            }
+        } else {
+            listOf(Video(id = cs3Id, title = name))
+        }
+        return MetaDetail(
+            id = cs3Id,
+            type = type.tvTypeString,
+            name = name,
+            poster = posterUrl,
+            background = backgroundUrl,
+            description = description,
+            releaseInfo = year?.toString(),
+            // Infuse's CloudStreamNuvioAdapter mapping: 0-100 percent -> 0-10, no trailing ".0".
+            imdbRating = ratingPercent?.let { rating ->
+                val score = rating.coerceIn(0, 100) / 10.0
+                if (score % 1.0 == 0.0) score.toInt().toString() else score.toString()
+            },
+            genres = tags,
+            videos = videos,
+        )
+    }
+
     private suspend fun doRefreshCatalogRows(): List<CatalogRow> = withContext(Dispatchers.IO) {
         // Rows come from every enabled addon now — Home visibility is
         // per-row (row prefs), not per-addon; the old showOnHome gate was
@@ -765,7 +920,13 @@ class StreamRepository(
         val authoritativeKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val listedManifestKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val rows = coroutineScope {
-            installed.map { addon ->
+            // CS3 home sections run alongside the Stremio fan-out (own
+            // 35s budget) so they never serialize behind slow addons. A
+            // CS3 failure must never fail the whole Home refresh.
+            val cs3Deferred = async {
+                runCatching { loadCloudStreamHomeRows() }.getOrElse { emptyList() }
+            }
+            val stremioRows = installed.map { addon ->
                 async {
                     val manifest = cachedManifest(addon.baseUrl) ?: return@async emptyList<CatalogRow>()
                     successfulManifests.add(addon.id)
@@ -807,6 +968,7 @@ class StreamRepository(
                     }
                 }
             }.awaitAll().flatten()
+            (stremioRows + cs3Deferred.await())
         }.distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
 
         val now = System.currentTimeMillis()
@@ -824,6 +986,17 @@ class StreamRepository(
                 if (key !in newRows) db.catalogCacheDao().deleteByKey(key)
             }
         }
+        // CS3 rows are never in successfulManifests (Stremio ids only), so
+        // the loop above never touches them — evict rows whose plugin left
+        // the registry (removed) here instead. Disabled plugins keep their
+        // cached rows: invisible until re-enabled (see the retained filter).
+        val installedCs3AddonIds = CloudStreamRepository.uiState.value.plugins
+            .map { cloudStreamRowAddonId(it.metadata.id.value) }.toSet()
+        for (old in existingCache) {
+            if (isCloudStreamRowAddonId(old.addonId) && old.addonId !in installedCs3AddonIds) {
+                db.catalogCacheDao().deleteByKey(old.key)
+            }
+        }
         if (rows.isNotEmpty()) db.catalogCacheDao().upsertAll(rows.map { row ->
             CatalogCache("${row.addonId}|${row.type}|${row.catalogId}", row.addonId,
                 row.addonName, row.baseUrl, row.type, row.catalogId, row.catalogName,
@@ -832,10 +1005,12 @@ class StreamRepository(
         // Cache is authoritative only if at least one provider succeeded, including
         // a valid empty manifest; a total outage must remain stale/retryable.
         if (authoritativeKeys.isNotEmpty()) settings.homeCatalogsRefreshedAt = now
+        val selectedCs3AddonIds = selectedCloudStreamRowAddonIds()
         val retained = existingCache.filter { cached ->
             cached.key !in newRows && cached.key !in authoritativeKeys &&
                 (cached.addonId !in successfulManifests || cached.key in listedManifestKeys) &&
-                installed.any { it.id == cached.addonId }
+                (installed.any { it.id == cached.addonId } ||
+                    cached.addonId in selectedCs3AddonIds)
         }.map { cached -> CatalogRow(cached.addonId, cached.addonName, cached.baseUrl,
             cached.catalogName, cached.type, cached.catalogId, CatalogCodec.decodeMetas(cached.itemsJson)) }
         val displayedRows = (rows + retained).distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
@@ -867,8 +1042,11 @@ class StreamRepository(
         try {
             val visible = enabledAddons()
             val visibleIds = visible.map { it.id }.toSet()
+            // CS3 cached rows: only the selected provider(s) — "off" hides
+            // them until the pill switches back.
+            val cs3Ids = selectedCloudStreamRowAddonIds()
             val rows = db.catalogCacheDao().getAll()
-                .filter { it.addonId in visibleIds }
+                .filter { it.addonId in visibleIds || it.addonId in cs3Ids }
                 .map { cached ->
                     CatalogRow(
                         addonId = cached.addonId,
@@ -898,8 +1076,12 @@ class StreamRepository(
         try {
             val installed = enabledAddons()
             val byAddon = installed.associateBy { it.id }
+            // Settings lists every row for management, including CS3 rows
+            // of all runnable providers (the Home selection does not apply here).
+            val cs3Ids = CloudStreamRepository.runnablePlugins()
+                .map { cloudStreamRowAddonId(it.metadata.id.value) }.toSet()
             val rows = db.catalogCacheDao().getAll()
-                .filter { it.addonId in byAddon.keys }
+                .filter { it.addonId in byAddon.keys || it.addonId in cs3Ids }
                 .map { cached ->
                     CatalogRow(
                         addonId = cached.addonId,
@@ -1064,7 +1246,7 @@ class StreamRepository(
         val types = if (type != null) listOf(type) else listOf("movie", "series")
         val resultMap = java.util.concurrent.ConcurrentHashMap<String, CachedMeta>()
         val providers = enabledAddons().filter { it.hasCatalog }
-        providers.map { addon ->
+        val stremioJobs = providers.map { addon ->
             launch {
                 val found = withTimeoutOrNull(REMOTE_SEARCH_PROVIDER_TIMEOUT_MS) {
                     val manifest = cachedManifest(addon.baseUrl) ?: return@withTimeoutOrNull emptyList()
@@ -1084,7 +1266,33 @@ class StreamRepository(
                 found.forEach { resultMap.putIfAbsent(it.addonId + it.meta.id, it) }
                 send(resultMap.values.toList())
             }
-        }.joinAll()
+        }
+        // CS3 (Phase 2): one progressive leg per runnable provider — same
+        // cumulative-snapshot shape as the Stremio legs, so a slow provider
+        // never holds up the others. Live ("channel") hits are excluded:
+        // title search is movie/series only.
+        val cs3Jobs = CloudStreamRepository.runnablePlugins().map { plugin ->
+            launch {
+                val providerId = plugin.metadata.id.value
+                val found = try {
+                    CloudStreamRepository.search(q, providerId)
+                        .firstOrNull()?.getOrNull().orEmpty()
+                        .filter { it.type.tvTypeString in types }
+                        .map { item ->
+                            CachedMeta(
+                                addonId = cloudStreamRowAddonId(providerId),
+                                addonName = "CS3 • ${plugin.metadata.name}",
+                                baseUrl = "",
+                                meta = item.toPlavioMetaPreview(),
+                            )
+                        }
+                } catch (cancel: CancellationException) { throw cancel }
+                catch (_: Exception) { emptyList() }
+                found.forEach { resultMap.putIfAbsent(it.addonId + it.meta.id, it) }
+                send(resultMap.values.toList())
+            }
+        }
+        (stremioJobs + cs3Jobs).joinAll()
     }
 
     suspend fun searchRemote(query: String, type: String? = null): List<CachedMeta> =
@@ -1186,6 +1394,9 @@ class StreamRepository(
             val addonOrder = try {
                 enabledAddons().filter { it.hasCatalog }.map { it.id }
             } catch (_: Exception) { emptyList() }
+            // Computed before the buildList: the builder lambda is inline,
+            // so a suspend call inside it would only compile by inlining.
+            val cs3Sections = cloudStreamSearchSections(query, type)
             val sections = buildList {
                 if (serverItems.isNotEmpty()) {
                     add(
@@ -1215,9 +1426,48 @@ class StreamRepository(
                         )
                     )
                 }
+                // CS3 (Phase 2): one section per runnable provider, after
+                // the addon sections — Infuse's SearchRepository CS3 shape
+                // ("CS3 • <name>"). Empty providers are skipped silently.
+                addAll(cs3Sections)
             }
             SearchSectionsOutcome(sections, remoteFailed)
         }
+
+    /**
+     * Phase 2: CS3 search sections for [searchAllSections] — one
+     * `CS3 • <name>` section per runnable provider with results, in
+     * registry order. Never throws: a CS3 failure only ever yields no
+     * sections.
+     */
+    private suspend fun cloudStreamSearchSections(
+        query: String,
+        type: String?,
+    ): List<SearchSection> = runCatching {
+        val byProvider = CloudStreamRepository.search(query, null)
+            .flatMap { it.getOrNull().orEmpty() }
+            .groupBy { it.providerId }
+        CloudStreamRepository.runnablePlugins().mapNotNull { plugin ->
+            val providerId = plugin.metadata.id.value
+            val items = byProvider[providerId].orEmpty()
+                .filter { item -> type == null || item.type.tvTypeString == type }
+                .map { item ->
+                    CachedMeta(
+                        addonId = cloudStreamRowAddonId(providerId),
+                        addonName = "CS3 • ${plugin.metadata.name}",
+                        baseUrl = "",
+                        meta = item.toPlavioMetaPreview(),
+                    )
+                }
+                .distinctBy { it.addonId + it.meta.id }
+            if (items.isEmpty()) return@mapNotNull null
+            SearchSection(
+                cloudStreamRowAddonId(providerId),
+                "CS3 • ${plugin.metadata.name}",
+                rankSearchResults(items, query),
+            )
+        }
+    }.getOrElse { emptyList() }
 
     /**
      * "Popular right now" for the Search tab's landing state (v0.12.4).
@@ -1695,6 +1945,25 @@ class StreamRepository(
      */
     suspend fun getMetaFromAny(hintBaseUrl: String?, type: String, id: String): MetaDetail? =
         withContext(Dispatchers.IO) {
+            // CS3 (Phase 2): Home/search poster ids are `plavio-cs-api:`
+            // routes (owner unknown — resolved by scanning runnable
+            // providers); saved/library ids are `cs3:<providerId>|<data>`
+            // direct routes. A CS3 id never matches a Stremio addon, so
+            // there is no Stremio fall-through for it.
+            if (id.startsWith("plavio-cs-api:")) {
+                return@withContext CloudStreamRepository.loadByRoute(id)
+                    .getOrNull()?.toPlavioMetaDetail()
+            }
+            if (id.startsWith(CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX)) {
+                val rest = id.removePrefix(CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX)
+                val providerId = rest.substringBefore('|').trim()
+                val data = rest.substringAfter('|', missingDelimiterValue = "").trim()
+                if (providerId.isNotEmpty() && data.isNotEmpty()) {
+                    return@withContext CloudStreamRepository.load(providerId, data)
+                        .getOrNull()?.toPlavioMetaDetail()
+                }
+                return@withContext null
+            }
             for (addon in metaAddonsFor(type, hintBaseUrl)) {
                 // Per-addon budget instead of unbounded sequential waits —
                 // one hanging addon must not stall the whole lookup.
@@ -1728,7 +1997,9 @@ class StreamRepository(
         preferredAddonId: String? = null,
         preserveHeaderVariants: Boolean = false,
         /** Title for the CloudStream search fallback; null skips the fallback. */
-        title: String? = null
+        title: String? = null,
+        /** Release year of the title, when known — ranks the CS3 fallback candidates. */
+        year: Int? = null
     ): Flow<StreamResult> = channelFlow {
         val addons = streamAddons()
         if (addons.isEmpty()) {
@@ -1819,7 +2090,10 @@ class StreamRepository(
                     val episode = if (isImdbVideo) videoParts.getOrNull(2)?.toIntOrNull() else null
                     val res = try {
                         withTimeoutOrNull(CLOUDSTREAM_FETCH_TIMEOUT_MS) {
-                            CloudStreamStreamSource.fetchStreams(videoId, season, episode, title, type)
+                            CloudStreamStreamSource.fetchStreams(
+                                videoId = videoId, season = season, episode = episode,
+                                title = title, year = year, type = type,
+                            )
                         }
                     } catch (_: Exception) { null } ?: return@launch
                     var changed = false
@@ -2639,6 +2913,12 @@ class StreamRepository(
         private const val STREAM_FETCH_TIMEOUT_MS = 20000L
         /** Budget for the whole CloudStream plugin group (one leg, all providers). */
         private const val CLOUDSTREAM_FETCH_TIMEOUT_MS = 35000L
+        /** CS3 home sections: per-provider budget (Infuse loadCloudSections). */
+        private const val CLOUDSTREAM_HOME_PROVIDER_TIMEOUT_MS = 30000L
+        /** CS3 home sections: total budget across providers (Infuse). */
+        private const val CLOUDSTREAM_HOME_TOTAL_TIMEOUT_MS = 35000L
+        /** CS3 home sections: max items per provider category (Infuse). */
+        private const val CLOUDSTREAM_HOME_CATEGORY_LIMIT = 18
         /** How long a cached stream list may be shown before it must be refreshed. */
         private const val STREAM_RESULT_CACHE_TTL_MS = 5L * 60L * 1000L
         /**

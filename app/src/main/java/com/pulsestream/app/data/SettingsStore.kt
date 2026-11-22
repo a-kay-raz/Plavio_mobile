@@ -1708,6 +1708,25 @@ class SettingsStore(
         set(value) = prefs.edit().putLong(KEY_HOME_REFRESHED_AT, value).apply()
 
     /**
+     * CloudStream (CS3) home provider selection — Phase 2 discovery.
+     * "" = unset (never resolved), "all" = every runnable provider's
+     * sections, "off" = no CS3 sections on Home, otherwise a plugin id
+     * ("<repoUrl>#<internalName>"). The first-run default (unset -> first
+     * runnable provider, Infuse mirror) runs once, gated by
+     * [cloudStreamProviderSelectionRestored] — a persisted flag, NOT an
+     * in-memory boolean. The resume prompt's plain remember flag died on
+     * every navigation and re-prompted; this gate must survive restarts.
+     */
+    var cloudStreamProviderId: String
+        get() = prefs.getString(KEY_CS3_PROVIDER_ID, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CS3_PROVIDER_ID, value).apply()
+
+    /** First-run defaulting for [cloudStreamProviderId] has run. Persisted. */
+    var cloudStreamProviderSelectionRestored: Boolean
+        get() = prefs.getBoolean(KEY_CS3_PROVIDER_SELECTION_RESTORED, false)
+        set(value) = prefs.edit().putBoolean(KEY_CS3_PROVIDER_SELECTION_RESTORED, value).apply()
+
+    /**
      * Home catalog row preferences blob (see HomeRowPrefs.kt): one JSON
      * string holding every row's hide/order/rename/pin/hero-source choice,
      * plus the hero + catalog-type + unreleased switches. Nuvio's model.
@@ -2033,6 +2052,8 @@ class SettingsStore(
         private const val KEY_LIVE_TV_EPG_SOURCES = "live_tv_epg_sources"
         private const val KEY_LIVE_TV_EPG_AUTO_DETECT = "live_tv_epg_auto_detect"
         private const val KEY_HOME_REFRESHED_AT = "home_catalogs_refreshed_at"
+        private const val KEY_CS3_PROVIDER_ID = "cloudstream_provider_id"
+        private const val KEY_CS3_PROVIDER_SELECTION_RESTORED = "cloudstream_provider_selection_restored"
         private const val KEY_HOME_ROW_PREFS = "home_catalog_row_prefs"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_SHOW_SKIP = "show_skip_button"

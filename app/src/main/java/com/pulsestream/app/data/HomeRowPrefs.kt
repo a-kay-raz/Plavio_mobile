@@ -14,9 +14,10 @@ import org.json.JSONObject
  * Plavio is single-profile, so one blob is enough.
  *
  * Deliberately NOT ported from Nuvio: PINNED_POSITION (write-dead there),
- * collections / server / CloudStream rows (no such backends in Plavio),
+ * collections / server rows (no such backends in Plavio),
  * hero style + trailer playback (Plavio's hero has one design, no
  * trailer), Concierge / Smart Shelves (Enhanced-only derived sections).
+ * CloudStream rows ARE ported (Phase 2, 2026-11-22): addonId "cs3:<pluginId>".
  * Pin does not sync anywhere — there is nothing to sync to.
  */
 data class StoredHomeRowPref(
