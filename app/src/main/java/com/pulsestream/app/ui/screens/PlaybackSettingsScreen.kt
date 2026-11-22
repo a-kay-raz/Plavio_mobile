@@ -214,40 +214,17 @@ fun PlaybackSettingsScreen(
                 skipSettingsUiTick
                 reuseLinkUiTick
                 heroTrailerUiTick
+                SettingsSectionHeader("Player")
                 SettingsGroup(
                     {
                         SettingsToggleRow(
-                            icon = Icons.Filled.PlayArrow,
-                            title = "Autoplay",
-                            subtitle = "Play the first source automatically",
-                            checked = autoplay,
+                            icon = Icons.Filled.Shield,
+                            title = "Parental guide",
+                            subtitle = "Show content guidance (sex, violence, language…) briefly when playback starts",
+                            checked = showParentalGuide,
                             onCheckedChange = {
-                                autoplay = it
-                                settings.autoplay = it
-                            }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.SkipNext,
-                            title = "Auto-play next episode",
-                            subtitle = "Start the next episode when one finishes",
-                            checked = autoPlayNext,
-                            onCheckedChange = {
-                                autoPlayNext = it
-                                settings.autoPlayNext = it
-                            }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.Group,
-                            title = "Prefer same release group",
-                            subtitle = "Next-episode autoplay stays on the release group of the episode just played",
-                            checked = preferBingeGroup,
-                            onCheckedChange = {
-                                preferBingeGroup = it
-                                settings.autoplayPreferBingeGroup = it
+                                showParentalGuide = it
+                                settings.showParentalGuide = it
                             }
                         )
                     },
@@ -265,18 +242,6 @@ fun PlaybackSettingsScreen(
                     },
                     {
                         SettingsToggleRow(
-                            icon = Icons.Filled.Shield,
-                            title = "Parental guide",
-                            subtitle = "Show content guidance (sex, violence, language…) briefly when playback starts",
-                            checked = showParentalGuide,
-                            onCheckedChange = {
-                                showParentalGuide = it
-                                settings.showParentalGuide = it
-                            }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
                             icon = Icons.Filled.BrightnessHigh,
                             title = "Keep screen on",
                             subtitle = "Prevent the screen from sleeping while playing",
@@ -285,34 +250,6 @@ fun PlaybackSettingsScreen(
                                 keepScreenOn = it
                                 settings.keepScreenOn = it
                             }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.FastForward,
-                            title = "Skip intro button",
-                            subtitle = "Show a skip button for intros, recaps and outros",
-                            checked = showSkip,
-                            onCheckedChange = {
-                                showSkip = it
-                                settings.showSkipButton = it
-                            }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.SkipNext,
-                            title = "Auto-skip",
-                            subtitle = autoSkipLabel(settings),
-                            onClick = { autoSkipOpen = true }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Schedule,
-                            title = "Skip offset",
-                            subtitle = skipOffsetLabel(settings),
-                            onClick = { skipOffsetOpen = true }
                         )
                     },
                     {
@@ -360,6 +297,105 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.TouchApp,
+                            title = "Touch gestures",
+                            subtitle = "Double-tap skip, swipe seek/volume/brightness and hold-for-speed",
+                            checked = gesturesOn,
+                            onCheckedChange = {
+                                gesturesOn = it
+                                settings.touchGesturesEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Swipe,
+                            title = "Swipe to seek",
+                            subtitle = if (gesturesOn) {
+                                "Horizontal swipe seeks; turn off to keep only volume/brightness swipes"
+                            } else {
+                                "Turn on Touch gestures to use swipe seek"
+                            },
+                            checked = swipeSeekOn && gesturesOn,
+                            onCheckedChange = {
+                                if (gesturesOn) {
+                                    swipeSeekOn = it
+                                    settings.swipeToSeekEnabled = it
+                                }
+                            }
+                        )
+                    },
+                    {
+                        // Hold-to-speed (Nuvio holdToSpeedValue): long-press
+                        // speed, 1.25–3x, default 2x.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Speed,
+                            title = "Hold speed",
+                            subtitle = "Long-press plays at ${speedLabel(settings.holdSpeedValue)}",
+                            onClick = { holdSpeedOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.FastRewind,
+                            title = "Skip backward",
+                            subtitle = "Double-tap left skips back ${settings.skipBackwardSeconds}s",
+                            onClick = { skipBackOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.FastForward,
+                            title = "Skip forward",
+                            subtitle = "Double-tap right skips forward ${settings.skipForwardSeconds}s",
+                            onClick = { skipForwardOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.CheckCircle,
+                            title = "Watched threshold",
+                            subtitle = "A title counts as watched at ${settings.watchedThresholdPercent}% played",
+                            onClick = { watchedThresholdOpen = true }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Movie,
+                            title = "Hero trailer autoplay",
+                            subtitle = "Play the first trailer muted in the detail hero",
+                            checked = heroTrailerPlayback,
+                            onCheckedChange = {
+                                heroTrailerPlayback = it
+                                settings.heroTrailerPlayback = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Schedule,
+                            title = "Trailer start delay",
+                            subtitle = heroTrailerDelayLabel(settings),
+                            onClick = { heroTrailerDelayOpen = true }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.VolumeUp,
+                            title = "Start trailer with sound",
+                            subtitle = "Hero trailers start unmuted instead of muted",
+                            checked = heroTrailerUnmuted,
+                            onCheckedChange = {
+                                heroTrailerUnmuted = it
+                                settings.heroTrailerStartUnmuted = it
+                            }
+                        )
+                    }
+                )
+                SettingsSectionHeader("Subtitle & Audio")
+                SettingsGroup(
+                    {
                         SettingsNavRow(
                             icon = Icons.Filled.Audiotrack,
                             title = "Preferred audio language",
@@ -383,7 +419,57 @@ fun PlaybackSettingsScreen(
                             },
                             onClick = { secondaryAudioLangPickerOpen = true }
                         )
+                    }
+                )
+                SettingsSectionHeader("Stream selection")
+                SettingsGroup(
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Link,
+                            title = "Reuse last link",
+                            subtitle = "Replay a title with its last played link instead of re-resolving sources",
+                            checked = reuseLastLink,
+                            onCheckedChange = {
+                                reuseLastLink = it
+                                settings.reuseLastLinkEnabled = it
+                            }
+                        )
                     },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.History,
+                            title = "Last-link cache",
+                            subtitle = "Links stay reusable for ${settings.reuseLastLinkCacheHours}h",
+                            onClick = { reuseLinkHoursOpen = true }
+                        )
+                    }
+                )
+                SettingsSectionHeader("Stream auto-play")
+                SettingsGroup(
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.PlayArrow,
+                            title = "Autoplay",
+                            subtitle = "Play the first source automatically",
+                            checked = autoplay,
+                            onCheckedChange = {
+                                autoplay = it
+                                settings.autoplay = it
+                            }
+                        )
+                    },
+                    {
+                        // Step 40: how many sources failover tries + startup timeout.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Replay,
+                            title = "Source failover",
+                            subtitle = "Try up to ${settings.fallbackMaxSources} sources · ${settings.fallbackStartupTimeoutSeconds}s to start",
+                            onClick = { failoverDialogOpen = true }
+                        )
+                    }
+                )
+                SettingsSectionHeader("Buffer")
+                SettingsGroup(
                     {
                         SettingsNavRow(
                             icon = Icons.Filled.Speed,
@@ -426,77 +512,62 @@ fun PlaybackSettingsScreen(
                             },
                             onClick = { diskCacheOpen = true }
                         )
-                    },
-                    {
-                        // Step 40: how many sources failover tries + startup timeout.
-                        SettingsNavRow(
-                            icon = Icons.Filled.Replay,
-                            title = "Source failover",
-                            subtitle = "Try up to ${settings.fallbackMaxSources} sources · ${settings.fallbackStartupTimeoutSeconds}s to start",
-                            onClick = { failoverDialogOpen = true }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.CheckCircle,
-                            title = "Watched threshold",
-                            subtitle = "A title counts as watched at ${settings.watchedThresholdPercent}% played",
-                            onClick = { watchedThresholdOpen = true }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.FastRewind,
-                            title = "Skip backward",
-                            subtitle = "Double-tap left skips back ${settings.skipBackwardSeconds}s",
-                            onClick = { skipBackOpen = true }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.FastForward,
-                            title = "Skip forward",
-                            subtitle = "Double-tap right skips forward ${settings.skipForwardSeconds}s",
-                            onClick = { skipForwardOpen = true }
-                        )
-                    },
-                    {
-                        // Hold-to-speed (Nuvio holdToSpeedValue): long-press
-                        // speed, 1.25–3x, default 2x.
-                        SettingsNavRow(
-                            icon = Icons.Filled.Speed,
-                            title = "Hold speed",
-                            subtitle = "Long-press plays at ${speedLabel(settings.holdSpeedValue)}",
-                            onClick = { holdSpeedOpen = true }
-                        )
-                    },
+                    }
+                )
+                SettingsSectionHeader("Skip segments")
+                SettingsGroup(
                     {
                         SettingsToggleRow(
-                            icon = Icons.Filled.TouchApp,
-                            title = "Touch gestures",
-                            subtitle = "Double-tap skip, swipe seek/volume/brightness and hold-for-speed",
-                            checked = gesturesOn,
+                            icon = Icons.Filled.FastForward,
+                            title = "Skip intro button",
+                            subtitle = "Show a skip button for intros, recaps and outros",
+                            checked = showSkip,
                             onCheckedChange = {
-                                gesturesOn = it
-                                settings.touchGesturesEnabled = it
+                                showSkip = it
+                                settings.showSkipButton = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.SkipNext,
+                            title = "Auto-skip",
+                            subtitle = autoSkipLabel(settings),
+                            onClick = { autoSkipOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Schedule,
+                            title = "Skip offset",
+                            subtitle = skipOffsetLabel(settings),
+                            onClick = { skipOffsetOpen = true }
+                        )
+                    }
+                )
+                SettingsSectionHeader("Next episode")
+                SettingsGroup(
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.SkipNext,
+                            title = "Auto-play next episode",
+                            subtitle = "Start the next episode when one finishes",
+                            checked = autoPlayNext,
+                            onCheckedChange = {
+                                autoPlayNext = it
+                                settings.autoPlayNext = it
                             }
                         )
                     },
                     {
                         SettingsToggleRow(
-                            icon = Icons.Filled.Swipe,
-                            title = "Swipe to seek",
-                            subtitle = if (gesturesOn) {
-                                "Horizontal swipe seeks; turn off to keep only volume/brightness swipes"
-                            } else {
-                                "Turn on Touch gestures to use swipe seek"
-                            },
-                            checked = swipeSeekOn && gesturesOn,
+                            icon = Icons.Filled.Group,
+                            title = "Prefer same release group",
+                            subtitle = "Next-episode autoplay stays on the release group of the episode just played",
+                            checked = preferBingeGroup,
                             onCheckedChange = {
-                                if (gesturesOn) {
-                                    swipeSeekOn = it
-                                    settings.swipeToSeekEnabled = it
-                                }
+                                preferBingeGroup = it
+                                settings.autoplayPreferBingeGroup = it
                             }
                         )
                     },
@@ -506,58 +577,6 @@ fun PlaybackSettingsScreen(
                             title = "Next episode",
                             subtitle = nextEpisodeThresholdLabel(settings),
                             onClick = { nextEpisodeOpen = true }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.Link,
-                            title = "Reuse last link",
-                            subtitle = "Replay a title with its last played link instead of re-resolving sources",
-                            checked = reuseLastLink,
-                            onCheckedChange = {
-                                reuseLastLink = it
-                                settings.reuseLastLinkEnabled = it
-                            }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.History,
-                            title = "Last-link cache",
-                            subtitle = "Links stay reusable for ${settings.reuseLastLinkCacheHours}h",
-                            onClick = { reuseLinkHoursOpen = true }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.Movie,
-                            title = "Hero trailer autoplay",
-                            subtitle = "Play the first trailer muted in the detail hero",
-                            checked = heroTrailerPlayback,
-                            onCheckedChange = {
-                                heroTrailerPlayback = it
-                                settings.heroTrailerPlayback = it
-                            }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Schedule,
-                            title = "Trailer start delay",
-                            subtitle = heroTrailerDelayLabel(settings),
-                            onClick = { heroTrailerDelayOpen = true }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.VolumeUp,
-                            title = "Start trailer with sound",
-                            subtitle = "Hero trailers start unmuted instead of muted",
-                            checked = heroTrailerUnmuted,
-                            onCheckedChange = {
-                                heroTrailerUnmuted = it
-                                settings.heroTrailerStartUnmuted = it
-                            }
                         )
                     }
                 )

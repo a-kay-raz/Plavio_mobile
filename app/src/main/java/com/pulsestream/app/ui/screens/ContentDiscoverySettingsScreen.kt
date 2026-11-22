@@ -24,23 +24,29 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.R
+import com.pulsestream.app.data.SearchHistory
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
 /**
- * Nuvio v1.17 Content & Discovery hub: the discovery destinations
- * (Continue Watching, Live TV, Addons, Streams, Subtitles, Downloads,
- * Collections, Media Servers, CloudStream) live here instead of at
- * root. Destinations and behaviour unchanged.
+ * Nuvio v1.17 Content & Discovery hub, grouped like the source
+ * page: Search (Recent Searches toggle) then Sources (Addons,
+ * Media Servers, CloudStream, in Nuvio order), then the
+ * Plavio-only Discovery destinations (Continue Watching, Live TV,
+ * Streams, Subtitles, Downloads, Collections). Destinations and
+ * behaviour unchanged.
  */
 @Composable
 fun ContentDiscoverySettingsScreen(
@@ -56,8 +62,10 @@ fun ContentDiscoverySettingsScreen(
     onGoToMediaServers: () -> Unit = {},
     onGoToCloudStream: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val installedAddons by repository.addons.collectAsState(initial = emptyList())
     val enabledAddons = remember(installedAddons) { installedAddons.count { it.enabled } }
+    var recentSearches by remember { mutableStateOf(SearchHistory.isEnabled(context)) }
 
     GlowBackground {
         LazyColumn(
@@ -81,24 +89,26 @@ fun ContentDiscoverySettingsScreen(
                     )
                 }
             }
-            item(key = "group") {
+            item(key = "search_section") {
+                SettingsSectionHeader("Search")
                 SettingsGroup(
                     {
-                        SettingsNavRow(
+                        SettingsToggleRow(
                             icon = Icons.Filled.History,
-                            title = "Continue Watching",
-                            subtitle = "Sort, card style, tap action and resume prompt",
-                            onClick = onGoToContinueWatching
+                            title = "Recent Searches",
+                            subtitle = "Save recent searches and show them when the search bar is focused",
+                            checked = recentSearches,
+                            onCheckedChange = {
+                                SearchHistory.setEnabled(context, it)
+                                recentSearches = it
+                            }
                         )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Tv,
-                            title = "Live TV",
-                            subtitle = "Xtream / Stalker providers and programme guides",
-                            onClick = onGoToLiveTv
-                        )
-                    },
+                    }
+                )
+            }
+            item(key = "sources_section") {
+                SettingsSectionHeader("Sources")
+                SettingsGroup(
                     {
                         SettingsStaticRow(
                             icon = Icons.Filled.Extension,
@@ -116,6 +126,43 @@ fun ContentDiscoverySettingsScreen(
                                 )
                             },
                             onClick = onGoToAddons
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Dns,
+                            title = "Media Servers",
+                            subtitle = "Your Jellyfin, Emby, Plex or Silo libraries",
+                            onClick = onGoToMediaServers
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Extension,
+                            title = "CloudStream",
+                            subtitle = "Community plugins and repositories",
+                            onClick = onGoToCloudStream
+                        )
+                    }
+                )
+            }
+            item(key = "discovery_section") {
+                SettingsSectionHeader("Discovery")
+                SettingsGroup(
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.History,
+                            title = "Continue Watching",
+                            subtitle = "Sort, card style, tap action and resume prompt",
+                            onClick = onGoToContinueWatching
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Tv,
+                            title = "Live TV",
+                            subtitle = "Xtream / Stalker providers and programme guides",
+                            onClick = onGoToLiveTv
                         )
                     },
                     {
@@ -148,22 +195,6 @@ fun ContentDiscoverySettingsScreen(
                             title = "Collections",
                             subtitle = "Folders of catalogs, TMDB lists and Trakt lists",
                             onClick = onGoToCollections
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Dns,
-                            title = "Media Servers",
-                            subtitle = "Your Jellyfin, Emby, Plex or Silo libraries",
-                            onClick = onGoToMediaServers
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Extension,
-                            title = "CloudStream",
-                            subtitle = "Community plugins and repositories",
-                            onClick = onGoToCloudStream
                         )
                     }
                 )

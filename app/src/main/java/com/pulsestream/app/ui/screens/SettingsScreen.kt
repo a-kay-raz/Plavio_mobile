@@ -152,6 +152,7 @@ fun SettingsScreen(
     onGoToPlayback: () -> Unit = {},
     onGoToSubtitles: () -> Unit = {},
     onGoToAppearance: () -> Unit = {},
+    onGoToLayout: () -> Unit = {},
     onGoToStreams: () -> Unit = {},
     onGoToAbout: () -> Unit = {},
     onGoToFeedback: () -> Unit = {},
@@ -242,13 +243,23 @@ fun SettingsScreen(
             SettingsNavRow(
                 icon = Icons.Filled.Palette,
                 title = stringResource(R.string.settings_appearance_title),
-                subtitle = "Home, streams, collections, and detail pages",
+                subtitle = "Themes, app icon, and language",
                 onClick = onGoToAppearance,
                 compact = true
             )
         },
+        SettingsEntry(sectionGeneral, "Layout",
+            "layout home cards details streams navigation poster customize") {
+            SettingsNavRow(
+                icon = Icons.Filled.Dashboard,
+                title = "Layout",
+                subtitle = "Home, cards, details, streams, and navigation.",
+                onClick = onGoToLayout,
+                compact = true
+            )
+        },
         SettingsEntry(sectionGeneral, stringResource(R.string.settings_home_catalogs_title),
-            "home catalogs rows arrange visibility home screen order", hub = "appearance") {
+            "home catalogs rows arrange visibility home screen order", hub = "layout") {
             SettingsNavRow(
                 icon = Icons.Filled.GridView,
                 title = stringResource(R.string.settings_home_catalogs_title),
@@ -298,6 +309,16 @@ fun SettingsScreen(
                 compact = true
             )
         },
+        SettingsEntry(sectionGeneral, "Content & Discovery",
+            "content discovery addons media servers plugins cloudstream search history") {
+            SettingsNavRow(
+                icon = Icons.Filled.Extension,
+                title = "Content & Discovery",
+                subtitle = "Manage addons and discovery sources.",
+                onClick = onGoToContentDiscovery,
+                compact = true
+            )
+        },
         SettingsEntry(sectionGeneral, stringResource(R.string.settings_playback_title),
             "playback autoplay next episode screen skip intro audio resume buffer") {
             SettingsNavRow(
@@ -308,13 +329,13 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Content & Discovery",
-            "content discovery addons media servers plugins cloudstream search history") {
+        SettingsEntry(sectionGeneral, "Downloads",
+            "downloads offline files storage downloaded movies shows") {
             SettingsNavRow(
-                icon = Icons.Filled.Extension,
-                title = "Content & Discovery",
-                subtitle = "Manage addons and discovery sources.",
-                onClick = onGoToContentDiscovery,
+                icon = Icons.Filled.Download,
+                title = "Downloads",
+                subtitle = "Manage your downloaded movies and episodes.",
+                onClick = onGoToDownloads,
                 compact = true
             )
         },
@@ -383,7 +404,7 @@ fun SettingsScreen(
         },
         // Step 57: detail sections — reorder/hide the detail page's sections.
         SettingsEntry(sectionGeneral, "Detail sections",
-            "detail sections reorder hide tabs episodes cast production", hub = "appearance") {
+            "detail sections reorder hide tabs episodes cast production", hub = "layout") {
             SettingsNavRow(
                 icon = Icons.Filled.Tune,
                 title = "Detail sections",
@@ -394,7 +415,7 @@ fun SettingsScreen(
         },
         // Step 61: custom stream badges — import rule sets, show chips on streams.
         SettingsEntry(sectionGeneral, "Stream badges",
-            "stream badges rules import chips labels quality codec group", hub = "appearance") {
+            "stream badges rules import chips labels quality codec group", hub = "layout") {
             SettingsNavRow(
                 icon = Icons.Filled.Style,
                 title = "Stream badges",
@@ -405,22 +426,12 @@ fun SettingsScreen(
         },
         // Step 63: player toolbar — reorder/hide the pill and top buttons.
         SettingsEntry(sectionGeneral, "Player buttons",
-            "player buttons toolbar pill reorder hide chapters sources speed", hub = "appearance") {
+            "player buttons toolbar pill reorder hide chapters sources speed", hub = "layout") {
             SettingsNavRow(
                 icon = Icons.Filled.Dashboard,
                 title = "Player buttons",
                 subtitle = "Reorder and hide the player's pill and top buttons",
                 onClick = onGoToPlayerToolbar,
-                compact = true
-            )
-        },
-        SettingsEntry(sectionAccount, "Tracking",
-            "tracking trakt simkl library progress ratings source") {
-            SettingsNavRow(
-                icon = Icons.Filled.Sync,
-                title = "Tracking",
-                subtitle = "Connect tracking providers and choose which one powers your Library and Continue Watching.",
-                onClick = onGoToTracking,
                 compact = true
             )
         },
@@ -431,6 +442,16 @@ fun SettingsScreen(
                 title = "Integrations",
                 subtitle = "Manage available integrations",
                 onClick = onGoToIntegrations,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Tracking",
+            "tracking trakt simkl library progress ratings source") {
+            SettingsNavRow(
+                icon = Icons.Filled.Sync,
+                title = "Tracking",
+                subtitle = "Connect tracking providers and choose which one powers your Library and Continue Watching.",
+                onClick = onGoToTracking,
                 compact = true
             )
         },

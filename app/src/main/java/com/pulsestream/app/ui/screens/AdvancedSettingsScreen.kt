@@ -37,8 +37,11 @@ import com.pulsestream.app.ui.theme.TextPrimary
 import kotlinx.coroutines.launch
 
 /**
- * Nuvio v1.17 Advanced hub: reduced motion, usage counting, crash
- * reports and the cache clears live here instead of at root.
+ * Nuvio v1.17 Advanced hub, grouped like the source page's
+ * sections: General, Debugging (crash reports — Nuvio's Sentry
+ * toggle lives in its Debugging section) and Cache (the two cache
+ * clears). Nuvio's Startup/Network rows are not added: Plavio has
+ * no DNS setting and no CW/metadata cache clears to put there.
  * Behaviour unchanged — the toggle logic is the same as the old
  * root rows.
  */
@@ -78,7 +81,8 @@ fun AdvancedSettingsScreen(
                     )
                 }
             }
-            item(key = "group") {
+            item(key = "general_section") {
+                SettingsSectionHeader("General")
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -100,7 +104,12 @@ fun AdvancedSettingsScreen(
                                 telemetryEnabled = it
                             }
                         )
-                    },
+                    }
+                )
+            }
+            item(key = "debugging_section") {
+                SettingsSectionHeader("Debugging")
+                SettingsGroup(
                     {
                         SettingsToggleRow(
                             icon = Icons.Filled.BugReport,
@@ -113,7 +122,12 @@ fun AdvancedSettingsScreen(
                                 sentryEnabled = it
                             }
                         )
-                    },
+                    }
+                )
+            }
+            item(key = "cache_section") {
+                SettingsSectionHeader("Cache")
+                SettingsGroup(
                     {
                         SettingsClearRow(
                             icon = Icons.Filled.Storage,
