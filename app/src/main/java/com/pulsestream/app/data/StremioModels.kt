@@ -105,7 +105,10 @@ data class CastMember(
     val photo: String? = null,
     /** Best-known titles from the addon's /person-search (search rows
      * only; cast lists leave it null). */
-    val knownFor: String? = null
+    val knownFor: String? = null,
+    /** Character played (TMDB credits / meta addons that serve it;
+     * the second line under the name in the cast rail). */
+    val character: String? = null
 )
 
 /** Actor filmography from PlavioMeta /person (Step 58: Nuvio

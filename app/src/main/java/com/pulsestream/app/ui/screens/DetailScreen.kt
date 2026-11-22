@@ -29,6 +29,7 @@ import com.pulsestream.app.data.DetailSectionKey
 import com.pulsestream.app.data.DetailSectionSettings
 import com.pulsestream.app.data.itemCount
 import com.pulsestream.app.data.loadDetailSections
+import com.pulsestream.app.data.personInitials
 import com.pulsestream.app.data.scrollIndexFor
 import com.pulsestream.app.data.visibleOrdered
 import com.pulsestream.app.data.SettingsStore
@@ -796,6 +797,25 @@ private fun DetailContent(
     val episodeEnrichment = remember(tmdbSeasonEpisodes) {
         tmdbSeasonEpisodes.associateBy { it.episode }
     }
+    // TMDB cast enrichment (Credits module): photos + character names
+    // for the cast rail. The meta addon serves names only in keyless
+    // mode, so without this the rail is photo-less (the "▶" glyphs).
+    // enrichCast no-ops when the module is off, there is no key, or
+    // the cast is already fully enriched; it also fills an empty cast
+    // from TMDB's top 15. The rail below uses the enriched list.
+    var tmdbCast by remember {
+        mutableStateOf<List<com.pulsestream.app.data.CastMember>>(emptyList())
+    }
+    LaunchedEffect(meta.id, meta.type) {
+        tmdbCast = if (!com.pulsestream.app.data.TmdbClient.isFullyEnrichedCast(meta.cast)) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.enrichCast(
+                    settings, meta.id, meta.type, meta.cast
+                )
+            }.getOrDefault(emptyList())
+        } else emptyList()
+    }
+    val effectiveCast = tmdbCast.ifEmpty { meta.cast }
     val shufflePicker = remember(meta.id) {
         com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
     }
@@ -1122,7 +1142,7 @@ private fun DetailContent(
     val detailAvailability = DetailSectionAvailability(
         hasOverview = !meta.description.isNullOrBlank(),
         hasTrailers = effectiveTrailers.isNotEmpty(),
-        hasCast = meta.cast.isNotEmpty(),
+        hasCast = effectiveCast.isNotEmpty(),
         hasProduction = productionRows.isNotEmpty(),
         hasCollection = collectionSection != null,
         hasComments = commentsPage != null && commentsPage.items.isNotEmpty(),
@@ -1422,7 +1442,11 @@ private fun DetailContent(
     }
 
     val castBlock: LazyListScope.() -> Unit = {
-        // Only actors with a TMDB person id navigate (keyless mode has names only).
+        // Nuvio DetailCastSection (phone <600dp): 80dp circle photo,
+        // 92dp item, 16dp gap, name 14sp + character 12sp, both
+        // centred, one line. Photos come from the meta addon or the
+        // TMDB Credits enrichment above; no photo (or a failed load)
+        // shows the actor's initials, like Nuvio.
             item(key = "cast") {
                 Text(
                     "Cast",
@@ -1433,18 +1457,19 @@ private fun DetailContent(
                 )
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(meta.cast, key = { it.id.toString() + "_" + it.name }) { actor ->
+                    items(effectiveCast, key = { it.id.toString() + "_" + it.name }) { actor ->
                         // Metadata flexibility (2026-10-26): name-only
                         // cast (keyless addons) navigates too — the actor
                         // page falls back to search by name when no
                         // addon serves /person for the id.
                         val clickable = actor.id > 0 || actor.name.isNotBlank()
+                        var photoFailed by remember(actor.photo) { mutableStateOf(false) }
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
-                                .width(72.dp)
+                                .width(92.dp)
                                 .tvFocusRing(RoundedCornerShape(12.dp))
                                 .then(
                                     if (clickable) Modifier.clickable {
@@ -1453,23 +1478,55 @@ private fun DetailContent(
                                     else Modifier
                                 )
                         ) {
-                            SafePosterImage(
-                                model = actor.photo,
-                                contentDescription = actor.name,
+                            Box(
                                 modifier = Modifier
-                                    .size(64.dp)
+                                    .size(80.dp)
                                     .clip(CircleShape)
+                                    .background(
+                                        Color.White.copy(alpha = 0.05f), CircleShape
+                                    )
                                     .liquidGlass(CircleShape)
-                                    .cardDepth(CircleShape, CardDepthSurface.Cast)
-                            )
-                            Spacer(Modifier.height(6.dp))
+                                    .cardDepth(CircleShape, CardDepthSurface.Cast),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (actor.photo != null && !photoFailed) {
+                                    AsyncImage(
+                                        model = actor.photo,
+                                        contentDescription = actor.name,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                        onError = { photoFailed = true }
+                                    )
+                                } else {
+                                    Text(
+                                        text = personInitials(actor.name),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
                             Text(
                                 text = actor.name,
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = if (clickable) TextPrimary else TextSecondary,
-                                maxLines = 2,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
                             )
+                            if (!actor.character.isNullOrBlank()) {
+                                Text(
+                                    text = actor.character,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
