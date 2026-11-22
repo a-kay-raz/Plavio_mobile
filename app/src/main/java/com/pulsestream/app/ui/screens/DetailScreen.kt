@@ -702,6 +702,97 @@ private fun DetailContent(
             }.getOrNull()
         } else null
     }
+    // TMDB Enrichment fallbacks (Nuvio TmdbSettings modules): resolve
+    // the TMDB id once, then fetch only what the meta addon didn't
+    // serve. Every fetch is key-gated + module-gated inside
+    // TmdbClient, so a module OFF (or no key) means no call at all.
+    // All of these are fallbacks — meta-addon data always wins.
+    var tmdbId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(meta.id, meta.type) {
+        tmdbId = runCatching {
+            com.pulsestream.app.data.TmdbClient.resolveTmdbId(settings, meta.id, meta.type)
+        }.getOrNull()
+    }
+    var tmdbTrailers by remember {
+        mutableStateOf<List<com.pulsestream.app.data.TrailerStream>>(emptyList())
+    }
+    LaunchedEffect(meta.id, meta.type, tmdbId) {
+        tmdbTrailers = if (meta.trailerStreams.isEmpty() && tmdbId != null) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getTrailers(settings, meta.type, tmdbId!!)
+            }.getOrDefault(emptyList())
+        } else emptyList()
+    }
+    val effectiveTrailers =
+        if (meta.trailerStreams.isNotEmpty()) meta.trailerStreams else tmdbTrailers
+    var tmdbArtwork by remember {
+        mutableStateOf<Pair<String?, String?>?>(null)
+    }
+    LaunchedEffect(meta.id, meta.type, tmdbId) {
+        tmdbArtwork =
+            if ((meta.background.isNullOrBlank() || meta.poster.isNullOrBlank()) && tmdbId != null) {
+                runCatching {
+                    com.pulsestream.app.data.TmdbClient.getArtwork(settings, meta.type, tmdbId!!)
+                }.getOrNull()
+            } else null
+    }
+    val effectiveBackdrop =
+        meta.background?.takeIf { it.isNotBlank() } ?: tmdbArtwork?.second
+    val effectivePoster =
+        meta.poster?.takeIf { it.isNotBlank() } ?: tmdbArtwork?.first
+    var tmdbProductionCompanies by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tmdbNetworks by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(meta.id, meta.type, tmdbId) {
+        val needsProduction = meta.director.isEmpty() && meta.writer.isEmpty() &&
+            meta.network.isNullOrBlank()
+        tmdbProductionCompanies = if (needsProduction && tmdbId != null) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getProductionCompanies(
+                    settings, meta.type, tmdbId!!
+                )
+            }.getOrDefault(emptyList())
+        } else emptyList()
+        tmdbNetworks = if (meta.type == "series" && meta.network.isNullOrBlank() && tmdbId != null) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getNetworks(settings, tmdbId!!)
+            }.getOrDefault(emptyList())
+        } else emptyList()
+    }
+    val effectiveNetwork =
+        meta.network?.takeIf { it.isNotBlank() } ?: tmdbNetworks.firstOrNull()
+    var tmdbRecommendations by remember {
+        mutableStateOf<List<com.pulsestream.app.data.MetaPreview>>(emptyList())
+    }
+    LaunchedEffect(meta.id, meta.type, tmdbId, vm.relatedState.isEmpty()) {
+        tmdbRecommendations = if (tmdbId != null && vm.relatedState.isEmpty()) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getRecommendations(settings, meta.type, tmdbId!!)
+            }.getOrDefault(emptyList())
+        } else emptyList()
+    }
+    var tmdbSeasonPosters by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    LaunchedEffect(meta.id, meta.type, tmdbId) {
+        tmdbSeasonPosters = if (meta.type == "series" && tmdbId != null) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getSeasonPosters(settings, tmdbId!!)
+            }.getOrDefault(emptyMap())
+        } else emptyMap()
+    }
+    var tmdbSeasonEpisodes by remember {
+        mutableStateOf<List<com.pulsestream.app.data.TmdbClient.TmdbEpisode>>(emptyList())
+    }
+    LaunchedEffect(meta.id, meta.type, tmdbId, vm.selectedSeason) {
+        tmdbSeasonEpisodes = if (meta.type == "series" && tmdbId != null) {
+            runCatching {
+                com.pulsestream.app.data.TmdbClient.getSeasonEpisodes(
+                    settings, tmdbId!!, vm.selectedSeason
+                )
+            }.getOrDefault(emptyList())
+        } else emptyList()
+    }
+    val episodeEnrichment = remember(tmdbSeasonEpisodes) {
+        tmdbSeasonEpisodes.associateBy { it.episode }
+    }
     val shufflePicker = remember(meta.id) {
         com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
     }
@@ -886,7 +977,8 @@ private fun DetailContent(
     // the hero once resolved, fading in over the backdrop. Plavio's
     // TrailerStream carries only title + ytId, so there is no official/type
     // metadata to rank by — the first trailer is the candidate.
-    val heroTrailer = meta.trailerStreams.firstOrNull()
+    // TMDB trailers fill in when the addon serves none (effectiveTrailers).
+    val heroTrailer = effectiveTrailers.firstOrNull()
     var heroTrailerUrl by remember(meta.id) { mutableStateOf<String?>(null) }
     var heroTrailerAudioUrl by remember(meta.id) { mutableStateOf<String?>(null) }
     var heroTrailerReady by remember(meta.id) { mutableStateOf(false) }
@@ -998,22 +1090,35 @@ private fun DetailContent(
     // Step 57: section order/visibility/tab layout. The four vals
     // below used to live inside the LazyColumn; they are hoisted here
     // so the section lambdas (and the availability) can share them.
-    val productionRows = listOfNotNull(
-        meta.director.takeIf { it.isNotEmpty() }?.let {
-            (if (it.size > 1) "Directors" else "Director") to it.joinToString(", ")
-        },
-        meta.writer.takeIf { it.isNotEmpty() }?.let {
-            (if (it.size > 1) "Writers" else "Writer") to it.joinToString(", ")
-        },
-        meta.network?.takeIf { it.isNotBlank() }?.let { "Network" to it }
-    )
+    val productionRows = run {
+        val base = listOfNotNull(
+            meta.director.takeIf { it.isNotEmpty() }?.let {
+                (if (it.size > 1) "Directors" else "Director") to it.joinToString(", ")
+            },
+            meta.writer.takeIf { it.isNotEmpty() }?.let {
+                (if (it.size > 1) "Writers" else "Writer") to it.joinToString(", ")
+            },
+            effectiveNetwork?.takeIf { it.isNotBlank() }?.let { "Network" to it }
+        )
+        // TMDB Productions module: company names fill in only when the
+        // meta addon serves no production info at all.
+        if (base.isNotEmpty()) base
+        else listOfNotNull(
+            tmdbProductionCompanies.takeIf { it.isNotEmpty() }?.let {
+                "Production companies" to it.joinToString(", ")
+            },
+            effectiveNetwork?.takeIf { it.isNotBlank() }?.let { "Network" to it }
+        )
+    }
     val collectionSection = tmdbCollection
     val commentsPage = traktComments
-    val detailTiles = buildDetailTiles(meta)
+    // TMDB Networks module: the Show Details Network tile reads the
+    // TMDB network when the meta addon serves none.
+    val detailTiles = buildDetailTiles(meta.copy(network = effectiveNetwork))
     val detailSections = loadDetailSections(settings.detailSectionsJson)
     val detailAvailability = DetailSectionAvailability(
         hasOverview = !meta.description.isNullOrBlank(),
-        hasTrailers = meta.trailerStreams.isNotEmpty(),
+        hasTrailers = effectiveTrailers.isNotEmpty(),
         hasCast = meta.cast.isNotEmpty(),
         hasProduction = productionRows.isNotEmpty(),
         hasCollection = collectionSection != null,
@@ -1215,7 +1320,7 @@ private fun DetailContent(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(meta.trailerStreams, key = { it.ytId }) { trailer ->
+                    items(effectiveTrailers, key = { it.ytId }) { trailer ->
                         var resolving by remember { mutableStateOf(false) }
                         var trailerUnavailable by remember { mutableStateOf(false) }
                         Card(
@@ -1236,7 +1341,7 @@ private fun DetailContent(
                                                     PlaybackRequest(
                                                         streamUrl = playback.videoUrl,
                                                         title = "${meta.name} — Trailer",
-                                                        poster = meta.background ?: meta.poster,
+                                                        poster = effectiveBackdrop ?: effectivePoster,
                                                         videoId = "trailer_${trailer.ytId}",
                                                         isMovie = meta.type == "movie",
                                                         type = meta.type,
@@ -1595,7 +1700,9 @@ private fun DetailContent(
                                     .clip(RoundedCornerShape(14.dp))
                             ) {
                                 SafePosterImage(
-                                    model = meta.poster ?: meta.background,
+                                    // TMDB Season Posters module: the
+                                    // per-season poster when TMDB has one.
+                                    model = tmdbSeasonPosters[season] ?: meta.poster ?: meta.background,
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize()
                                 )
@@ -1796,16 +1903,33 @@ private fun DetailContent(
                     val episodeRevealed = video.id in revealedEpisodeIds
                     val hideDetails = BrowsingPrivacy.shouldHideEpisodeDetails(hideEpisodeDetails, episodeRevealed)
                     val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
+                    // TMDB Episodes + Episode Ratings modules: fill a
+                    // missing overview/thumbnail/runtime from TMDB, and
+                    // show the TMDB rating on the card.
+                    val tmdbEp = episodeEnrichment[video.episode]
+                    val enrichedVideo = if (tmdbEp != null && settings.tmdbUseEpisodes) {
+                        video.copy(
+                            overview = video.overview?.takeIf { it.isNotBlank() } ?: tmdbEp.overview,
+                            thumbnail = video.thumbnail?.takeIf { it.isNotBlank() } ?: tmdbEp.stillUrl,
+                        )
+                    } else video
+                    val enrichedRuntime = tmdbEp?.runtimeMinutes
+                        ?.takeIf { settings.tmdbUseEpisodes }
+                        ?.let { formatRuntimeForDisplay(it.toString()) }
+                        ?: formatRuntimeForDisplay(meta.runtime)
+                    val enrichedRating = tmdbEp?.voteAverage
+                        ?.takeIf { settings.tmdbUseEpisodeRatings }
                     EpisodeListCard(
-                        video = video,
+                        video = enrichedVideo,
                         selected = selected,
                         hideDetails = hideDetails,
                         isWatched = isWatched,
                         spoilerMode = hideEpisodeDetails,
                         isTv = isTvDetail,
                         blurThumbnail = blurUnwatched && !isWatched,
-                        runtime = formatRuntimeForDisplay(meta.runtime),
+                        runtime = enrichedRuntime,
                         progress = episodeProgress(video),
+                        tmdbRating = enrichedRating,
                         onClick = { vm.selectEpisode(video) },
                         onLongClick = { episodeActionVideo = video },
                         onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
@@ -1825,16 +1949,33 @@ private fun DetailContent(
                             val episodeRevealed = video.id in revealedEpisodeIds
                             val hideDetails = BrowsingPrivacy.shouldHideEpisodeDetails(hideEpisodeDetails, episodeRevealed)
                             val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
+                            // TMDB Episodes + Episode Ratings modules: fill a
+                            // missing overview/thumbnail/runtime from TMDB, and
+                            // show the TMDB rating on the card.
+                            val tmdbEp = episodeEnrichment[video.episode]
+                            val enrichedVideo = if (tmdbEp != null && settings.tmdbUseEpisodes) {
+                                video.copy(
+                                    overview = video.overview?.takeIf { it.isNotBlank() } ?: tmdbEp.overview,
+                                    thumbnail = video.thumbnail?.takeIf { it.isNotBlank() } ?: tmdbEp.stillUrl,
+                                )
+                            } else video
+                            val enrichedRuntime = tmdbEp?.runtimeMinutes
+                                ?.takeIf { settings.tmdbUseEpisodes }
+                                ?.let { formatRuntimeForDisplay(it.toString()) }
+                                ?: formatRuntimeForDisplay(meta.runtime)
+                            val enrichedRating = tmdbEp?.voteAverage
+                                ?.takeIf { settings.tmdbUseEpisodeRatings }
                             EpisodeCardA(
-                                video = video,
+                                video = enrichedVideo,
                                 selected = selected,
                                 hideDetails = hideDetails,
                                 isWatched = isWatched,
                                 spoilerMode = hideEpisodeDetails,
                                 isTv = isTvDetail,
                                 blurThumbnail = blurUnwatched && !isWatched,
-                                runtime = formatRuntimeForDisplay(meta.runtime),
+                                runtime = enrichedRuntime,
                                 progress = episodeProgress(video),
+                                tmdbRating = enrichedRating,
                                 onClick = { vm.selectEpisode(video) },
                                 onLongClick = { episodeActionVideo = video },
                                 onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
@@ -1926,6 +2067,29 @@ private fun DetailContent(
                 Spacer(Modifier.height(8.dp))
             }
         }
+        // TMDB More Like This module: recommendations fill in only when
+        // the meta addons return no related rows at all.
+        if (vm.relatedState.isEmpty() && tmdbRecommendations.isNotEmpty()) {
+            item(key = "related_tmdb") {
+                com.pulsestream.app.ui.components.SectionTitle("More like this")
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(tmdbRecommendations.distinctBy { it.id }, key = { it.id }) { related ->
+                        com.pulsestream.app.ui.components.PosterCard(
+                            meta = related,
+                            onClick = {
+                                if (related.id != meta.id || related.type != meta.type) {
+                                    onOpenDetail("", related.type, related.id)
+                                }
+                            }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
     }
 
     // The LazyColumn sits in a Box so the floating glass header can
@@ -1959,8 +2123,10 @@ private fun DetailContent(
             // section. The 74dp poster-in-hero is gone on phone; when
             // there is no backdrop the poster itself IS the hero art.
             // TV keeps the old layout (poster card + left-aligned title).
-            val heroArt = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster
-            val hasBackdrop = !meta.background.isNullOrBlank()
+            // TMDB Artwork module: the backdrop/poster fall back to TMDB
+            // when the meta addon serves no art of its own.
+            val heroArt = effectiveBackdrop ?: effectivePoster
+            val hasBackdrop = !effectiveBackdrop.isNullOrBlank()
             val trailerUrl = heroTrailerUrl
             val fadeColor = LocalPalette.current.background
             val trailerFadeAlpha by animateFloatAsState(
@@ -2117,9 +2283,9 @@ private fun DetailContent(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        if (hasBackdrop && !meta.poster.isNullOrBlank()) {
+                        if (hasBackdrop && !effectivePoster.isNullOrBlank()) {
                             SafePosterImage(
-                                model = meta.poster,
+                                model = effectivePoster,
                                 contentDescription = null,
                                 modifier = Modifier
                                     .width(74.dp)
@@ -3815,6 +3981,8 @@ private fun EpisodeCardA(
     blurThumbnail: Boolean = false,
     runtime: String? = null,
     progress: Float? = null,
+    /** TMDB episode rating (Episode Ratings module), null when off/unavailable. */
+    tmdbRating: Double? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
@@ -3937,7 +4105,8 @@ private fun EpisodeCardA(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val metaLine = listOfNotNull(
                         formatEpisodeDate(video.released).takeIf { it.isNotBlank() },
-                        runtime
+                        runtime,
+                        tmdbRating?.let { "★ %.1f".format(it) }
                     ).joinToString("  •  ")
                     if (metaLine.isNotBlank()) {
                         Text(
@@ -4184,6 +4353,8 @@ private fun EpisodeListCard(
     blurThumbnail: Boolean = false,
     runtime: String? = null,
     progress: Float? = null,
+    /** TMDB episode rating (Episode Ratings module), null when off/unavailable. */
+    tmdbRating: Double? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
@@ -4291,7 +4462,8 @@ private fun EpisodeListCard(
                     )
                     val metaLine = listOfNotNull(
                         formatEpisodeDate(video.released).takeIf { it.isNotBlank() },
-                        runtime
+                        runtime,
+                        tmdbRating?.let { "★ %.1f".format(it) }
                     ).joinToString("  •  ")
                     if (metaLine.isNotBlank()) {
                         Text(

@@ -1178,6 +1178,76 @@ class SettingsStore(
         get() = getSecret(KEY_OMDB_API_KEY)?.takeIf { it.isNotBlank() }
         set(value) = putSecret(KEY_OMDB_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
 
+    /**
+     * TMDB Enrichment master switch (Nuvio TmdbSettings.enabled).
+     * Nuvio defaults this OFF because it ships a bundled key; Plavio
+     * has no bundled key, so the default here is ON — existing key
+     * holders must not silently lose enrichment. OFF stops every
+     * TmdbClient enrichment call. tmdb:→IMDb id conversion
+     * ([TmdbClient.getImdbId]) is resolution infrastructure for
+     * Cinemeta meta, not enrichment, and stays ungated.
+     */
+    var tmdbEnrichmentEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_ENRICHMENT_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_ENRICHMENT_ENABLED, value).apply()
+
+    /** Preferred TMDB language code (Nuvio TmdbSettings.language). "en-US" = today's behaviour. */
+    var tmdbLanguage: String
+        get() = prefs.getString(KEY_TMDB_LANGUAGE, "en-US")?.takeIf { it.isNotBlank() } ?: "en-US"
+        set(value) = prefs.edit().putString(KEY_TMDB_LANGUAGE, value.trim().takeIf { it.isNotBlank() } ?: "en-US").apply()
+
+    /**
+     * Show TMDB titles in their original language (Nuvio
+     * TmdbTitleLanguage.ORIGINAL). Applies wherever TMDB supplies a
+     * title: collections, recommendations and person filmography.
+     */
+    var tmdbOriginalTitleLanguage: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_ORIGINAL_TITLE_LANGUAGE, false)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_ORIGINAL_TITLE_LANGUAGE, value).apply()
+
+    /**
+     * TMDB module toggles (Nuvio TmdbSettings use* flags, all default
+     * ON). Each one gates its own TmdbClient call site — a module OFF
+     * means that TMDB call never fires; the app falls back to what the
+     * meta addons already provide.
+     */
+    var tmdbUseTrailers: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_TRAILERS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_TRAILERS, value).apply()
+    var tmdbUseArtwork: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_ARTWORK, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_ARTWORK, value).apply()
+    var tmdbUseBasicInfo: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_BASIC_INFO, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_BASIC_INFO, value).apply()
+    var tmdbUseDetails: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_DETAILS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_DETAILS, value).apply()
+    var tmdbUseCredits: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_CREDITS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_CREDITS, value).apply()
+    var tmdbUseProductions: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_PRODUCTIONS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_PRODUCTIONS, value).apply()
+    var tmdbUseNetworks: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_NETWORKS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_NETWORKS, value).apply()
+    var tmdbUseEpisodes: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_EPISODES, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_EPISODES, value).apply()
+    var tmdbUseEpisodeRatings: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_EPISODE_RATINGS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_EPISODE_RATINGS, value).apply()
+    var tmdbUseSeasonPosters: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_SEASON_POSTERS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_SEASON_POSTERS, value).apply()
+    var tmdbUseMoreLikeThis: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_MORE_LIKE_THIS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_MORE_LIKE_THIS, value).apply()
+    var tmdbUseCollections: Boolean
+        get() = prefs.getBoolean(KEY_TMDB_USE_COLLECTIONS, true)
+        set(value) = prefs.edit().putBoolean(KEY_TMDB_USE_COLLECTIONS, value).apply()
+
 
     /** Trakt access token (null = not linked). */
     var traktAccessToken: String?
@@ -2114,6 +2184,21 @@ class SettingsStore(
         private const val KEY_DEBRID_INSTANT_PREPARE_LIMIT = "debrid_instant_prepare_limit"
         private const val KEY_TMDB_API_KEY = "tmdb_api_key"
         private const val KEY_OMDB_API_KEY = "omdb_api_key"
+        private const val KEY_TMDB_ENRICHMENT_ENABLED = "tmdb_enrichment_enabled"
+        private const val KEY_TMDB_LANGUAGE = "tmdb_language"
+        private const val KEY_TMDB_ORIGINAL_TITLE_LANGUAGE = "tmdb_original_title_language"
+        private const val KEY_TMDB_USE_TRAILERS = "tmdb_use_trailers"
+        private const val KEY_TMDB_USE_ARTWORK = "tmdb_use_artwork"
+        private const val KEY_TMDB_USE_BASIC_INFO = "tmdb_use_basic_info"
+        private const val KEY_TMDB_USE_DETAILS = "tmdb_use_details"
+        private const val KEY_TMDB_USE_CREDITS = "tmdb_use_credits"
+        private const val KEY_TMDB_USE_PRODUCTIONS = "tmdb_use_productions"
+        private const val KEY_TMDB_USE_NETWORKS = "tmdb_use_networks"
+        private const val KEY_TMDB_USE_EPISODES = "tmdb_use_episodes"
+        private const val KEY_TMDB_USE_EPISODE_RATINGS = "tmdb_use_episode_ratings"
+        private const val KEY_TMDB_USE_SEASON_POSTERS = "tmdb_use_season_posters"
+        private const val KEY_TMDB_USE_MORE_LIKE_THIS = "tmdb_use_more_like_this"
+        private const val KEY_TMDB_USE_COLLECTIONS = "tmdb_use_collections"
         private const val KEY_STREAMS_PER_SOURCE = "streams_per_source"
         private const val KEY_QUALITY_ORDER = "quality_order"
         private const val KEY_STREAM_AUTOPLAY = "stream_autoplay"

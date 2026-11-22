@@ -54,7 +54,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.OmdbClient
 import com.pulsestream.app.data.StreamRepository
-import com.pulsestream.app.data.TmdbClient
 import com.pulsestream.app.data.debrid.PremiumizeApi
 import com.pulsestream.app.data.simkl.SimklSyncEngine
 import kotlinx.coroutines.launch
@@ -74,7 +73,8 @@ import com.pulsestream.app.ui.theme.TextSecondary
 @Composable
 fun IntegrationsScreen(
     repository: StreamRepository,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onGoToTmdbEnrichment: () -> Unit = {}
 ) {
     val settings = repository.settings
 
@@ -330,18 +330,17 @@ fun IntegrationsScreen(
             }
 
             item(key = "metadata_group") {
-                var showTmdbDialog by remember { mutableStateOf(false) }
-                var tmdbTick by remember { mutableIntStateOf(0) }
-                val tmdbConfigured = remember(tmdbTick) { !settings.tmdbApiKey.isNullOrBlank() }
                 var showOmdbDialog by remember { mutableStateOf(false) }
                 var omdbTick by remember { mutableIntStateOf(0) }
                 val omdbConfigured = remember(omdbTick) { !settings.omdbApiKey.isNullOrBlank() }
+                // Fresh on every visit (this screen recomposes when popped back to).
+                val tmdbConfigured = remember { !settings.tmdbApiKey.isNullOrBlank() }
                 SettingsGroup(
                     {
                         V117StaticRow(
                             icon = Icons.Filled.Movie,
                             title = "TMDB",
-                            subtitle = if (tmdbConfigured) "API key saved" else "Add your API key for richer metadata and ratings",
+                            subtitle = if (tmdbConfigured) "API key saved — enrichment settings" else "Add your API key for richer metadata and ratings",
                             trailing = {
                                 if (tmdbConfigured) {
                                     Text(
@@ -358,7 +357,9 @@ fun IntegrationsScreen(
                                     )
                                 }
                             },
-                            onClick = { showTmdbDialog = true }
+                            // TMDB Enrichment page (Nuvio TmdbSettingsPage):
+                            // enable + key + language + 12 module toggles.
+                            onClick = onGoToTmdbEnrichment
                         )
                     },
                     {
@@ -386,19 +387,6 @@ fun IntegrationsScreen(
                         )
                     }
                 )
-                if (showTmdbDialog) {
-                    ApiKeyDialog(
-                        title = "TMDB API Key",
-                        keyLinkText = "Get your API key at themoviedb.org/settings/api",
-                        keyLinkUrl = "https://www.themoviedb.org/settings/api",
-                        currentKey = settings.tmdbApiKey,
-                        enabled = true,
-                        helpText = "Paste your TMDB API key and tap Save. The key is checked before saving — an invalid key won't save. To remove it, clear the field and save.",
-                        validate = { TmdbClient.validateApiKey(it) },
-                        onSave = { settings.tmdbApiKey = it; tmdbTick++ },
-                        onDismiss = { showTmdbDialog = false }
-                    )
-                }
                 if (showOmdbDialog) {
                     ApiKeyDialog(
                         title = "OMDb API Key",
