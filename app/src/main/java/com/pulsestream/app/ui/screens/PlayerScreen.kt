@@ -95,6 +95,7 @@ import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.AlertDialog
 import com.pulsestream.app.ui.components.OrbitDots
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -4184,7 +4185,8 @@ fun PlayerScreen(
                                 onClick = {
                                     val addonId = movieRecsAddonId ?: return@PosterCard
                                     onOpenDetail(addonId, meta.type, meta.id)
-                                }
+                                },
+                                surface = CustomPosterScreen.DETAILS
                             )
                         }
                     }
