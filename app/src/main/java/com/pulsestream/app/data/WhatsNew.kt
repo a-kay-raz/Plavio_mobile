@@ -12,6 +12,7 @@ object WhatsNew {
         "CloudStream plugins — add a plugin repo and install providers from Settings.",
         "Home hero with Play and Details — start a movie or the next episode straight from the hero.",
         "Continue Watching, restyled — episode info, time left, and progress right on the card.",
+        "Continue Watching — long-press a poster for Details, Play from beginning, Mark as watched, or Remove.",
         "Hero trailers play like Nuvio — tap to mute, they pause when you scroll away, and fill the hero vertically.",
         "Settings reorganised — Appearance, Layout, Content & Discovery, Playback, Downloads and more, with search.",
         "Smart Streams — results are ranked so the best source comes first.",
