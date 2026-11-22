@@ -16,7 +16,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ViewModule
@@ -46,10 +49,9 @@ import com.pulsestream.app.ui.tv.tvFocusRing
 
 /**
  * Continue Watching settings (Nuvio ContinueWatchingPreferencesRepository):
- * section visibility, card style, sort mode, tap action and the resume
- * prompt on launch. Next-up-only prefs (show unaired, blur next-up,
- * episode thumbnails, furthest-episode) are NOT here — Plavio's Continue
- * Watching is resume positions only, it has no next-up entries.
+ * section visibility, card style, sort mode, tap action, the resume
+ * prompt on launch, and the Next Up behaviour — prefer episode
+ * thumbnails, furthest-episode seed, and unaired next-ups.
  */
 @Composable
 fun ContinueWatchingSettingsScreen(
@@ -59,6 +61,9 @@ fun ContinueWatchingSettingsScreen(
     val settings = repository.settings
     var visible by remember { mutableStateOf(settings.continueWatchingVisible) }
     var resumePrompt by remember { mutableStateOf(settings.continueWatchingResumePrompt) }
+    var preferEpisodeThumbnails by remember { mutableStateOf(settings.continueWatchingPreferEpisodeThumbnails) }
+    var nextUpFromFurthest by remember { mutableStateOf(settings.continueWatchingNextUpFromFurthestEpisode) }
+    var showUnairedNextUp by remember { mutableStateOf(settings.continueWatchingShowUnairedNextUp) }
     var styleOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
     var clickOpen by remember { mutableStateOf(false) }
@@ -135,6 +140,42 @@ fun ContinueWatchingSettingsScreen(
                             title = "Tap action",
                             subtitle = cwClickLabel(settings.continueWatchingClickAction),
                             onClick = { clickOpen = true }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Image,
+                            title = "Prefer episode thumbnails",
+                            subtitle = "Use episode stills instead of show posters in Next Up cards",
+                            checked = preferEpisodeThumbnails,
+                            onCheckedChange = {
+                                preferEpisodeThumbnails = it
+                                settings.continueWatchingPreferEpisodeThumbnails = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.SkipNext,
+                            title = "Next Up from furthest episode",
+                            subtitle = "Base the next episode on the furthest watched one — off uses the most recently played episode instead",
+                            checked = nextUpFromFurthest,
+                            onCheckedChange = {
+                                nextUpFromFurthest = it
+                                settings.continueWatchingNextUpFromFurthestEpisode = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Schedule,
+                            title = "Show unaired Next Up",
+                            subtitle = "Include upcoming episodes in Next Up before they air",
+                            checked = showUnairedNextUp,
+                            onCheckedChange = {
+                                showUnairedNextUp = it
+                                settings.continueWatchingShowUnairedNextUp = it
+                            }
                         )
                     },
                     {
