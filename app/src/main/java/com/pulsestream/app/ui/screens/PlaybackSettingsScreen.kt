@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
@@ -123,6 +124,7 @@ fun PlaybackSettingsScreen(
     var showParentalGuide by remember { mutableStateOf(settings.showParentalGuide) }
     var keepScreenOn by remember { mutableStateOf(settings.keepScreenOn) }
     var hideStatusBar by remember { mutableStateOf(settings.hideStatusBarInPlayer) }
+    var statusOverlay by remember { mutableStateOf(settings.playerStatusOverlayEnabled) }
     var showSkip by remember { mutableStateOf(settings.showSkipButton) }
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
     // Step 67: what the external player gets on handoff.
@@ -263,6 +265,18 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 hideStatusBar = it
                                 settings.hideStatusBarInPlayer = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.SignalCellularAlt,
+                            title = "Status overlay",
+                            subtitle = "Show network, clock and battery in a pill at the top while playing",
+                            checked = statusOverlay,
+                            onCheckedChange = {
+                                statusOverlay = it
+                                settings.playerStatusOverlayEnabled = it
                             }
                         )
                     },

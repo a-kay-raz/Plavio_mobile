@@ -169,8 +169,8 @@ fun PlayerDeviceStatusStrip(
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val (networkIcon, networkLabel) = when (status.networkType) {
@@ -187,13 +187,13 @@ fun PlayerDeviceStatusStrip(
             Text(
                 networkLabel,
                 color = Color.White.copy(alpha = 0.92f),
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 status.timeLabel,
                 color = Color.White.copy(alpha = 0.92f),
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             val percent = status.batteryPercent
@@ -209,7 +209,7 @@ fun PlayerDeviceStatusStrip(
                     Text(
                         "$percent%",
                         color = Color.White.copy(alpha = 0.92f),
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
