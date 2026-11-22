@@ -821,6 +821,11 @@ class StreamRepository(
     // Same single-flight sharing for the separate CS3 home refresh.
     private val cs3RefreshLock = Any()
     private var cs3RefreshJob: Deferred<List<CatalogRow>>? = null
+    // The selection the in-flight CS3 refresh was started for. A refresh
+    // started under a different selection is cancelled and replaced,
+    // never joined — joining it would return the OLD provider's rows
+    // after the user already switched pills on Home.
+    private var cs3RefreshSelection: String? = null
 
     private suspend fun <T> addonRequest(block: suspend () -> T): T {
         addonRequestGate.acquire()
@@ -847,21 +852,40 @@ class StreamRepository(
      * cache and returned with the home row prefs applied (hidden rows
      * dropped, CS3 sorts last). The search cache is NOT rebuilt here —
      * it picks the fresh rows up on the next Home load via
-     * loadCatalogRowsCached(). If a refresh is already in flight, joins
-     * it instead of starting duplicate work. Never throws.
+     * loadCatalogRowsCached(). If a refresh for the SAME selection is
+     * already in flight, joins it instead of starting duplicate work;
+     * if the selection changed since the in-flight job started, that
+     * job is cancelled and a fresh one starts for the new selection.
+     * Never throws (except CancellationException, which must propagate
+     * so a superseded caller never merges stale rows).
      */
     suspend fun refreshCloudStreamHomeRows(): List<CatalogRow> {
+        val selection = resolveCloudStreamHomeSelection()
         val job = synchronized(cs3RefreshLock) {
             val active = cs3RefreshJob?.takeIf { it.isActive }
-            active ?: catalogRefreshScope.async { doRefreshCloudStreamHomeRows() }
-                .also { cs3RefreshJob = it }
+            if (active != null && cs3RefreshSelection == selection) {
+                active
+            } else {
+                cs3RefreshJob?.cancel()
+                catalogRefreshScope.async { doRefreshCloudStreamHomeRows() }
+                    .also { cs3RefreshJob = it; cs3RefreshSelection = selection }
+            }
         }
         return job.await()
     }
 
     private suspend fun doRefreshCloudStreamHomeRows(): List<CatalogRow> =
         withContext(Dispatchers.IO) {
-            val rows = runCatching { loadCloudStreamHomeRows() }.getOrElse { emptyList() }
+            // Cancellation must propagate: runCatching would swallow it,
+            // let the superseded job "complete" with empty rows, and its
+            // caller could then merge those over the new selection's rows.
+            val rows = try {
+                loadCloudStreamHomeRows()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyList()
+            }
             if (rows.isNotEmpty()) {
                 db.catalogCacheDao().upsertAll(rows.map { row ->
                     CatalogCache("${row.addonId}|${row.type}|${row.catalogId}", row.addonId,
