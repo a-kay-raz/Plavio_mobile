@@ -565,7 +565,7 @@ fun HomeScreen(
                                 SectionTitle("Continue Watching")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     itemsIndexed(
                                         mainWatching,
@@ -600,7 +600,7 @@ fun HomeScreen(
                                 SectionTitle("Coming up")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     itemsIndexed(
                                         upcomingWatching,
@@ -633,7 +633,7 @@ fun HomeScreen(
                                 SectionTitle("Next Up")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     items(
                                         nextUp,
@@ -657,7 +657,7 @@ fun HomeScreen(
                                 SectionTitle("Release Radar")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     items(
                                         radarItems,
@@ -702,7 +702,7 @@ fun HomeScreen(
                                 )
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     itemsIndexed(
                                         row.items,
@@ -1534,13 +1534,13 @@ private fun HomeSkeleton() {
             Spacer(Modifier.height(10.dp))
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(5) {
                     ShimmerPoster(
                         modifier = Modifier
-                            .width(120.dp)
-                            .height(180.dp)
+                            .width(128.dp)
+                            .height(190.dp)
                     )
                 }
             }

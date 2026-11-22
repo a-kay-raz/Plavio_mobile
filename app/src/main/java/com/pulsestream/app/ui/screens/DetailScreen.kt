@@ -1402,7 +1402,7 @@ private fun DetailContent(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(2f / 3f)
+                                    .aspectRatio(0.675f)
                                     .shadow(
                                         if (isSel) 12.dp else 0.dp,
                                         RoundedCornerShape(14.dp),
@@ -1820,9 +1820,9 @@ private fun DetailContent(
                             contentDescription = null,
                             modifier = Modifier
                                 .width(74.dp)
-                                .aspectRatio(2f / 3f)
-                                .shadow(12.dp, RoundedCornerShape(10.dp))
-                                .clip(RoundedCornerShape(10.dp)),
+                                .aspectRatio(0.675f)
+                                .shadow(12.dp, RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Crop
                         )
                         Spacer(Modifier.width(12.dp))

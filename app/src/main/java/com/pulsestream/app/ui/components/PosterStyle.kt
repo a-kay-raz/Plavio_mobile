@@ -22,8 +22,8 @@ data class PosterStyle(
     val cornerRadius: Dp = 12.dp,
     val hideLabels: Boolean = false,
 ) {
-    /** Poster height keeps Plavio's 2:3 card ratio. */
-    val cardHeight: Dp get() = cardWidth * 180f / 128f
+    /** Poster height keeps Nuvio's poster ratio (0.675 width/height; 126x189 at the default width). */
+    val cardHeight: Dp get() = cardWidth / 0.675f
 }
 
 val LocalPosterStyle = staticCompositionLocalOf { PosterStyle() }
