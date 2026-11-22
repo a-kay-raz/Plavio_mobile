@@ -1460,6 +1460,9 @@ private fun PulseNavGraph(
             },
             onOpenActor = { personId, personName ->
                 navController.navigate(Routes.actor(personId, personName))
+            },
+            onOpenServerLibrary = { serverId, libraryId ->
+                navController.navigate(Routes.serverLibrary(serverId, libraryId))
             }
         )
         }
