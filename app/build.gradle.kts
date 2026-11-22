@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
 
@@ -138,6 +139,31 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.okhttp)
+    // CloudStream (CS3): pin the RESOLVED OkHttp runtime to the 5.3.2 that
+    // NiceHttp 0.4.18 was compiled against (same mechanism as the TV port).
+    // Without this the runtime silently falls back to 4.12.0 and plugin HTTP
+    // calls can throw NoSuchMethodError. The constraint is on
+    // `implementation`, so okhttp core resolves 5.3.2 on BOTH compile and
+    // runtime classpaths; the catalog `okhttp` version (4.12.0) now governs
+    // only the declared artifact, not the resolved one.
+    constraints {
+        implementation("com.squareup.okhttp3:okhttp") { version { strictly(libs.versions.okhttpRuntime.get()) } }
+    }
+    // CloudStream (CS3) runtime: vendored AAR + the libraries plugins link
+    // against (same set as the TV port; versions match Infuse/TV exactly).
+    implementation(files("libs/cloudstream-runtime-api-4.8.0-3496e5f.aar"))
+    implementation(libs.jackson.module.kotlin)
+    implementation(libs.jsoup)
+    implementation(libs.kotlinx.datetime)
+    implementation("com.github.Blatzar:NiceHttp:0.4.18")
+    implementation(libs.ksoup.jvm)
+    implementation(libs.conscrypt.android)
+    implementation(libs.fuzzywuzzy)
+    implementation(libs.rhino)
+    implementation(libs.tmdb.java)
+    implementation(libs.cryptography.core)
+    implementation(libs.cryptography.provider.optimal)
+    implementation(kotlin("reflect"))
     // Sentry crash reports (owner's order 2026-10-23; not Google).
     implementation("io.sentry:sentry-android:8.14.0")
     implementation(libs.coil.compose)
@@ -152,7 +178,11 @@ dependencies {
     // own open-source backend (see AppStats). Crash capture is the
     // in-app catcher in PulseApp, fully local.
     // YouTube trailer extraction for the Trailers tab (same as ShortsBox).
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") {
+        // Same exclusion as the TV port: NewPipeExtractor's rhino-engine
+        // conflicts with the rhino 1.8.1 added for CloudStream above.
+        exclude(group = "org.mozilla", module = "rhino-engine")
+    }
     ksp(libs.room.compiler)
 
     // Unit tests
