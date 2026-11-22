@@ -1,5 +1,8 @@
 package com.pulsestream.app.ui.screens
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +34,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.FilterChip
 import com.pulsestream.app.data.DiscoverCatalog
 import com.pulsestream.app.data.MetaPreview
@@ -72,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -83,6 +90,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.ShimmerPoster
@@ -105,7 +113,12 @@ import kotlin.math.roundToInt
 fun SearchScreen(
     repository: StreamRepository,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
-    onOpenActor: (Int, String) -> Unit = { _, _ -> }
+    onOpenActor: (Int, String) -> Unit = { _, _ -> },
+    // Server Discover titles without an IMDb id open their server library
+    // instead (Nuvio server titles open their detail the same way).
+    // MainActivity does not wire this yet — until it does, those taps
+    // are no-ops; see the w6-search batch report for the one-line wire-up.
+    onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit = { _, _ -> }
 ) {
     // Survive rotation: query/type/genre are saveable, and the debounced
     // search effect below re-runs on restore (results aren't parcelable,
@@ -135,9 +148,23 @@ fun SearchScreen(
     // RequestFailed): an empty result then means "search failed", not
     // "no matches".
     var searchFailed by remember { mutableStateOf(false) }
+    // True when that failure happened with no active network — the
+    // offline card, not the generic failure card.
+    var searchOffline by remember { mutableStateOf(false) }
+    // Whether any installed source can answer a typed search (Nuvio
+    // "No searchable catalogs" state). Recomputed per settled search.
+    var hasSearchableCatalogs by remember { mutableStateOf(true) }
+    // Bumps the debounced search effect so Retry re-runs the last query.
+    var searchRetryNonce by remember { mutableStateOf(0) }
     // Whether any enabled addon exists — the typed empty state needs it.
     val installedAddons by repository.addons.collectAsState(initial = emptyList())
     val hasActiveAddons = installedAddons.any { it.enabled }
+    // Media servers are content sources too (Nuvio "No content sources"
+    // means no addons AND no servers). Read once — servers are managed
+    // in Settings, so the screen is recreated when they change.
+    val hasConnectedServers = remember {
+        repository.settings.getMediaServers().isNotEmpty()
+    }
     var resultOwner by remember { mutableStateOf("") }
     val queryOwner = "${query.trim()}|$selectedType"
     val queryResults = if (queryOwner == resultOwner) results else emptyList()
@@ -218,6 +245,12 @@ fun SearchScreen(
             discoverGenre = null
             settings.discoverGenre = null
         }
+        // Server titles carry no genre data in Plavio's model, so a stale
+        // addon genre must not survive a switch to a server source.
+        if (picked?.addonId?.startsWith("server:") == true && discoverGenre != null) {
+            discoverGenre = null
+            settings.discoverGenre = null
+        }
     }
 
     suspend fun loadDiscoverPage(skip: Int) {
@@ -287,9 +320,10 @@ fun SearchScreen(
         }
     }
 
-    // Debounced live search: starts on the FIRST letter (owner's order
-    // 2026-10-26) — instant local-cache hits, then addon results.
-    LaunchedEffect(query, selectedType, actorsOnly) {
+    // Debounced live search (Nuvio 350ms): starts on the FIRST letter
+    // (owner's order 2026-10-26) — instant local-cache hits, then addon
+    // results. searchRetryNonce re-runs the last query for Retry.
+    LaunchedEffect(query, selectedType, actorsOnly, searchRetryNonce) {
         val q = query.trim()
         if (q.isEmpty()) {
             results = emptyList()
@@ -307,13 +341,21 @@ fun SearchScreen(
             genreOwner = owner
         }
         searching = true
-        delay(500)
+        delay(350)
         // Step 71: one call returns the sections; the flat list is derived
         // from them so the genre chips and empty states keep working.
         val outcome = repository.searchAllSections(q, selectedType)
         sections = outcome.sections
         results = outcome.sections.flatMap { it.items }
         searchFailed = outcome.remoteFailed
+        searchOffline = outcome.remoteFailed && isDeviceOffline(appContext)
+        // The "No searchable catalogs" verdict only matters for a
+        // settled, successful, empty search.
+        hasSearchableCatalogs = if (outcome.sections.isEmpty() && !outcome.remoteFailed) {
+            runCatching { repository.hasSearchableCatalogs() }.getOrDefault(true)
+        } else {
+            true
+        }
         resultOwner = owner
         searching = false
         // People ride the same settled query; skipped for 1-letter
@@ -324,6 +366,27 @@ fun SearchScreen(
         } else {
             emptyList()
         }
+    }
+
+    // Discover tap: addon titles open Detail as usual. Server titles
+    // open the Cinemeta detail page when the server reports an IMDb id
+    // (addonId "" = try every meta addon, Cinemeta first by rank);
+    // without one they open their server library.
+    fun onDiscoverTitleClick(meta: MetaPreview) {
+        val source = discoverSource
+        if (source?.addonId?.startsWith("server:") == true) {
+            val imdbId = repository.serverDiscoverImdbId(meta.id)
+            if (imdbId != null) {
+                onOpenDetail("", meta.type, imdbId)
+            } else {
+                onOpenServerLibrary(
+                    source.addonId.removePrefix("server:"),
+                    source.catalogId
+                )
+            }
+            return
+        }
+        onOpenDetail(source?.addonId ?: "", meta.type, meta.id)
     }
 
     // ---- Scroll-overlap (owner's approved sample 2026-10-26) ----
@@ -542,7 +605,13 @@ fun SearchScreen(
                                 Text(
                                     "Recent searches",
                                     color = TextSecondary,
-                                    style = MaterialTheme.typography.labelLarge
+                                    // Nuvio §2 section header: 12sp Bold,
+                                    // 0.8sp letter spacing, muted, no uppercase.
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.8.sp
+                                    )
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Switch(
@@ -588,13 +657,10 @@ fun SearchScreen(
                         }
                         if (popular.isNotEmpty()) {
                             item(key = "popular_header") {
-                                Text(
-                                    "Popular right now",
-                                    color = TextPrimary,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
+                                SearchSectionHeading(
+                                    text = "Popular right now",
                                     modifier = Modifier.padding(
-                                        start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp
+                                        start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp
                                     )
                                 )
                             }
@@ -609,11 +675,8 @@ fun SearchScreen(
                         }
                         if (discoverSources.isNotEmpty()) {
                             item(key = "discover_header") {
-                                Text(
-                                    "Discover",
-                                    color = TextPrimary,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
+                                SearchSectionHeading(
+                                    text = "Discover",
                                     modifier = Modifier.padding(
                                         start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp
                                     )
@@ -656,6 +719,10 @@ fun SearchScreen(
                                                 settings.discoverCatalogKey = source.key
                                                 val options = source.genreOptions
                                                 if (discoverGenre != null && options.isNotEmpty() && discoverGenre !in options) {
+                                                    discoverGenre = null
+                                                    settings.discoverGenre = null
+                                                }
+                                                if (source.addonId.startsWith("server:") && discoverGenre != null) {
                                                     discoverGenre = null
                                                     settings.discoverGenre = null
                                                 }
@@ -735,13 +802,7 @@ fun SearchScreen(
                                         row.forEach { meta ->
                                             PosterCard(
                                                 meta = meta,
-                                                onClick = {
-                                                    onOpenDetail(
-                                                        discoverSource?.addonId ?: "",
-                                                        meta.type,
-                                                        meta.id
-                                                    )
-                                                }
+                                                onClick = { onDiscoverTitleClick(meta) }
                                             )
                                         }
                                     }
@@ -833,28 +894,25 @@ fun SearchScreen(
                             .fillMaxSize()
                             .padding(top = headerDp)
                     ) {
-                        Text(
-                            "Actors",
-                            color = TextPrimary,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
+                        SearchSectionHeading(
+                            text = "Actors",
                             modifier = Modifier.padding(start = 16.dp, top = 12.dp)
                         )
                         Text(
                             "People matching \"${query.trim()}\"",
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
                         )
                         if (people.isEmpty()) {
                             Box(
                                 Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    "No actors for \"${query.trim()}\"",
-                                    color = TextSecondary,
-                                    style = MaterialTheme.typography.bodyMedium
+                                SearchEmptyStateCard(
+                                    icon = Icons.Filled.SearchOff,
+                                    title = "No actors for \"${query.trim()}\"",
+                                    subtitle = "Try a different name."
                                 )
                             }
                         } else {
@@ -917,19 +975,40 @@ fun SearchScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     // Typed empty states (Nuvio SearchEmptyStateReason):
-                    // no addons at all vs the remote leg failing vs a
-                    // genuine zero — each reads differently.
-                    Text(
-                        text = when {
-                            !hasActiveAddons -> "No addons installed — add one to search."
-                            searchFailed -> "Search failed — check your connection and try again."
-                            else -> "No results for \"$query\""
-                        },
-                        color = TextSecondary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 32.dp)
-                    )
+                    // a failed search first (offline gets its own card),
+                    // then no sources at all, no searchable catalogs, and
+                    // finally a genuine zero — each reads differently, and
+                    // Retry re-runs the last query where it can help.
+                    val q = query.trim()
+                    when {
+                        searchFailed && searchOffline -> SearchEmptyStateCard(
+                            icon = Icons.Filled.WifiOff,
+                            title = "You're offline",
+                            subtitle = "Check your connection and try again.",
+                            onRetry = { searchRetryNonce++ }
+                        )
+                        searchFailed -> SearchEmptyStateCard(
+                            icon = Icons.Filled.ErrorOutline,
+                            title = "Search failed",
+                            subtitle = "Check your connection and try again.",
+                            onRetry = { searchRetryNonce++ }
+                        )
+                        !hasActiveAddons && !hasConnectedServers -> SearchEmptyStateCard(
+                            icon = Icons.Filled.Search,
+                            title = "No content sources",
+                            subtitle = "Add an addon or connect a media server to search."
+                        )
+                        !hasSearchableCatalogs -> SearchEmptyStateCard(
+                            icon = Icons.Filled.SearchOff,
+                            title = "No searchable catalogs",
+                            subtitle = "None of your installed addons support search."
+                        )
+                        else -> SearchEmptyStateCard(
+                            icon = Icons.Filled.SearchOff,
+                            title = "No results found",
+                            subtitle = "Installed searchable catalogs did not return any matches for \"$q\"."
+                        )
+                    }
                 }
                 else -> {
                     // Covered zone: the Actors strip (All mode) — it
@@ -941,11 +1020,8 @@ fun SearchScreen(
                                 .padding(top = headerDp)
                                 .onSizeChanged { actorsHeightState.intValue = it.height }
                         ) {
-                            Text(
-                                "Actors",
-                                color = TextPrimary,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
+                            SearchSectionHeading(
+                                text = "Actors",
                                 modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
                             )
                             LazyRow(
@@ -1007,12 +1083,9 @@ fun SearchScreen(
                                 .background(LocalPalette.current.background)
                                 .zIndex(1f)
                         ) {
-                            Text(
-                                "Movies & Series",
-                                color = TextPrimary,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)
+                            SearchSectionHeading(
+                                text = "Movies & Series",
+                                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
                             )
                             LazyVerticalGrid(
                                 state = resultsGridState,
@@ -1052,15 +1125,18 @@ fun SearchScreen(
                                 visibleSections.forEach { section ->
                                     item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                                         Row(
+                                            // No horizontal padding here —
+                                            // the grid already pads 16dp,
+                                            // and the old 16dp doubled it.
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
+                                                .padding(top = 14.dp, bottom = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
                                                 section.addonName,
                                                 color = TextPrimary,
-                                                style = MaterialTheme.typography.titleSmall,
+                                                style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Spacer(Modifier.width(6.dp))
@@ -1206,17 +1282,19 @@ private fun GridPoster(item: CachedMeta, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize()
             )
         }
-        Spacer(Modifier.height(4.dp))
+        // Nuvio §2 poster title: below, 6dp gap, bodyMedium, 1 line;
+        // detail line = labelSmall, muted.
+        Spacer(Modifier.height(6.dp))
         Text(
             text = item.meta.name,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextPrimary,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = item.addonName,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelSmall,
             color = TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1263,4 +1341,95 @@ private fun mergeMetaItems(
         addAll(existing)
         incoming.forEach { if (seen.add(it.id)) add(it) }
     }
+}
+
+/** Section heading (Nuvio §2): titleLarge Bold + 60×4dp accent underline. */
+@Composable
+private fun SearchSectionHeading(text: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text,
+            color = TextPrimary,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier
+                .size(width = 60.dp, height = 4.dp)
+                .background(LocalPalette.current.accent, RoundedCornerShape(2.dp))
+        )
+    }
+}
+
+/**
+ * Typed-search empty state (Nuvio SearchEmptyStateReason): a group card
+ * — 24dp radius, liquid glass, 0.5dp border — with a 36dp accent icon
+ * tile, a bold title and a muted subtitle, plus a Retry action where
+ * retrying can help (failed / offline).
+ */
+@Composable
+private fun SearchEmptyStateCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onRetry: (() -> Unit)? = null
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp)
+            .liquidGlass(RoundedCornerShape(24.dp))
+            .border(0.5.dp, GlassBorder, RoundedCornerShape(24.dp))
+            .padding(horizontal = 20.dp, vertical = 24.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(
+                    LocalPalette.current.accent.copy(alpha = 0.12f),
+                    RoundedCornerShape(12.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = LocalPalette.current.accent,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            textAlign = TextAlign.Center
+        )
+        if (subtitle.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
+        }
+        if (onRetry != null) {
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = onRetry) {
+                Text("Retry", color = LocalPalette.current.accent)
+            }
+        }
+    }
+}
+
+/** True when the device has no usable network (Nuvio offline card). */
+private fun isDeviceOffline(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return true
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return true
+    return !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
