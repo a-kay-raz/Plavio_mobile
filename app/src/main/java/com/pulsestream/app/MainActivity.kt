@@ -189,6 +189,9 @@ import com.pulsestream.app.ui.screens.CollectionEditorScreen
 import com.pulsestream.app.ui.screens.CollectionFolderScreen
 import com.pulsestream.app.ui.screens.CollectionsScreen
 import com.pulsestream.app.ui.screens.TrackingSettingsScreen
+import com.pulsestream.app.ui.screens.AdvancedSettingsScreen
+import com.pulsestream.app.ui.screens.ContentDiscoverySettingsScreen
+import com.pulsestream.app.ui.screens.NotificationsSettingsScreen
 import com.pulsestream.app.ui.screens.ListsScreen
 import com.pulsestream.app.ui.screens.ListDetailScreen
 import com.pulsestream.app.ui.screens.BackupScreen

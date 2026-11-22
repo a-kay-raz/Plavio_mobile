@@ -864,6 +864,7 @@ fun SettingsScreen(
     }
 }
 
+@Composable
 private fun SocialIconRow() {
     val context = LocalContext.current
     val palette = LocalPalette.current

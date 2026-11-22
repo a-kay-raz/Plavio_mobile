@@ -404,7 +404,7 @@ object CustomPosterResolver {
             if (!ids.tmdbId.isNullOrBlank()) {
                 fallbacks += pattern
                     .replace("/tvdb/", "/tmdb/")
-                    .replace("{tvdb_id}", ids.tvdbId)
+                    .replace("{tvdb_id}", ids.tmdbId)
             }
         }
 
