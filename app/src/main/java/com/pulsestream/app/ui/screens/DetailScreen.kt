@@ -16,6 +16,7 @@ import androidx.compose.ui.res.painterResource
 import com.pulsestream.app.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -999,14 +1000,26 @@ private fun DetailContent(
     // Hero trailer autoplay (Nuvio D2): the first trailer autoplays muted in
     // the hero once resolved, fading in over the backdrop. Avio's
     // TrailerStream carries only title + ytId, so there is no official/type
-    // metadata to rank by — the first trailer is the candidate.
+    // metadata to rank by — rank by title instead, Nuvio's
+    // HeroTrailerSelector order: "Official Trailer" > "Trailer" >
+    // "Official" > anything else (first on ties).
     // TMDB trailers fill in when the addon serves none (effectiveTrailers).
-    val heroTrailer = effectiveTrailers.firstOrNull()
+    val heroTrailer = effectiveTrailers.maxByOrNull { trailer ->
+        val t = trailer.title.lowercase()
+        when {
+            "official" in t && "trailer" in t -> 70
+            "trailer" in t -> 60
+            "official" in t -> 50
+            else -> 0
+        }
+    }
     var heroTrailerUrl by remember(meta.id) { mutableStateOf<String?>(null) }
     var heroTrailerAudioUrl by remember(meta.id) { mutableStateOf<String?>(null) }
     var heroTrailerReady by remember(meta.id) { mutableStateOf(false) }
     var heroTrailerFinished by remember(meta.id) { mutableStateOf(false) }
-    var heroMuted by remember(meta.id) { mutableStateOf(!settings.heroTrailerStartUnmuted) }
+    var heroMuted by remember(meta.id) { mutableStateOf(lastHeroTrailerMuted ?: !settings.heroTrailerStartUnmuted) }
+    // Nuvio HeroTrailerAudioState: the mute choice survives across titles.
+    val toggleHeroMute = { heroMuted = !heroMuted; lastHeroTrailerMuted = heroMuted }
     LaunchedEffect(meta.id, heroTrailer?.ytId, settings.heroTrailerPlayback, settings.heroTrailerStartDelaySeconds) {
         heroTrailerUrl = null
         heroTrailerAudioUrl = null
@@ -2237,7 +2250,9 @@ private fun DetailContent(
                 }
                 // Hero trailer: once resolved, the trailer plays over the
                 // backdrop and fades in when ready; the fade below stays
-                // on top so the title text keeps reading.
+                // on top so the title text keeps reading. Nuvio
+                // DetailHero: it pauses once the hero has scrolled away
+                // (playWhenReady gates on !isHeroCollapsed).
                 if (trailerUrl != null && !heroTrailerFinished) {
                     Box(
                         Modifier
@@ -2254,11 +2269,28 @@ private fun DetailContent(
                             videoUrl = trailerUrl,
                             audioUrl = heroTrailerAudioUrl,
                             muted = heroMuted,
+                            play = !isHeroCollapsed,
                             onReady = { heroTrailerReady = true },
                             onEnded = { heroTrailerFinished = true },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
+                }
+                // Nuvio DetailHero: the whole hero toggles mute once the
+                // trailer is ready (no ripple). Composed before the fade
+                // and the action row, so the row's buttons stay on top
+                // and keep working.
+                if (trailerUrl != null && !heroTrailerFinished) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                enabled = heroTrailerReady,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { toggleHeroMute() }
+                            )
+                    )
                 }
                 // 7-stop fade to the theme background (Nuvio DetailHero).
                 Box(
@@ -2319,7 +2351,7 @@ private fun DetailContent(
                     // playing in the hero.
                     if (trailerUrl != null && !heroTrailerFinished && heroTrailerReady) {
                         IconButton(
-                            onClick = { heroMuted = !heroMuted },
+                            onClick = { toggleHeroMute() },
                             modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
                         ) {
                             Icon(
@@ -3107,11 +3139,16 @@ private data class PlaybackIds(
  * YouTube qualities are merged with their separate audio track, the same
  * merge the full player applies via `PlaybackRequest.mergeAudioUrl`.
  */
+/** Last hero-trailer mute choice (Nuvio HeroTrailerAudioState): the mute toggle survives across titles. */
+@Volatile
+private var lastHeroTrailerMuted: Boolean? = null
+
 @Composable
 private fun HeroTrailerPlayer(
     videoUrl: String,
     audioUrl: String?,
     muted: Boolean,
+    play: Boolean,
     onReady: () -> Unit,
     onEnded: () -> Unit,
     modifier: Modifier = Modifier
@@ -3132,11 +3169,12 @@ private fun HeroTrailerPlayer(
             setMediaSource(source)
             repeatMode = Player.REPEAT_MODE_OFF
             volume = if (muted) 0f else 1f
-            playWhenReady = true
+            playWhenReady = play
             prepare()
         }
     }
     LaunchedEffect(muted) { player.volume = if (muted) 0f else 1f }
+    LaunchedEffect(play) { player.playWhenReady = play }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
