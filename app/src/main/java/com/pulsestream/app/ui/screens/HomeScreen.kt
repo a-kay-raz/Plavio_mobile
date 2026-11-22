@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -109,6 +110,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.pulsestream.app.data.NextUpEpisode
 import com.pulsestream.app.data.PlaybackRequest
+import com.pulsestream.app.data.StreamProber
+import com.pulsestream.app.data.isPlayableLiveStreamUrl
+import com.pulsestream.app.data.parseReleaseYear
+import com.pulsestream.app.data.streamQualityLabel
 import com.pulsestream.app.data.StoredHomeRowPrefs
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.heroSourceKeys
@@ -133,6 +138,8 @@ import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.SectionTitle
 import com.pulsestream.app.ui.components.ShimmerPoster
 import com.pulsestream.app.ui.components.liquidGlass
+import com.pulsestream.app.ui.components.pickAutoplayStream
+import com.pulsestream.app.ui.theme.isLightColor
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.GlassBorder
 import com.pulsestream.app.ui.theme.GlassWhite
@@ -140,8 +147,10 @@ import com.pulsestream.app.ui.components.tmdbSizedImage
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -697,6 +706,8 @@ fun HomeScreen(
                                     repository = repository,
                                     listState = homeListState,
                                     onOpenDetail = onOpenDetail,
+                                    onResumePlayback = onResumePlayback,
+                                    watching = sortedWatching,
                                     heroFocus = heroFocus
                                 )
                             }
@@ -1093,6 +1104,8 @@ private fun HeroCarousel(
     repository: StreamRepository,
     listState: LazyListState,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
+    onResumePlayback: () -> Unit,
+    watching: List<PlaybackState>,
     heroFocus: FocusRequester? = null
 ) {
     val pagerState = rememberPagerState(pageCount = { featured.size })
@@ -1124,6 +1137,108 @@ private fun HeroCarousel(
     // + neighbours, Nuvio-style) and merged over the catalog preview.
     var heroExtras by remember { mutableStateOf<Map<String, HeroMetaExtras>>(emptyMap()) }
     val scope = rememberCoroutineScope()
+
+    // Hero Play state: key ("type|id") of the title whose Play is
+    // resolving, null when idle. One Play at a time; the pill shows a
+    // spinner and ignores taps while its title resolves.
+    var heroPlayingKey by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Hero Play — Detail's Play button without leaving Home: meta →
+     * episode (the unfinished episode first, else the first episode,
+     * same as Detail's resume auto-select) → first streams → best
+     * pick → player. Returns false when nothing playable resolved,
+     * so the caller falls back to opening Details (never a dead
+     * button, never a crash).
+     */
+    suspend fun playHeroTitle(item: FeaturedTitle): Boolean {
+        val meta = runCatching {
+            repository.getMetaFromAny(null, item.meta.type, item.meta.id)
+        }.getOrNull() ?: return false
+        val video = if (meta.type == "series") {
+            val resume = watching
+                .filter { it.season > 0 && it.episode > 0 && it.positionMs > 0 &&
+                    (it.durationMs <= 0 || it.positionMs < it.durationMs) }
+                .filter { it.videoId.contains(meta.id) || it.key.contains(meta.id) ||
+                    it.imdbId == meta.id }
+                .maxByOrNull { it.updatedAt }
+                ?.let { entry ->
+                    meta.videos.firstOrNull { v -> v.season == entry.season && v.episode == entry.episode }
+                }
+            // No resume: first episode of the first season, Detail's
+            // default selection.
+            resume ?: meta.videos
+                .sortedWith(compareBy({ it.season }, { it.episode }, { it.title }))
+                .firstOrNull()
+        } else null
+        val videoId = video?.id ?: meta.id
+        val year = parseReleaseYear(meta.releaseInfo).takeIf { it > 0 }
+        // First streams (the session cache answers instantly on a
+        // re-tap); the flow completes once every addon answered, so a
+        // title with no sources anywhere returns null instead of
+        // hanging.
+        val first = withTimeoutOrNull(20_000L) {
+            repository.streamResultsFlow(meta.type, videoId, title = meta.name, year = year)
+                .firstOrNull { it.streams.isNotEmpty() }
+        } ?: return false
+        val playable = first.streams.filter { isPlayableLiveStreamUrl(it.url) }
+        if (playable.isEmpty()) return false
+        val isEpisode = meta.type == "series"
+        val stream = if (repository.settings.streamAutoplay) {
+            pickAutoplayStream(playable, repository.settings, isEpisode) ?: return false
+        } else {
+            // Detail prefers the probed fastest stream (max 2.5s wait),
+            // else the first playable stream.
+            val probed = withTimeoutOrNull(2_500L) { StreamProber.findBest(playable, isTv) }
+            probed?.takeIf { !it.url.startsWith("infohash:") } ?: playable.first()
+        }
+        // Same request Detail's startPlayback builds, so the player,
+        // resume, subtitles and in-player episode switching all behave
+        // identically.
+        val title = if (meta.type == "series" && video != null) {
+            "${meta.name} S${video.season}E${video.episode}"
+        } else meta.name
+        val vid = video?.id ?: meta.id
+        repository.pendingPlayback = PlaybackRequest(
+            streamUrl = stream.url,
+            headers = stream.headers,
+            mimeType = stream.mimeType,
+            title = title,
+            poster = video?.thumbnail ?: meta.poster,
+            videoId = vid,
+            subtitles = first.subtitles,
+            imdbId = vid.substringBefore(":"),
+            season = video?.season ?: 0,
+            episode = video?.episode ?: 0,
+            isMovie = meta.type == "movie",
+            type = meta.type,
+            streamLabel = streamQualityLabel(stream),
+            sourceName = stream.sourceName,
+            streams = first.streams,
+            episodes = meta.videos,
+            metaId = meta.id,
+            seriesName = meta.name.takeIf { meta.type != "movie" },
+            episodeTitle = video?.title,
+            playFromStart = false
+        )
+        onResumePlayback()
+        return true
+    }
+
+    fun onPlayHero(item: FeaturedTitle) {
+        val key = "${item.meta.type}|${item.meta.id}"
+        if (heroPlayingKey != null) return
+        heroPlayingKey = key
+        scope.launch {
+            try {
+                if (!playHeroTitle(item)) {
+                    onOpenDetail(item.addonId, item.meta.type, item.meta.id)
+                }
+            } finally {
+                heroPlayingKey = null
+            }
+        }
+    }
     LaunchedEffect(pagerState.currentPage, featured) {
         val current = pagerState.currentPage
         listOf(current - 1, current, current + 1)
@@ -1302,29 +1417,73 @@ private fun HeroCarousel(
                         )
                     }
                     Spacer(Modifier.height(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .clickable { onOpenDetail(item.addonId, meta.type, meta.id) }
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    // Play + Details, centred (Nuvio hero actions): Play
+                    // is a filled accent capsule, Details the glass pill.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        val playing = heroPlayingKey == "${meta.type}|${meta.id}"
+                        val accent = LocalPalette.current.accent
+                        // Same light/dark rule as the accent picker check.
+                        val onAccent = if (isLightColor(accent)) Color.Black else Color.White
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(accent)
+                                .clickable(enabled = !playing) { onPlayHero(item) }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Info,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = TextPrimary
-                            )
-                            Text(
-                                text = "Details",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (playing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = onAccent,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = onAccent
+                                    )
+                                }
+                                Text(
+                                    text = "Play",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = onAccent
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable { onOpenDetail(item.addonId, meta.type, meta.id) }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = TextPrimary
+                                )
+                                Text(
+                                    text = "Details",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                            }
                         }
                     }
                     // Page dots below the content (Nuvio HeroPageIndicator):
