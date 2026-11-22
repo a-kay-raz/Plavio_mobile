@@ -5,6 +5,9 @@ package com.pulsestream.app.data
 import android.content.Context
 import com.pulsestream.app.player.CENTER_MIX_LEVEL_MAX_DB
 import com.pulsestream.app.player.CENTER_MIX_LEVEL_MIN_DB
+import com.pulsestream.app.ui.components.DefaultCardDepthEdgeCoverage
+import com.pulsestream.app.ui.components.DefaultCardDepthEdgeStrength
+import com.pulsestream.app.ui.components.DefaultCardDepthSheenStrength
 import kotlin.math.roundToInt
 import java.io.File
 import android.content.SharedPreferences
@@ -886,6 +889,57 @@ class SettingsStore(
     var posterHideLabels: Boolean
         get() = prefs.getBoolean(KEY_POSTER_HIDE_LABELS, false)
         set(value) = prefs.edit().putBoolean(KEY_POSTER_HIDE_LABELS, value).apply()
+
+    /** W10: catalog landscape mode (Nuvio PosterCustomizationSettingsPage) —
+     * catalog rows render 1.77 landscape cards from the title's backdrop art
+     * (MetaPreview.background), falling back to the poster. */
+    var posterCatalogLandscapeMode: Boolean
+        get() = prefs.getBoolean(KEY_POSTER_LANDSCAPE_MODE, false)
+        set(value) = prefs.edit().putBoolean(KEY_POSTER_LANDSCAPE_MODE, value).apply()
+
+    /** W10: always show the title logo on landscape cards instead of a
+     * custom landscape poster (Nuvio alwaysShowLandscapeClearlogo). */
+    var posterLandscapeClearlogo: Boolean
+        get() = prefs.getBoolean(KEY_POSTER_LANDSCAPE_CLEARLOGO, false)
+        set(value) = prefs.edit().putBoolean(KEY_POSTER_LANDSCAPE_CLEARLOGO, value).apply()
+
+    /** W10: custom poster URL pattern with {placeholders} (Nuvio
+     * CustomPosterUrlRepository); blank = off. */
+    var customPosterPattern: String
+        get() = prefs.getString(KEY_CUSTOM_POSTER_PATTERN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CUSTOM_POSTER_PATTERN, value).apply()
+
+    /** W10: surfaces the custom poster pattern applies to (keys of
+     * CustomPosterScreen); empty = all surfaces. */
+    var customPosterScreens: Set<String>
+        get() = prefs.getStringSet(KEY_CUSTOM_POSTER_SCREENS, emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_CUSTOM_POSTER_SCREENS, value.toSet()).apply()
+
+    /** W10: card depth effect master switch (Nuvio CardDepthStyleRepository). */
+    var cardDepthEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CARD_DEPTH_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_CARD_DEPTH_ENABLED, value).apply()
+
+    /** W10: card depth edge-glow strength, 0..100 (Nuvio default 28 = Subtle). */
+    var cardDepthEdgeStrength: Int
+        get() = prefInt(KEY_CARD_DEPTH_EDGE, DefaultCardDepthEdgeStrength).coerceIn(0, 100)
+        set(value) = prefs.edit().putInt(KEY_CARD_DEPTH_EDGE, value.coerceIn(0, 100)).apply()
+
+    /** W10: card depth sheen strength, 0..100 (Nuvio default 10 = Soft). */
+    var cardDepthSheenStrength: Int
+        get() = prefInt(KEY_CARD_DEPTH_SHEEN, DefaultCardDepthSheenStrength).coerceIn(0, 100)
+        set(value) = prefs.edit().putInt(KEY_CARD_DEPTH_SHEEN, value.coerceIn(0, 100)).apply()
+
+    /** W10: card depth edge coverage, 0..100 (Nuvio default 0 = Top). */
+    var cardDepthEdgeCoverage: Int
+        get() = prefInt(KEY_CARD_DEPTH_COVERAGE, DefaultCardDepthEdgeCoverage).coerceIn(0, 100)
+        set(value) = prefs.edit().putInt(KEY_CARD_DEPTH_COVERAGE, value.coerceIn(0, 100)).apply()
+
+    /** W10: surfaces the card depth effect applies to (keys of
+     * CardDepthSurface); empty = all surfaces. */
+    var cardDepthSurfaces: Set<String>
+        get() = prefs.getStringSet(KEY_CARD_DEPTH_SURFACES, emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_CARD_DEPTH_SURFACES, value.toSet()).apply()
 
     /** Step 68: show the parental-guide overlay when playback starts. */
     var showParentalGuide: Boolean
@@ -1993,6 +2047,15 @@ class SettingsStore(
         private const val KEY_POSTER_CORNER_RADIUS_DP = "poster_corner_radius_dp"
         private const val KEY_POSTER_CARD_WIDTH_DP = "poster_card_width_dp"
         private const val KEY_POSTER_HIDE_LABELS = "poster_hide_labels"
+        private const val KEY_POSTER_LANDSCAPE_MODE = "poster_catalog_landscape_mode"
+        private const val KEY_POSTER_LANDSCAPE_CLEARLOGO = "poster_landscape_clearlogo"
+        private const val KEY_CUSTOM_POSTER_PATTERN = "custom_poster_pattern"
+        private const val KEY_CUSTOM_POSTER_SCREENS = "custom_poster_screens"
+        private const val KEY_CARD_DEPTH_ENABLED = "card_depth_enabled"
+        private const val KEY_CARD_DEPTH_EDGE = "card_depth_edge"
+        private const val KEY_CARD_DEPTH_SHEEN = "card_depth_sheen"
+        private const val KEY_CARD_DEPTH_COVERAGE = "card_depth_coverage"
+        private const val KEY_CARD_DEPTH_SURFACES = "card_depth_surfaces"
         private const val KEY_SHOW_PARENTAL_GUIDE = "show_parental_guide"
         private const val KEY_FORWARD_SUBTITLES_TO_EXTERNAL_PLAYER = "forward_subtitles_to_external_player"
         private const val KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER = "send_skip_segments_to_external_player"

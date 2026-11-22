@@ -42,6 +42,7 @@ import androidx.compose.material3.FilterChip
 import com.pulsestream.app.data.DiscoverCatalog
 import com.pulsestream.app.data.MetaPreview
 import com.pulsestream.app.ui.components.OrbitDots
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.ShimmerPoster
 import androidx.compose.ui.platform.LocalConfiguration
@@ -802,7 +803,8 @@ fun SearchScreen(
                                         row.forEach { meta ->
                                             PosterCard(
                                                 meta = meta,
-                                                onClick = { onDiscoverTitleClick(meta) }
+                                                onClick = { onDiscoverTitleClick(meta) },
+                                                surface = CustomPosterScreen.SEARCH
                                             )
                                         }
                                     }

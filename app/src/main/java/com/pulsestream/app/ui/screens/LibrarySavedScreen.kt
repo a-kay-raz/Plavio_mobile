@@ -68,6 +68,7 @@ import com.pulsestream.app.data.filterSavedItemsByFacets
 import com.pulsestream.app.data.parseReleaseDate
 import com.pulsestream.app.data.parseReleaseYear
 import com.pulsestream.app.data.sortSavedItems
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -580,7 +581,8 @@ fun LibrarySavedScreen(
                                                 releaseInfo = item.releaseDate
                                                     ?: item.year.takeIf { it > 0 }?.toString()
                                             ),
-                                            onClick = { onOpenDetail(item.addonId, item.type, item.metaId) }
+                                            onClick = { onOpenDetail(item.addonId, item.type, item.metaId) },
+                                            surface = CustomPosterScreen.LIBRARY
                                         )
                                     }
                                 }
@@ -611,7 +613,8 @@ fun LibrarySavedScreen(
                                 releaseInfo = item.releaseDate
                                     ?: item.year.takeIf { it > 0 }?.toString()
                             ),
-                            onClick = { onOpenDetail(item.addonId, item.type, item.metaId) }
+                            onClick = { onOpenDetail(item.addonId, item.type, item.metaId) },
+                            surface = CustomPosterScreen.LIBRARY
                         )
                     }
                 }
