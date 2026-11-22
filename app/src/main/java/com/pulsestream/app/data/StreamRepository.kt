@@ -19,7 +19,10 @@ import com.pulsestream.app.data.cloudstream.CloudStreamStorage
 import com.pulsestream.app.data.cloudstream.CloudStreamStreamSource
 import com.pulsestream.app.data.cloudstream.CloudStreamLoadItem
 import com.pulsestream.app.data.cloudstream.CloudStreamSearchItem
+import com.pulsestream.app.data.servers.MediaServer
 import com.pulsestream.app.data.servers.MediaServerOps
+import com.pulsestream.app.data.servers.ServerItem
+import com.pulsestream.app.data.servers.ServerLibraryKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -399,11 +402,16 @@ class StreamRepository(
      * Discover sources (Step 20, Nuvio buildDiscoverSources): every
      * catalog of every enabled catalog addon, with its genre options.
      * Manifests come from the same cache the Home refresh uses.
+     *
+     * Nuvio v1.17 Discover also lists server title libraries: one entry
+     * per library per type (MIXED libraries split into movie + series so
+     * the type chips stay clean). A dead server only ever yields no
+     * entries, never a failed Discover.
      */
     suspend fun discoverCatalogs(): List<DiscoverCatalog> = withContext(Dispatchers.IO) {
         val installed = enabledAddons()
         coroutineScope {
-            installed.map { addon ->
+            val addonSources = installed.map { addon ->
                 async {
                     val manifest = runCatching { cachedManifest(addon.baseUrl) }.getOrNull()
                         ?: return@async emptyList<DiscoverCatalog>()
@@ -421,8 +429,45 @@ class StreamRepository(
                     }
                 }
             }.awaitAll().flatten()
+            val serverSources = settings.getMediaServers().map { server ->
+                async {
+                    runCatching { MediaServerOps.getLibraries(server) }.getOrDefault(emptyList())
+                        .flatMap { library ->
+                            val types = when (library.kind) {
+                                ServerLibraryKind.MOVIE -> listOf("movie")
+                                ServerLibraryKind.SERIES -> listOf("series")
+                                ServerLibraryKind.MIXED -> listOf("movie", "series")
+                            }
+                            types.map { type ->
+                                DiscoverCatalog(
+                                    addonId = serverDiscoverAddonId(server.id),
+                                    addonName = "${server.kind.label} • ${server.name}",
+                                    baseUrl = server.baseUrl,
+                                    type = type,
+                                    catalogId = library.id,
+                                    catalogName = library.name
+                                )
+                            }
+                        }
+                }
+            }.awaitAll().flatten()
+            addonSources + serverSources
         }
     }
+
+    /** Session cache for server Discover libraries (full list per library). */
+    private val serverDiscoverCache =
+        java.util.concurrent.ConcurrentHashMap<String, List<MetaPreview>>()
+
+    /** MetaPreview id -> IMDb id for server Discover titles (tap -> detail). */
+    private val serverDiscoverImdbIds =
+        java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Discover addonId for a media server's libraries ("server:{id}"). */
+    private fun serverDiscoverAddonId(serverId: String): String = "server:$serverId"
+
+    /** IMDb id for a server Discover title, or null when the server reports none. */
+    fun serverDiscoverImdbId(metaId: String): String? = serverDiscoverImdbIds[metaId]
 
     /**
      * One Discover page (Step 20): the plain catalog page, or the
@@ -436,6 +481,11 @@ class StreamRepository(
         withContext(Dispatchers.IO) {
             val hideUnreleased = runCatching { homeRowPrefs().hideUnreleasedContent }.getOrDefault(false)
             val currentYear = java.time.LocalDate.now().year
+            // Media-server library (Nuvio v1.17 server-title leg): paged
+            // client-side, see fetchServerDiscoverPage.
+            if (source.addonId.startsWith("server:")) {
+                return@withContext fetchServerDiscoverPage(source, skip, hideUnreleased, currentYear)
+            }
             val raw: List<MetaPreview> = if (genre.isNullOrBlank()) {
                 api.fetchCatalogPage(source.baseUrl, source.type, source.catalogId, skip)
             } else {
@@ -449,6 +499,67 @@ class StreamRepository(
             val items = raw.filter { !hideUnreleased || !it.isUnreleased(currentYear) }
             DiscoverPage(items = items, rawCount = raw.size)
         }
+
+    /**
+     * Discover page for a media-server library (Nuvio v1.17 server-title
+     * leg). The whole library is fetched once per session and paged
+     * client-side, 100 per page like the addon skip= pages — the server
+     * clients have no paging of their own. Server items carry no genre
+     * data in Plavio's model, so a genre filter is ignored here rather
+     * than emptying the page; the screen resets a stale addon genre when
+     * a server source is picked. A removed server yields an empty page;
+     * an unreachable one yields an empty page too (the clients swallow
+     * transport errors), exactly like an empty addon catalog.
+     */
+    private suspend fun fetchServerDiscoverPage(
+        source: DiscoverCatalog,
+        skip: Int,
+        hideUnreleased: Boolean,
+        currentYear: Int
+    ): DiscoverPage {
+        val serverId = source.addonId.removePrefix("server:")
+        val server = settings.getMediaServers().firstOrNull { it.id == serverId }
+            ?: return DiscoverPage(emptyList(), 0)
+        val cacheKey = "${server.id}|${source.catalogId}"
+        // Plain get + put (not getOrPut — its lambda cannot suspend).
+        // Two concurrent loads may both fetch; the last put wins, same data.
+        val all = serverDiscoverCache[cacheKey] ?: run {
+            val library = MediaServerOps.getLibraries(server)
+                .firstOrNull { it.id == source.catalogId }
+            val loaded = if (library == null) emptyList() else {
+                MediaServerOps.getLibraryItems(server, library)
+                    .filter { it.type == "movie" || it.type == "series" }
+                    .map { it.toServerDiscoverMeta(server) }
+            }
+            serverDiscoverCache[cacheKey] = loaded
+            loaded
+        }
+        val page = all
+            .filter { !hideUnreleased || !it.isUnreleased(currentYear) }
+            .drop(skip).take(100)
+        return DiscoverPage(items = page, rawCount = page.size)
+    }
+
+    /**
+     * Server library item -> Discover MetaPreview, in Home's server-row
+     * shape: the id is the established "server:{serverId}:{contentId}"
+     * identity, so playback/save hooks keep working. The item's IMDb id
+     * (when the server reports one) is kept in [serverDiscoverImdbIds]
+     * so a Discover tap can open the Cinemeta detail page for it.
+     */
+    private fun ServerItem.toServerDiscoverMeta(server: MediaServer): MetaPreview {
+        val metaId = "server:${server.id}:$contentId"
+        imdbId?.let { serverDiscoverImdbIds[metaId] = it }
+        return MetaPreview(
+            id = metaId,
+            type = type,
+            name = title,
+            poster = posterUrl,
+            background = backdropUrl,
+            description = overview,
+            releaseInfo = year?.toString()
+        )
+    }
 
     /**
      * Trending movies + series for the Trailers tab. Cinemeta first
@@ -1477,6 +1588,23 @@ class StreamRepository(
             }
             SearchSectionsOutcome(sections, remoteFailed)
         }
+
+    /**
+     * Whether any installed source can answer a typed search: an addon
+     * catalog declaring the "search" extra, or a runnable CS3 provider.
+     * Drives the distinct "No searchable catalogs" empty state (Nuvio
+     * SearchEmptyStateReason) — installed sources exist, but none of them
+     * is searchable, so an empty result is not a "no matches" verdict.
+     * Manifests are TTL-cached, so this is cheap inside a search.
+     */
+    suspend fun hasSearchableCatalogs(): Boolean = withContext(Dispatchers.IO) {
+        val addonSearchable = try {
+            enabledAddons().filter { it.hasCatalog }.any { addon ->
+                cachedManifest(addon.baseUrl)?.catalogs?.any { it.supportsSearch } == true
+            }
+        } catch (_: Exception) { false }
+        addonSearchable || CloudStreamRepository.runnablePlugins().isNotEmpty()
+    }
 
     /**
      * Phase 2: CS3 search sections for [searchAllSections] — one
