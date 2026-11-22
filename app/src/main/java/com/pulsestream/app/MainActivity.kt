@@ -195,6 +195,7 @@ import com.pulsestream.app.ui.screens.BackupScreen
 import com.pulsestream.app.ui.screens.MediaServersScreen
 import com.pulsestream.app.ui.screens.ServerLibraryScreen
 import com.pulsestream.app.ui.screens.IntegrationsScreen
+import com.pulsestream.app.ui.screens.TmdbEnrichmentScreen
 import com.pulsestream.app.ui.theme.AccentTheme
 import com.pulsestream.app.ui.theme.AppTheme
 import com.pulsestream.app.ui.theme.isLightColor
@@ -1654,6 +1655,13 @@ private fun PulseNavGraph(
         }
         composable(Routes.INTEGRATIONS) {
             IntegrationsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onGoToTmdbEnrichment = { navController.navigate(Routes.TMDB_ENRICHMENT) }
+            )
+        }
+        composable(Routes.TMDB_ENRICHMENT) {
+            TmdbEnrichmentScreen(
                 repository = repository,
                 onBack = { navController.popBackStack() }
             )
