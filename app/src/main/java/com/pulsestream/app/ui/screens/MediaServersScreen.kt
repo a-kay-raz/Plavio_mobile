@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
@@ -54,7 +53,6 @@ import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -113,7 +111,7 @@ fun MediaServersScreen(
                     Text(
                         text = "Your own Jellyfin, Emby, Plex or Silo libraries show up as rows on Home, and play in the built-in player.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
+                        color = V117Muted,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
@@ -135,17 +133,19 @@ fun MediaServersScreen(
                             .clickable { showAdd = true },
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(16.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Filled.Dns, contentDescription = null, tint = LocalPalette.current.accent)
+                            SettingsIconTile(Icons.Filled.Dns, "Add a server")
+                            Spacer(Modifier.width(14.dp))
                             Text(
                                 text = "Add a server",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
                                 color = TextPrimary,
-                                modifier = Modifier.padding(start = 12.dp).weight(1f)
+                                modifier = Modifier.weight(1f)
                             )
-                            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
+                            V117Chevron()
                         }
                     }
                     Spacer(Modifier.height(16.dp))
@@ -176,7 +176,7 @@ fun MediaServersScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showAdd = false }) { Text("Cancel", color = TextSecondary) }
+                TextButton(onClick = { showAdd = false }) { Text("Cancel", color = V117Muted) }
             },
             containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
         )
@@ -258,8 +258,8 @@ private fun ServerCard(
                 Modifier.fillMaxWidth().clickable { onToggleExpand() },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Storage, contentDescription = null, tint = LocalPalette.current.accent)
-                Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                SettingsIconTile(Icons.Filled.Storage, server.name)
+                Column(Modifier.padding(start = 14.dp).weight(1f)) {
                     Text(
                         text = server.name,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -267,23 +267,19 @@ private fun ServerCard(
                     )
                     Text(
                         text = "${server.kind.label} · ${server.username ?: server.baseUrl}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted
                     )
                 }
-                Icon(
-                    Icons.Filled.ChevronRight,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = TextSecondary
-                )
+                V117Chevron()
             }
             if (expanded) {
                 Spacer(Modifier.height(8.dp))
                 when {
-                    loadingLibraries -> Text("Loading libraries…", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    loadingLibraries -> Text("Loading libraries…", color = V117Muted, style = MaterialTheme.typography.bodySmall)
                     libraries.isNullOrEmpty() -> Text(
                         "No libraries found — check the server is reachable.",
-                        color = TextSecondary,
+                        color = V117Muted,
                         style = MaterialTheme.typography.bodySmall
                     )
                     else -> libraries!!.forEach { library ->
@@ -395,7 +391,7 @@ private fun MediaBrowserSignInDialog(
             ) { Text(if (busy) "Signing in…" else "Sign in") }
         },
         dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
         containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
     )
@@ -456,7 +452,7 @@ private fun PlexSignInDialog(
                     resources != null -> {
                         Text(
                             "Choose the server to use:",
-                            color = TextSecondary,
+                            color = V117Muted,
                             textAlign = TextAlign.Center
                         )
                         Spacer(Modifier.height(8.dp))
@@ -486,7 +482,7 @@ private fun PlexSignInDialog(
                     pin != null -> {
                         Text(
                             "Enter this code at plex.tv/link — or tap Open Plex to go there",
-                            color = TextSecondary,
+                            color = V117Muted,
                             textAlign = TextAlign.Center
                         )
                         Spacer(Modifier.height(8.dp))
@@ -503,11 +499,11 @@ private fun PlexSignInDialog(
                         Text(
                             "This window closes automatically once you approve the code.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
+                            color = V117Muted,
                             textAlign = TextAlign.Center
                         )
                     }
-                    busy -> Text("Talking to plex.tv…", color = TextSecondary, textAlign = TextAlign.Center)
+                    busy -> Text("Talking to plex.tv…", color = V117Muted, textAlign = TextAlign.Center)
                     else -> Text(
                         error ?: "Couldn't reach plex.tv.",
                         color = MaterialTheme.colorScheme.error,
@@ -530,7 +526,7 @@ private fun PlexSignInDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
         containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
     )
@@ -608,7 +604,7 @@ private fun SiloSignInDialog(
                     Text(
                         "Enter your Silo server address, then approve the code in your browser.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        color = V117Muted,
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(12.dp))
@@ -626,7 +622,7 @@ private fun SiloSignInDialog(
                 } else {
                     Text(
                         "Enter this code on your Silo server — or tap Open Silo to go there",
-                        color = TextSecondary,
+                        color = V117Muted,
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(8.dp))
@@ -643,7 +639,7 @@ private fun SiloSignInDialog(
                     Text(
                         "This window closes automatically once you approve the code.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        color = V117Muted,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -678,7 +674,7 @@ private fun SiloSignInDialog(
             }
         },
         dismissButton = {
-            TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
         containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
     )

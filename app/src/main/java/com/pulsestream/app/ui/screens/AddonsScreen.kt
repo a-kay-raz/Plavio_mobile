@@ -90,7 +90,6 @@ import com.pulsestream.app.ui.tv.tvFocusRing
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.GlassBorder
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -385,7 +384,7 @@ fun AddonsScreen(
                                 Icon(
                                     Icons.Filled.Download,
                                     contentDescription = "Import addon bundle",
-                                    tint = TextSecondary
+                                    tint = V117Muted
                                 )
                             }
                             // Enter bundle-share selection mode.
@@ -397,7 +396,7 @@ fun AddonsScreen(
                                 Icon(
                                     Icons.Filled.Share,
                                     contentDescription = "Share addons",
-                                    tint = TextSecondary
+                                    tint = V117Muted
                                 )
                             }
                         }
@@ -405,7 +404,7 @@ fun AddonsScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatPill("$visibleEnabledCount enabled", LocalPalette.current.accent)
-                        StatPill("${visibleAddons.size} installed", TextSecondary)
+                        StatPill("${visibleAddons.size} installed", V117Muted)
                         val starred = visibleAddons.count { it.starred }
                         if (starred > 0) StatPill("$starred starred", Color(0xFFFBBF24))
                     }
@@ -413,11 +412,10 @@ fun AddonsScreen(
             }
 
             item(key = "overview") {
-                Text(
+                // Nuvio v1.17 section label (gap report §2): 12sp Bold,
+                // ls 0.8sp, muted #969CA3, no uppercase.
+                V117SectionLabel(
                     "Overview",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextSecondary,
                     modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                 )
             }
@@ -468,11 +466,8 @@ fun AddonsScreen(
             }
 
             item(key = "add-addon-header") {
-                Text(
+                V117SectionLabel(
                     "Add Addon",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextSecondary,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
             }
@@ -519,7 +514,7 @@ fun AddonsScreen(
                                 containerColor = LocalPalette.current.accent.copy(alpha = 0.2f),
                                 contentColor = LocalPalette.current.accent,
                                 disabledContainerColor = Color.White.copy(alpha = 0.06f),
-                                disabledContentColor = TextSecondary
+                                disabledContentColor = V117Muted
                             )
                         ) {
                             if (installing) {
@@ -554,11 +549,8 @@ fun AddonsScreen(
                 }
             } else {
                 item(key = "installed-header") {
-                    Text(
+                    V117SectionLabel(
                         "Installed Addons",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextSecondary,
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                     )
                 }
@@ -632,7 +624,7 @@ fun AddonsScreen(
                                 Icons.Filled.Share,
                                 contentDescription = null,
                                 tint = if (chosen.isNotEmpty()) Color(0xFF0A0A12)
-                                else TextSecondary.copy(alpha = 0.5f),
+                                else V117Muted.copy(alpha = 0.5f),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(8.dp))
@@ -641,7 +633,7 @@ fun AddonsScreen(
                                 else "Share ${chosen.size} addon${if (chosen.size == 1) "" else "s"}",
                                 fontWeight = FontWeight.Bold,
                                 color = if (chosen.isNotEmpty()) Color(0xFF0A0A12)
-                                else TextSecondary.copy(alpha = 0.5f)
+                                else V117Muted.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -653,7 +645,7 @@ fun AddonsScreen(
                     Text(
                         "★ Starred addons are tried first for streams and autoplay.",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary.copy(alpha = 0.7f),
+                        color = V117Muted.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -722,7 +714,7 @@ private fun StatColumn(value: String, label: String) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary
+            color = V117Muted
         )
     }
 }
@@ -766,7 +758,7 @@ private fun InstallAddonCard(onClick: () -> Unit) {
                 Text(
                     "Paste a manifest URL",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = V117Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -774,7 +766,7 @@ private fun InstallAddonCard(onClick: () -> Unit) {
             Icon(
                 Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = TextSecondary
+                tint = V117Muted
             )
         }
     }
@@ -821,7 +813,7 @@ private fun TvSetupCard(onClick: () -> Unit) {
                 Text(
                     "Scan a QR code, paste URLs on your phone",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = V117Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -829,7 +821,7 @@ private fun TvSetupCard(onClick: () -> Unit) {
             Icon(
                 Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = TextSecondary
+                tint = V117Muted
             )
         }
     }
@@ -887,14 +879,13 @@ private fun AddonCard(
                         Text(
                             "Version ${addon.version}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            color = V117Muted
                         )
                     }
                 }
-                androidx.compose.material3.Switch(
+                SettingsGradientSwitch(
                     checked = addon.enabled,
-                    onCheckedChange = onToggle,
-                    colors = settingsSwitchColors()
+                    onCheckedChange = onToggle
                 )
             }
 
@@ -909,7 +900,7 @@ private fun AddonCard(
                         Icon(
                             Icons.Filled.KeyboardArrowUp,
                             contentDescription = "Move up",
-                            tint = TextSecondary
+                            tint = V117Muted
                         )
                     }
                 }
@@ -918,7 +909,7 @@ private fun AddonCard(
                         Icon(
                             Icons.Filled.KeyboardArrowDown,
                             contentDescription = "Move down",
-                            tint = TextSecondary
+                            tint = V117Muted
                         )
                     }
                 }
@@ -933,7 +924,7 @@ private fun AddonCard(
                         Icon(
                             Icons.Filled.Refresh,
                             contentDescription = "Refresh",
-                            tint = TextSecondary
+                            tint = V117Muted
                         )
                     }
                 }
@@ -941,7 +932,7 @@ private fun AddonCard(
                     Icon(
                         if (addon.starred) Icons.Filled.Star else Icons.Outlined.Star,
                         contentDescription = "Star",
-                        tint = if (addon.starred) Color(0xFFFBBF24) else TextSecondary
+                        tint = if (addon.starred) Color(0xFFFBBF24) else V117Muted
                     )
                 }
                 if (addon.configurable || addon.configurationRequired) {
@@ -959,7 +950,7 @@ private fun AddonCard(
                         },
                         modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Configure", tint = TextSecondary)
+                        Icon(Icons.Filled.Settings, contentDescription = "Configure", tint = V117Muted)
                     }
                 }
                 IconButton(onClick = { showDeleteDialog = true }, modifier = Modifier.size(40.dp)) {
@@ -1006,7 +997,7 @@ private fun AddonCard(
                 Text(
                     addon.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = V117Muted,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1021,7 +1012,7 @@ private fun AddonCard(
                 Text(
                     typesText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary.copy(alpha = 0.7f)
+                    color = V117Muted.copy(alpha = 0.7f)
                 )
             }
         }
@@ -1034,7 +1025,7 @@ private fun AddonCard(
             text = {
                 Text(
                     "This will remove the addon from Plavio.",
-                    color = TextSecondary
+                    color = V117Muted
                 )
             },
             confirmButton = {
@@ -1049,7 +1040,7 @@ private fun AddonCard(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = V117Muted)
                 }
             }
         )
@@ -1067,7 +1058,7 @@ private fun MetaPill(text: String) {
         Text(
             text,
             style = MaterialTheme.typography.labelSmall,
-            color = TextSecondary,
+            color = V117Muted,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
@@ -1077,7 +1068,7 @@ private fun MetaPill(text: String) {
 @Composable
 private fun OnOffPill(enabled: Boolean, onToggle: (Boolean) -> Unit) {
     val bg = if (enabled) LocalPalette.current.accent else Color(0xFF2A2A36)
-    val fg = if (enabled) Color(0xFF0A0A12) else TextSecondary
+    val fg = if (enabled) Color(0xFF0A0A12) else V117Muted
     Surface(
         color = bg,
         shape = RoundedCornerShape(50),
@@ -1130,7 +1121,7 @@ private fun AddonLogo(addon: InstalledAddon, size: androidx.compose.ui.unit.Dp) 
             initial,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Black,
-            color = if (addon.enabled) Color(0xFF0A0A12) else TextSecondary
+            color = if (addon.enabled) Color(0xFF0A0A12) else V117Muted
         )
         if (addon.logoUrl.isNotBlank()) {
             AsyncImage(
@@ -1209,7 +1200,7 @@ private fun TrackingAddonConsentDialog(
                 Text(
                     "${manifest.name} is a tracking addon. Plavio will send it your activity: what you play, pause and stop with the playback position, what you add to or remove from your library, and what you mark as watched or unwatched. This data leaves Plavio and is handled by the addon's developer and the service it connects to.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    color = V117Muted
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(
@@ -1242,7 +1233,7 @@ private fun TrackingAddonConsentDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         }
     )
 }
@@ -1264,13 +1255,13 @@ private fun AddAddonDialog(
                 Text(
                     "Paste the addon manifest URL (it usually ends with /manifest.json).",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    color = V117Muted
                 )
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    placeholder = { Text("https://…/manifest.json", color = TextSecondary) },
+                    placeholder = { Text("https://…/manifest.json", color = V117Muted) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1309,7 +1300,7 @@ private fun AddAddonDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         }
     )
 }
@@ -1336,13 +1327,13 @@ private fun ImportBundleDialog(
                     Text(
                         "Paste a bundle link someone shared with you — every addon in it installs at once.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        color = V117Muted
                     )
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        placeholder = { Text("plavio-addons://…", color = TextSecondary) },
+                        placeholder = { Text("plavio-addons://…", color = V117Muted) },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -1406,7 +1397,7 @@ private fun ImportBundleDialog(
         },
         dismissButton = {
             if (result == null) {
-                TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+                TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
             }
         }
     )

@@ -32,7 +32,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,7 +59,6 @@ import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
@@ -99,7 +97,7 @@ fun CollectionEditorScreen(
         val current = collection
         if (current == null) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Text("Loading…", color = TextSecondary)
+                Text("Loading…", color = V117Muted)
             }
             return@GlowBackground
         }
@@ -136,60 +134,43 @@ fun CollectionEditorScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Pin to top", color = TextPrimary, style = MaterialTheme.typography.bodyMedium)
-                        Text("Pinned collections show first on Home", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                // Flat v1.17 toggle rows (gap report §2): 16dp / 14dp,
+                // gradient switch 52x32dp / 24dp thumb / 180ms tween.
+                V117ToggleRow(
+                    icon = null,
+                    title = "Pin to top",
+                    subtitle = "Pinned collections show first on Home",
+                    checked = current.pinToTop,
+                    onCheckedChange = { save(current.copy(pinToTop = it)) }
+                )
+                V117ToggleRow(
+                    icon = null,
+                    title = "Show \"All\" tab",
+                    subtitle = "An All tab merges every folder's titles",
+                    checked = current.showAllTab,
+                    onCheckedChange = { save(current.copy(showAllTab = it)) }
+                )
+                V117NavRow(
+                    icon = null,
+                    title = "View mode",
+                    subtitle = if (current.viewMode == "ROWS") "Rows" else "Tabbed grid",
+                    onClick = { viewModePickerOpen = true },
+                    trailing = {
+                        Text("Change", color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        V117Chevron()
                     }
-                    Switch(
-                        checked = current.pinToTop,
-                        onCheckedChange = { save(current.copy(pinToTop = it)) }
-                    )
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Show \"All\" tab", color = TextPrimary, style = MaterialTheme.typography.bodyMedium)
-                        Text("An All tab merges every folder's titles", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(
-                        checked = current.showAllTab,
-                        onCheckedChange = { save(current.copy(showAllTab = it)) }
-                    )
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { viewModePickerOpen = true },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("View mode", color = TextPrimary, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            if (current.viewMode == "ROWS") "Rows" else "Tabbed grid",
-                            color = TextSecondary, style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    Text("Change", color = MaterialTheme.colorScheme.primary)
-                }
+                )
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Folders",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = TextPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
+                    V117SectionLabel("Folders", modifier = Modifier.weight(1f))
                     TextButton(onClick = { showAddFolder = true }) { Text("+ Add folder") }
                 }
                 if (folders.isEmpty()) {
                     Text(
                         text = "No folders yet — add one, then give it sources (an addon catalog, a TMDB collection/list/discover, or a Trakt list).",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
+                        color = V117Muted,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
@@ -284,11 +265,11 @@ private fun FolderEditorCard(
                     Text(
                         text = "${sources.size} ${if (sources.size == 1) "source" else "sources"} — tap to view titles",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        color = V117Muted
                     )
                 }
                 IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Folder options", tint = TextSecondary)
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Folder options", tint = V117Muted)
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
@@ -323,7 +304,7 @@ private fun FolderEditorCard(
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Tile:", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                Text("Tile:", color = V117Muted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.padding(horizontal = 4.dp))
                 listOf("poster" to "Poster", "landscape" to "Landscape", "square" to "Square").forEach { (value, label) ->
                     FilterChip(
@@ -448,12 +429,12 @@ private fun SourceRow(
             )
             Text(
                 text = count?.let { "$it titles" } ?: "Resolving…",
-                color = TextSecondary,
+                color = V117Muted,
                 style = MaterialTheme.typography.bodySmall
             )
         }
         IconButton(onClick = onDelete) {
-            Icon(Icons.Filled.Delete, contentDescription = "Remove source", tint = TextSecondary)
+            Icon(Icons.Filled.Delete, contentDescription = "Remove source", tint = V117Muted)
         }
     }
 }
@@ -611,18 +592,18 @@ private fun AddonSourceForm(
     val catalog = catalogList.firstOrNull { it.id == catalogId }
 
     if (enabled.isEmpty()) {
-        Text("No addons installed — install one first.", color = TextSecondary)
+        Text("No addons installed — install one first.", color = V117Muted)
         return
     }
     Row(Modifier.fillMaxWidth().clickable { addonPickerOpen = true }.padding(vertical = 8.dp)) {
         Column(Modifier.weight(1f)) {
-            Text("Addon", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("Addon", color = V117Muted, style = MaterialTheme.typography.bodySmall)
             Text(addon?.name ?: "Select an addon", color = TextPrimary)
         }
     }
     Row(Modifier.fillMaxWidth().clickable { if (catalogList.isNotEmpty()) catalogPickerOpen = true }.padding(vertical = 8.dp)) {
         Column(Modifier.weight(1f)) {
-            Text("Catalog", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("Catalog", color = V117Muted, style = MaterialTheme.typography.bodySmall)
             Text(
                 catalog?.let { "${it.name} (${it.type})" } ?: if (catalogList.isEmpty()) "Loading catalogs…" else "Select a catalog",
                 color = TextPrimary
@@ -632,7 +613,7 @@ private fun AddonSourceForm(
     if (catalog?.supportsGenre == true && catalog.genreOptions.isNotEmpty()) {
         Row(Modifier.fillMaxWidth().clickable { genrePickerOpen = true }.padding(vertical = 8.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("Genre", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                Text("Genre", color = V117Muted, style = MaterialTheme.typography.bodySmall)
                 Text(genre ?: "All genres", color = TextPrimary)
             }
         }
@@ -712,7 +693,7 @@ private fun TmdbSourceForm(
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().clickable { sortPickerOpen = true }.padding(vertical = 8.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("Sort by", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                Text("Sort by", color = V117Muted, style = MaterialTheme.typography.bodySmall)
                 Text(sortBy, color = TextPrimary)
             }
         }
@@ -761,7 +742,7 @@ private fun TraktSourceForm(
     if (lists != null && lists!!.isNotEmpty()) {
         Row(Modifier.fillMaxWidth().clickable { listPickerOpen = true }.padding(vertical = 8.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("Trakt list", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                Text("Trakt list", color = V117Muted, style = MaterialTheme.typography.bodySmall)
                 Text(
                     lists!!.firstOrNull { it.id == listId }?.name ?: "Select a list",
                     color = TextPrimary
@@ -780,7 +761,7 @@ private fun TraktSourceForm(
         if (lists != null) {
             Text(
                 "Link Trakt in Integrations to pick from your lists.",
-                color = TextSecondary, style = MaterialTheme.typography.bodySmall
+                color = V117Muted, style = MaterialTheme.typography.bodySmall
             )
         }
     }
