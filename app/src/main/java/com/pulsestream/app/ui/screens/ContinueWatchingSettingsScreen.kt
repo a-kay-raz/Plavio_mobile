@@ -201,7 +201,7 @@ fun ContinueWatchingSettingsScreen(
             description = "How resume cards look in the Home row.",
             options = listOf(
                 "card" to "Card — wide thumbnail with progress",
-                "wide" to "Wide — larger thumbnail",
+                "wide" to "Wide — horizontal card with progress",
                 "poster" to "Poster — tall poster card"
             ),
             selected = settings.continueWatchingStyle,
