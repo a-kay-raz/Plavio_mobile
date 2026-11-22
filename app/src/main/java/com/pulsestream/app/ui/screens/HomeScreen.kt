@@ -899,14 +899,17 @@ fun HomeScreen(
     }
 
     // Resume prompt on launch: the interrupted title, offered once.
-    if (resumePromptOpen && resumePromptItem != null) {
-        val remainingMs = resumePromptItem.durationMs - resumePromptItem.positionMs
+    // Capture into a local val: resumePromptItem is a delegated property
+    // (by remember), so the compiler forbids smart-casting it after a null check.
+    val promptItem = resumePromptItem
+    if (resumePromptOpen && promptItem != null) {
+        val remainingMs = promptItem.durationMs - promptItem.positionMs
         AlertDialog(
             onDismissRequest = { resumePromptOpen = false },
             title = { Text("Continue watching?", color = TextPrimary) },
             text = {
                 Column {
-                    Text(resumePromptItem.title, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(promptItem.title, color = TextPrimary, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (remainingMs > 60_000) "${formatRemaining(remainingMs)} left"
@@ -917,7 +920,7 @@ fun HomeScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { resumePromptOpen = false; resumeItem(resumePromptItem) }) {
+                TextButton(onClick = { resumePromptOpen = false; resumeItem(promptItem) }) {
                     Text("Resume", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
                 }
             },
