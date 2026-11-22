@@ -1032,6 +1032,33 @@ class SettingsStore(
         set(value) = prefs.edit().putBoolean(KEY_CW_RESUME_PROMPT, value).apply()
 
     /**
+     * Prefer episode thumbnails in Next Up cards (Nuvio useEpisodeThumbnails):
+     * the episode still when one exists, else the show poster. Default true.
+     * Resume cards already store the episode thumbnail as their art when the
+     * episode was played from Detail, so the toggle's visible effect is on
+     * the Next Up rail (NextUpEpisode carries both thumbnail and poster).
+     */
+    var continueWatchingPreferEpisodeThumbnails: Boolean
+        get() = prefs.getBoolean(KEY_CW_PREFER_EPISODE_THUMBNAILS, true)
+        set(value) = prefs.edit().putBoolean(KEY_CW_PREFER_EPISODE_THUMBNAILS, value).apply()
+
+    /**
+     * Next Up from the furthest watched episode (Nuvio upNextFromFurthestEpisode):
+     * ON (default) seeds Next Up from the highest season/episode watched;
+     * OFF seeds from the most recently played episode (recency via the resume
+     * list's updatedAt) — the rewatch behaviour. Plain boolean keys, so
+     * exportAllPrefs() backs them up automatically (non-secret).
+     */
+    var continueWatchingNextUpFromFurthestEpisode: Boolean
+        get() = prefs.getBoolean(KEY_CW_NEXT_UP_FROM_FURTHEST, true)
+        set(value) = prefs.edit().putBoolean(KEY_CW_NEXT_UP_FROM_FURTHEST, value).apply()
+
+    /** Show unaired next-up episodes (Nuvio showUnairedNextUp): OFF hides episodes that have not aired yet. Default true. */
+    var continueWatchingShowUnairedNextUp: Boolean
+        get() = prefs.getBoolean(KEY_CW_SHOW_UNAIRED_NEXT_UP, true)
+        set(value) = prefs.edit().putBoolean(KEY_CW_SHOW_UNAIRED_NEXT_UP, value).apply()
+
+    /**
      * Resume-prompt state (Nuvio ResumePromptRepository, scoped port):
      * armed with the playing video id when the player opens, cleared
      * when the player is left normally. A set flag at launch means the
@@ -2018,6 +2045,12 @@ class SettingsStore(
         private const val KEY_CW_SORT_MODE = "continue_watching_sort_mode"
         private const val KEY_CW_CLICK_ACTION = "continue_watching_click_action"
         private const val KEY_CW_RESUME_PROMPT = "continue_watching_resume_prompt"
+        /** Prefer episode thumbnails in CW/Next Up cards (Nuvio useEpisodeThumbnails): default true. */
+        private const val KEY_CW_PREFER_EPISODE_THUMBNAILS = "continue_watching_prefer_episode_thumbnails"
+        /** Next Up seed from the furthest watched episode (Nuvio upNextFromFurthestEpisode): default true. */
+        private const val KEY_CW_NEXT_UP_FROM_FURTHEST = "continue_watching_next_up_from_furthest"
+        /** Show unaired next-up episodes (Nuvio showUnairedNextUp): default true. */
+        private const val KEY_CW_SHOW_UNAIRED_NEXT_UP = "continue_watching_show_unaired_next_up"
         private const val KEY_RESUME_PROMPT_WAS_IN_PLAYER = "resume_prompt_was_in_player"
         private const val KEY_RESUME_PROMPT_LAST_VIDEO_ID = "resume_prompt_last_video_id"
         private const val KEY_SKIP_INTRO_OFFSET_SECONDS = "skip_intro_offset_seconds"
