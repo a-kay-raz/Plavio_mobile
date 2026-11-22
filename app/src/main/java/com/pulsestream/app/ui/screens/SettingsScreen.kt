@@ -8,8 +8,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.animation.core.animateDpAsState
@@ -64,7 +62,6 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Link
@@ -1433,7 +1430,6 @@ private fun SettingsStaticRowGrouped(
 
 @Composable
 fun AboutCard() {
-    val context = LocalContext.current
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
     ) {
@@ -1459,36 +1455,6 @@ fun AboutCard() {
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .clickable {
-                        // Devices with no browser must not force-close.
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.plavio.site"))
-                            )
-                        }
-                    }
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Icon(
-                    Icons.Filled.Language,
-                    contentDescription = null,
-                    tint = LocalPalette.current.accent,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "plavio.site",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = LocalPalette.current.accent,
-                    textAlign = TextAlign.Center
-                )
-            }
-            Spacer(Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center

@@ -126,7 +126,7 @@ internal object WhatsNewCommitsRepository {
         }
     }
 
-    // Same defensive read as RelatedContent: a wrong-typed field defaults
+    // Same defensive read as StremioParser.str: a wrong-typed field defaults
     // instead of jsonPrimitive throwing and killing the parse.
     private fun JsonObject.str(key: String): String? =
         (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }

@@ -1819,17 +1819,16 @@ private fun formatRemaining(ms: Long): String {
     return if (h > 0) "${h}h ${m}m" else "${m}m"
 }
 
-/** Starter addons for the guided empty-state steps (Sample C). */
-private const val META_ADDON_URL = "https://meta.plavio.site/manifest.json"
-private const val STREAMS_ADDON_URL = "https://hd.plavio.site/manifest.json"
+/** Starter addon for the guided empty-state step (Sample C). */
+private const val META_ADDON_URL = "https://v3-cinemeta.strem.io/manifest.json"
 
 private enum class SetupStepState { Idle, Adding, Added, Failed }
 
 /**
- * "No addons yet" — Sample C (owner's pick 2026-10-24): two guided
- * steps instead of one vague button. Metadata first, streams second,
- * each with its own one-tap Add (the same install path as onboarding);
- * the ghost button below opens the full Addons screen for any URL.
+ * "No addons yet" — Sample C (owner's pick 2026-10-24): one guided
+ * metadata step with its own one-tap Add (the same install path as
+ * onboarding); the ghost button below opens the full Addons screen
+ * for any URL, including streams addons.
  */
 @Composable
 private fun NoAddonsEmptyState(
@@ -1839,9 +1838,7 @@ private fun NoAddonsEmptyState(
 ) {
     val scope = rememberCoroutineScope()
     var metaStep by remember { mutableStateOf(SetupStepState.Idle) }
-    var streamsStep by remember { mutableStateOf(SetupStepState.Idle) }
     var metaFail by remember { mutableStateOf<String?>(null) }
-    var streamsFail by remember { mutableStateOf<String?>(null) }
 
     fun add(
         url: String,
@@ -1856,9 +1853,8 @@ private fun NoAddonsEmptyState(
                 set(SetupStepState.Added)
                 onReload()
             } else {
-                // Show the real reason: a server that answers (e.g.
-                // PlavioMeta's disabled deployment → HTTP 402) is not the
-                // user's connection.
+                // Show the real reason: a server that answers with an
+                // error (e.g. HTTP 402) is not the user's connection.
                 setFail(repository.addonInstallFailureMessage(result.exceptionOrNull()))
                 set(SetupStepState.Failed)
             }
@@ -1879,7 +1875,7 @@ private fun NoAddonsEmptyState(
             color = TextPrimary
         )
         Text(
-            "Two kinds of addons fill this screen. Add one of each, or any addon by URL.",
+            "Addons fill this screen with catalogs. Add a metadata addon below, or any addon by URL.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -1887,18 +1883,10 @@ private fun NoAddonsEmptyState(
         SetupStepRow(
             number = 1,
             title = "Metadata",
-            subtitle = "Posters, cast and episode guides \u2014 e.g. PlavioMeta",
+            subtitle = "Posters, cast and episode guides \u2014 e.g. Cinemeta",
             state = metaStep,
             failText = metaFail,
             onAdd = { add(META_ADDON_URL, { metaStep = it }, { metaFail = it }) }
-        )
-        SetupStepRow(
-            number = 2,
-            title = "Streams",
-            subtitle = "Movies and shows to actually play \u2014 e.g. PlavioHD",
-            state = streamsStep,
-            failText = streamsFail,
-            onAdd = { add(STREAMS_ADDON_URL, { streamsStep = it }, { streamsFail = it }) }
         )
         Text(
             "Or tap \u201CAdd an addon\u201D below to paste any addon URL.",
