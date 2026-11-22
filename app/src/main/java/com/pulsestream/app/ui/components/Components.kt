@@ -211,7 +211,7 @@ fun PosterCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(posterStyle.cardHeight)
-                .liquidGlass(RoundedCornerShape(posterStyle.cornerRadius))
+                .clip(RoundedCornerShape(posterStyle.cornerRadius))
         ) {
             SafePosterImage(
                 model = tmdbSizedImage(meta.poster, "w342"),
@@ -266,12 +266,10 @@ fun PosterCard(
             Spacer(Modifier.height(6.dp))
             Text(
                 text = meta.name,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.bodyMedium,
                 color = TextPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                lineHeight = MaterialTheme.typography.bodySmall.lineHeight
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             val sub = meta.releaseInfo?.take(4)
             if (sub != null) {

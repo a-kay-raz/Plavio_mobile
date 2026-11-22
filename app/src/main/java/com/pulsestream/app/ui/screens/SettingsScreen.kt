@@ -975,39 +975,34 @@ fun SettingsToggleRow(
         SettingsToggleRowGrouped(icon, title, subtitle, checked, onCheckedChange, compact)
         return
     }
-    GlassCard(
-        modifier = Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = if (compact) 3.dp else 5.dp),
-        onClick = { onCheckedChange(!checked) }
+    // Infuse-style flat row (no card): 16dp horizontal / 14dp vertical,
+    // plain 24dp accent icon, bodyLarge title + bodyMedium subtitle.
+    Box(
+        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }
     ) {
         Row(
             Modifier.fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = if (compact) 9.dp else 14.dp),
+                .padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (compact) {
-                Icon(
-                    icon,
-                    contentDescription = title,
-                    tint = LocalPalette.current.accent,
-                    modifier = Modifier.size(21.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-            } else {
-                SettingsIconTile(icon, title)
-                Spacer(Modifier.width(14.dp))
-            }
+            Icon(
+                icon,
+                contentDescription = title,
+                tint = LocalPalette.current.accent,
+                modifier = Modifier.size(if (compact) 21.dp else 24.dp)
+            )
+            Spacer(Modifier.width(if (compact) 12.dp else 14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
                     color = TextPrimary
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
             }
@@ -1075,7 +1070,7 @@ private fun SettingsClearRow(
     }
 }
 
-/** Navigation row: icon tile + title/subtitle + chevron, opens a sub-screen. */
+/** Navigation row (Infuse-style flat): icon + title/subtitle + chevron, opens a sub-screen. */
 @Composable
 fun SettingsNavRow(
     icon: ImageVector,
@@ -1088,39 +1083,34 @@ fun SettingsNavRow(
         SettingsNavRowGrouped(icon, title, subtitle, onClick, compact)
         return
     }
-    GlassCard(
-        modifier = Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = if (compact) 3.dp else 5.dp),
-        onClick = onClick
+    // Infuse-style flat row (no card): 16dp horizontal / 14dp vertical,
+    // plain 24dp accent icon, bodyLarge title + bodyMedium subtitle.
+    Box(
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Row(
             Modifier.fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = if (compact) 9.dp else 14.dp),
+                .padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (compact) {
-                Icon(
-                    icon,
-                    contentDescription = title,
-                    tint = LocalPalette.current.accent,
-                    modifier = Modifier.size(21.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-            } else {
-                SettingsIconTile(icon, title)
-                Spacer(Modifier.width(14.dp))
-            }
+            Icon(
+                icon,
+                contentDescription = title,
+                tint = LocalPalette.current.accent,
+                modifier = Modifier.size(if (compact) 21.dp else 24.dp)
+            )
+            Spacer(Modifier.width(if (compact) 12.dp else 14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
                     color = TextPrimary
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
             }
@@ -1149,41 +1139,37 @@ fun SettingsStaticRow(
         SettingsStaticRowGrouped(icon, title, subtitle, trailing, dimmed, onClick, compact)
         return
     }
-    GlassCard(
-        modifier = Modifier
+    // Infuse-style flat row (no card): 16dp horizontal / 14dp vertical,
+    // plain 24dp accent icon, bodyLarge title + bodyMedium subtitle.
+    Box(
+        Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = if (compact) 3.dp else 5.dp)
-            .alpha(if (dimmed) 0.6f else 1f),
-        onClick = onClick
+            .alpha(if (dimmed) 0.6f else 1f)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Row(
             Modifier.fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = if (compact) 9.dp else 14.dp),
+                .padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (compact) {
-                Icon(
-                    icon,
-                    contentDescription = title,
-                    tint = LocalPalette.current.accent,
-                    modifier = Modifier.size(21.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-            } else {
-                SettingsIconTile(icon, title)
-                Spacer(Modifier.width(14.dp))
-            }
+            Icon(
+                icon,
+                contentDescription = title,
+                tint = LocalPalette.current.accent,
+                modifier = Modifier.size(if (compact) 21.dp else 24.dp)
+            )
+            Spacer(Modifier.width(if (compact) 12.dp else 14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
                     color = TextPrimary
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
             }
@@ -1204,20 +1190,20 @@ private fun SettingsToggleRowGrouped(
 ) {
     Box(Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (compact) {
                 Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(21.dp))
                 Spacer(Modifier.width(12.dp))
             } else {
-                SettingsIconTile(icon, title)
+                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(14.dp))
             }
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = TextPrimary)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
             Spacer(Modifier.width(12.dp))
             Switch(checked = checked, onCheckedChange = onCheckedChange, colors = settingsSwitchColors())
@@ -1235,20 +1221,20 @@ private fun SettingsNavRowGrouped(
 ) {
     Box(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (compact) {
                 Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(21.dp))
                 Spacer(Modifier.width(12.dp))
             } else {
-                SettingsIconTile(icon, title)
+                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(14.dp))
             }
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = TextPrimary)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
             Spacer(Modifier.width(12.dp))
             Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
@@ -1273,20 +1259,20 @@ private fun SettingsStaticRowGrouped(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (compact) {
                 Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(21.dp))
                 Spacer(Modifier.width(12.dp))
             } else {
-                SettingsIconTile(icon, title)
+                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(14.dp))
             }
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = TextPrimary)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
             Spacer(Modifier.width(12.dp))
             trailing()
