@@ -52,7 +52,7 @@ import com.pulsestream.app.ui.theme.TextSecondary
  * (StreamRepository.pendingTvChannels), so it only ever shows the
  * channels visible there.
  *
- * Deviations from Nuvio: no favorites filter (Plavio has no TV
+ * Deviations from Nuvio: no favorites filter (Avio has no TV
  * channel favorites) and no now/next EPG rows (the zap list carries
  * no EPG ids — EPG lives in the Live tab via matchEpgToChannels).
  * Groups come from the channel's catalog name (TvChannelRef.group).

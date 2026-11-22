@@ -42,7 +42,7 @@ import java.time.LocalDate
 
 /**
  * Step 45 — Batch season download plan sheet (Nuvio BatchDownloadCoordinator
- * plan dialog, Plavio shape): pick episodes of one season to download —
+ * plan dialog, Avio shape): pick episodes of one season to download —
  * All / Unwatched / None quick actions, per-episode checkboxes, already
  * downloaded episodes shown as done and excluded from the pick.
  * Each chosen episode downloads its best stream (the autoplay rule) via

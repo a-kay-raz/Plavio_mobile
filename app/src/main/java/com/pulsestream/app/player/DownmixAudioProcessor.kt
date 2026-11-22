@@ -16,7 +16,7 @@ const val CENTER_MIX_LEVEL_MAX_DB = 30
  * Step 66 — Downmix / centre-mix / output channels.
  *
  * Nuvio does all three inside its own ffmpeg audio renderer
- * (`FfmpegAudioDownmix` + `FfmpegAudioRenderer`), which Plavio does not
+ * (`FfmpegAudioDownmix` + `FfmpegAudioRenderer`), which Avio does not
  * have (no ffmpeg extension on the classpath). The portable equivalent
  * is a stock-Media3 [AudioProcessor] in the audio-sink chain: it mixes
  * multi-channel PCM down to stereo or mono with BS.775-style

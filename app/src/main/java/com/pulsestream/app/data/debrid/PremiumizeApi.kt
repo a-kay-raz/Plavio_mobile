@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Step 43 — Raw HTTP client for the Premiumize API
  * (https://www.premiumize.me/api), API-key auth like TorBox/Real-Debrid
- * (Nuvio uses a device-code OAuth flow for Premiumize; Plavio keeps the
+ * (Nuvio uses a device-code OAuth flow for Premiumize; Avio keeps the
  * paste-a-key pattern its other two providers use).
  *
  * Debrid-only usage: resolve a cached torrent's infoHash to a direct HTTP
@@ -47,7 +47,7 @@ class PremiumizeApi(private val apiKey: String) {
                 val url = "$BASE/api/account/info?apikey=${apiKey.trim()}"
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Plavio/${BuildConfig.VERSION_NAME}")
+                    .header("User-Agent", "Avio/${BuildConfig.VERSION_NAME}")
                     .get()
                     .build()
                 client.newCall(request).execute().use { response ->
@@ -63,7 +63,7 @@ class PremiumizeApi(private val apiKey: String) {
         }
     }
 
-    private val userAgent = "Plavio/${BuildConfig.VERSION_NAME}"
+    private val userAgent = "Avio/${BuildConfig.VERSION_NAME}"
 
     private val client = OkHttpClient.Builder()
         .callTimeout(60, TimeUnit.SECONDS)

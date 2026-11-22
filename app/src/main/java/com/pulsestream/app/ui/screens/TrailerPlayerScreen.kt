@@ -335,7 +335,7 @@ fun TrailerPlayerScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    // Full title details (TMDB via PlavioMeta) under the player.
+                    // Full title details (TMDB via AvioMeta) under the player.
                     if (req.metaId.isNotBlank()) {
                         Spacer(Modifier.height(16.dp))
                         TrailerMetaDetails(
@@ -412,7 +412,7 @@ private fun TrailerVideoView(player: ExoPlayer, modifier: Modifier = Modifier) {
 
 /**
  * Full title details under the portrait trailer player, fetched from
- * PlavioMeta (same pipeline as the detail screens). Shows poster, title,
+ * AvioMeta (same pipeline as the detail screens). Shows poster, title,
  * year/rating/type, genres and overview. Note: the meta model carries no
  * cast list, so cast is omitted.
  */

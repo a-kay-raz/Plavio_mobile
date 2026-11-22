@@ -21,7 +21,7 @@ data class Repository(
 /**
  * CloudStream-compatible repository registry.
  *
- * Plavio owns repository discovery/download UI, but CloudStream extensions expect the
+ * Avio owns repository discovery/download UI, but CloudStream extensions expect the
  * native RepositoryManager ABI to exist and persist RepositoryData under the
  * standard CloudStream key. This class intentionally implements only that ABI;
  * it does not maintain a second plugin catalog or provider pipeline.
@@ -29,7 +29,7 @@ data class Repository(
 object RepositoryManager {
     const val REPOSITORIES_KEY = "REPOSITORIES_KEY"
 
-    /** Plavio does not ship CloudStream prebuilt repositories. */
+    /** Avio does not ship CloudStream prebuilt repositories. */
     val PREBUILT_REPOSITORIES: Array<RepositoryData> by lazy { emptyArray() }
 
     private val repoLock = Mutex()
@@ -39,12 +39,12 @@ object RepositoryManager {
 
     /**
      * Compatibility API used by CloudStream extensions that inspect a repository before adding it.
-     * Repository discovery/installation remains owned by Plavio's CloudStream repository runtime.
+     * Repository discovery/installation remains owned by Avio's CloudStream repository runtime.
      */
     suspend fun parseRepository(url: String): Repository? = runCatching {
         val normalizedUrl = url.trim()
         require(normalizedUrl.isNotBlank()) { "Repository URL is blank" }
-        // Plavio: org.json instead of the AAR's Jackson mapper (see DataStore).
+        // Avio: org.json instead of the AAR's Jackson mapper (see DataStore).
         val obj = JSONObject(app.get(normalizedUrl).text)
         val pluginLists = obj.optJSONArray("pluginLists")?.let { array ->
             List(array.length()) { index -> array.optString(index) }

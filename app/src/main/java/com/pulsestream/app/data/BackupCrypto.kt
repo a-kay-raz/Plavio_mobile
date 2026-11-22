@@ -32,7 +32,7 @@ object BackupCrypto {
     }
 
     fun decrypt(payload: String, password: CharArray): String {
-        require(isEncrypted(payload)) { "This isn't a supported encrypted Plavio backup." }
+        require(isEncrypted(payload)) { "This isn't a supported encrypted Avio backup." }
         val parts = payload.split('\n')
         require(parts.size == 4) { "Encrypted backup data is malformed." }
         val salt = decode(parts[1]); val iv = decode(parts[2]); val ciphertext = decode(parts[3])

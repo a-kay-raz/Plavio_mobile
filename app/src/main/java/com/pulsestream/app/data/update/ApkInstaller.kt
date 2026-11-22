@@ -41,7 +41,7 @@ object ApkInstaller {
             File(dir, fileName).takeIf { it.exists() }?.delete()
         }
         val request = DownloadManager.Request(Uri.parse(url)).apply {
-            setTitle("Plavio v$version")
+            setTitle("Avio v$version")
             setDescription("Downloading update…")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)

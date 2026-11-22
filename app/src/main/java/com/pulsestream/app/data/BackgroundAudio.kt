@@ -38,7 +38,7 @@ import java.lang.ref.WeakReference
  * foreground service, so audio keeps playing when the app goes to the
  * background and the lock screen / notification can pause, resume and
  * seek. Opt-in via Settings > Playback > "Background audio" (default
- * off); Plavio's deliberate pause-on-background (#10) stays the
+ * off); Avio's deliberate pause-on-background (#10) stays the
  * behaviour when it is off.
  *
  * The player itself stays in the activity (PlayerScreen owns it) — the
@@ -55,7 +55,7 @@ data class BackgroundAudioMetadata(
 )
 
 object BackgroundAudioController {
-    const val CHANNEL_ID = "plavio_playback"
+    const val CHANNEL_ID = "avio_playback"
     const val NOTIFICATION_ID = 0x9A10
     const val ACTION_PLAY = "com.pulsestream.app.bg_audio.PLAY"
     const val ACTION_PAUSE = "com.pulsestream.app.bg_audio.PAUSE"
@@ -89,7 +89,7 @@ object BackgroundAudioController {
         this.metadata = metadata
         registered = true
 
-        mediaSession = MediaSession(app, "PlavioNowPlaying").apply {
+        mediaSession = MediaSession(app, "AvioNowPlaying").apply {
             setFlags(
                 MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
                     MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS

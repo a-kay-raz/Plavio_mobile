@@ -26,7 +26,7 @@ import com.pulsestream.app.data.StreamBadge
  * Scoped port of Nuvio streams/StreamBadgeChip.kt (sizes verbatim).
  * Image badges render the image; badges without an image render
  * their name as a text chip (Nuvio renders only images — the text
- * fallback is Plavio-only, since many rule sets ship name + colors
+ * fallback is Avio-only, since many rule sets ship name + colors
  * with no imageURL).
  */
 enum class StreamBadgeChipSize(

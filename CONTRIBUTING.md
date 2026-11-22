@@ -1,6 +1,6 @@
-# Contributing to Plavio
+# Contributing to Avio
 
-Thanks for helping. Plavio is a small project and every fix counts.
+Thanks for helping. Avio is a small project and every fix counts.
 
 ## Ways to help
 - Report bugs: open an issue and tell me what you did, what happened, and your phone/TV model and Android version.

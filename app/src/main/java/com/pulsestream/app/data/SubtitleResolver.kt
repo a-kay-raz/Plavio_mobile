@@ -19,7 +19,7 @@ data class ResolvedSubtitle(
     val mimeType: String
 )
 
-private const val SUB_CACHE_DIR = "plavio_subs"
+private const val SUB_CACHE_DIR = "avio_subs"
 /** Bump when the download logic changes so stale cached files are ignored. */
 private const val SUB_CACHE_VERSION = "v3"
 private const val SNIFF_BYTES = 4096

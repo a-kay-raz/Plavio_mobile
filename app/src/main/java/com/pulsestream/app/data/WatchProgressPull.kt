@@ -21,7 +21,7 @@ import org.json.JSONObject
  * store them per profile, and resume at the pulled position in the
  * player when this device has no local progress for the title.
  *
- * Identity matches Plavio's playbackIdentity (StreamRepository):
+ * Identity matches Avio's playbackIdentity (StreamRepository):
  * episodes "ep|<imdb>|<season>|<episode>", movies "id|<imdb>".
  * The percent is converted to milliseconds only once the player
  * reports a real duration (PlayerScreen's deferred remote seek).

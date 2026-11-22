@@ -185,7 +185,7 @@ class AddonsViewModel(private val repo: StreamRepository) : ViewModel() {
         viewModelScope.launch {
             val shared = AddonShare.decode(code)
             if (shared.isNullOrEmpty()) {
-                addState = AddUiState.Error("That doesn't look like a Plavio addon bundle.")
+                addState = AddUiState.Error("That doesn't look like an Avio addon bundle.")
                 onDone(0, 0, 0)
                 return@launch
             }
@@ -292,7 +292,7 @@ fun AddonsScreen(
     val addons by repository.addons.collectAsState(initial = emptyList())
     var showDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    // Pre-fill for the import dialog when a plavio-addons:// deep link opened
+    // Pre-fill for the import dialog when an avio-addons:// deep link opened
     // the app (MainActivity stashed the link on the repository).
     var importPrefill by remember { mutableStateOf<String?>(null) }
     // Pre-fill for the single-addon dialog when a stremio:// deep link opened
@@ -600,7 +600,7 @@ fun AddonsScreen(
                                     type = "text/plain"
                                     putExtra(
                                         Intent.EXTRA_TEXT,
-                                        "My Plavio addons (${
+                                        "My Avio addons (${
                                             chosen.joinToString(", ") { it.name }
                                         }):\n$link"
                                     )
@@ -1024,7 +1024,7 @@ private fun AddonCard(
             title = { Text("Delete ${addon.name}?", color = TextPrimary) },
             text = {
                 Text(
-                    "This will remove the addon from Plavio.",
+                    "This will remove the addon from Avio.",
                     color = V117Muted
                 )
             },
@@ -1198,7 +1198,7 @@ private fun TrackingAddonConsentDialog(
         text = {
             Column {
                 Text(
-                    "${manifest.name} is a tracking addon. Plavio will send it your activity: what you play, pause and stop with the playback position, what you add to or remove from your library, and what you mark as watched or unwatched. This data leaves Plavio and is handled by the addon's developer and the service it connects to.",
+                    "${manifest.name} is a tracking addon. Avio will send it your activity: what you play, pause and stop with the playback position, what you add to or remove from your library, and what you mark as watched or unwatched. This data leaves Avio and is handled by the addon's developer and the service it connects to.",
                     style = MaterialTheme.typography.bodySmall,
                     color = V117Muted
                 )
@@ -1333,7 +1333,7 @@ private fun ImportBundleDialog(
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        placeholder = { Text("plavio-addons://…", color = V117Muted) },
+                        placeholder = { Text("avio-addons://…", color = V117Muted) },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -1368,7 +1368,7 @@ private fun ImportBundleDialog(
                             val plural = { n: Int -> if (n == 1) "" else "s" }
                             result = when {
                                 installed == 0 && failed == 0 && alreadyInstalled == 0 ->
-                                    "That doesn't look like a Plavio addon bundle."
+                                    "That doesn't look like an Avio addon bundle."
                                 installed == 0 && failed == 0 ->
                                     "All $alreadyInstalled addon${plural(alreadyInstalled)} " +
                                         "already installed — nothing new."

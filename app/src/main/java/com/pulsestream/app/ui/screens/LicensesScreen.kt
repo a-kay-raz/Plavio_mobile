@@ -41,9 +41,9 @@ private data class OssLibrary(
     val url: String
 )
 
-/** Third-party open-source libraries shipped in Plavio, with their licenses. */
+/** Third-party open-source libraries shipped in Avio, with their licenses. */
 private val OSS_LIBRARIES = listOf(
-    OssLibrary("Plavio", "MIT License", "https://github.com/kotlinsyd/Plavio"),
+    OssLibrary("Avio", "MIT License", "https://github.com/kotlinsyd/Avio"),
     OssLibrary("AndroidX Core", "Apache License 2.0", "https://developer.android.com/jetpack/androidx"),
     OssLibrary("AndroidX Lifecycle", "Apache License 2.0", "https://developer.android.com/jetpack/androidx"),
     OssLibrary("AndroidX Activity", "Apache License 2.0", "https://developer.android.com/jetpack/androidx"),
@@ -181,7 +181,7 @@ fun LicensesScreen(
             }
             item(key = "intro") {
                 Text(
-                    text = "Plavio is built with these open-source projects. Tap a library to read its license.",
+                    text = "Avio is built with these open-source projects. Tap a library to read its license.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)

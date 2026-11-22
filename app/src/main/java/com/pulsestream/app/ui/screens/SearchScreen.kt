@@ -246,7 +246,7 @@ fun SearchScreen(
             discoverGenre = null
             settings.discoverGenre = null
         }
-        // Server titles carry no genre data in Plavio's model, so a stale
+        // Server titles carry no genre data in Avio's model, so a stale
         // addon genre must not survive a switch to a server source.
         if (picked?.addonId?.startsWith("server:") == true && discoverGenre != null) {
             discoverGenre = null

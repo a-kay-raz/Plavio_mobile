@@ -297,7 +297,7 @@ object CloudStreamDexRuntime {
                 providers = liveProviders,
                 extractors = registeredExtractors,
                 provider = liveProviders.takeIf { it.isNotEmpty() }
-                    ?.let { PlavioDexCloudStreamProvider(item.metadata.id.value, it) },
+                    ?.let { AvioDexCloudStreamProvider(item.metadata.id.value, it) },
             )
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to load ${item.metadata.internalName}", error)
@@ -450,7 +450,7 @@ private class CloudStreamIdentityContext(base: Context) : ContextWrapper(base) {
     }
 }
 
-private class PlavioDexCloudStreamProvider(
+private class AvioDexCloudStreamProvider(
     override val id: String,
     private val providers: List<MainAPI>,
 ) : CloudStreamProvider {
@@ -488,7 +488,7 @@ private class PlavioDexCloudStreamProvider(
                             }.onSuccess { response ->
                                 response?.items.orEmpty().forEach { section ->
                                     val title = if (providers.size > 1) "${api.name} · ${section.name}" else section.name
-                                    val items = section.list.map { it.toPlavioSearchItem(api) }
+                                    val items = section.list.map { it.toAvioSearchItem(api) }
                                     if (items.isNotEmpty()) sections += title to items
                                 }
                             }.onFailure { error ->
@@ -537,7 +537,7 @@ private class PlavioDexCloudStreamProvider(
                                 "CloudStream search api=${api.name} query=$query returned=${items.size} " +
                                     "sample=${items.take(3).joinToString { it.name }}",
                             )
-                            results += items.map { it.toPlavioSearchItem(api) }
+                            results += items.map { it.toAvioSearchItem(api) }
                         }.onFailure { error ->
                             synchronized(results) { lastError = error }
                             Log.w(TAG, "CloudStream search failed api=${api.name}: ${error.message}")
@@ -564,7 +564,7 @@ private class PlavioDexCloudStreamProvider(
                 }?.takeIf(String::isNotBlank) ?: return@runCatching null
                 withTimeout(stageTimeout(api.loadTimeoutMs, DEFAULT_LOAD_TIMEOUT_MS)) {
                     api.load(url)
-                }?.toPlavioLoadItem(api)
+                }?.toAvioLoadItem(api)
             }.onFailure { error ->
                 Log.w(TAG, "CloudStream external-id load failed api=${api.name} id=$externalId: ${error.message}")
             }.getOrNull()
@@ -572,7 +572,7 @@ private class PlavioDexCloudStreamProvider(
     }
 
     override suspend fun load(data: String): CloudStreamLoadItem = withContext(Dispatchers.IO) {
-        val route = decodePlavioDexRoute(data)
+        val route = decodeAvioDexRoute(data)
         val api = findProvider(route.providerClassName)
         val effectiveTimeoutMs = loadStageTimeout(api.loadTimeoutMs)
         Log.d(
@@ -582,11 +582,11 @@ private class PlavioDexCloudStreamProvider(
         val response = withTimeout(effectiveTimeoutMs) {
             api.load(route.data)
         } ?: error("CloudStream provider returned no details")
-        response.toPlavioLoadItem(api)
+        response.toAvioLoadItem(api)
     }
 
     override suspend fun loadLinks(data: String): List<CloudStreamPlaybackSource> = withContext(Dispatchers.IO) {
-        val route = decodePlavioDexRoute(data)
+        val route = decodeAvioDexRoute(data)
         val api = findProvider(route.providerClassName)
         val subtitles = Collections.synchronizedList(mutableListOf<CloudStreamSubtitle>())
         val links = Collections.synchronizedList(mutableListOf<ExtractorLink>())
@@ -682,12 +682,12 @@ private class PlavioDexCloudStreamProvider(
             javaClass.methods.firstOrNull { it.name == methodName }?.declaringClass == MainAPI::class.java
         }.getOrDefault(false)
 
-    private fun SearchResponse.toPlavioSearchItem(api: MainAPI): CloudStreamSearchItem =
+    private fun SearchResponse.toAvioSearchItem(api: MainAPI): CloudStreamSearchItem =
         CloudStreamSearchItem(
-            providerId = this@PlavioDexCloudStreamProvider.id,
-            data = encodePlavioDexRoute(api.javaClass.name, url),
+            providerId = this@AvioDexCloudStreamProvider.id,
+            data = encodeAvioDexRoute(api.javaClass.name, url),
             name = name,
-            type = type.toPlavioType(),
+            type = type.toAvioType(),
             posterUrl = posterUrl,
             year = when (this) {
                 is AnimeSearchResponse -> year
@@ -698,7 +698,7 @@ private class PlavioDexCloudStreamProvider(
             },
         )
 
-    private fun LoadResponse.toPlavioLoadItem(api: MainAPI): CloudStreamLoadItem {
+    private fun LoadResponse.toAvioLoadItem(api: MainAPI): CloudStreamLoadItem {
         val playbackData = when (this) {
             is MovieLoadResponse -> dataUrl
             is LiveStreamLoadResponse -> dataUrl
@@ -706,7 +706,7 @@ private class PlavioDexCloudStreamProvider(
             else -> url
         }
         val episodes = when (this) {
-            is TvSeriesLoadResponse -> episodes.map { episode -> episode.toPlavioEpisode(api) }
+            is TvSeriesLoadResponse -> episodes.map { episode -> episode.toAvioEpisode(api) }
             is AnimeLoadResponse -> episodes.flatMap { (dubStatus, values) ->
                 val variant = when {
                     episodes.size > 1 -> dubStatus.name
@@ -714,16 +714,16 @@ private class PlavioDexCloudStreamProvider(
                     else -> null
                 }
                 values.map { episode ->
-                    episode.toPlavioEpisode(api, variant)
+                    episode.toAvioEpisode(api, variant)
                 }
             }
             else -> emptyList()
         }
         return CloudStreamLoadItem(
             providerId = id,
-            data = encodePlavioDexRoute(api.javaClass.name, playbackData),
+            data = encodeAvioDexRoute(api.javaClass.name, playbackData),
             name = name,
-            type = type.toPlavioType(),
+            type = type.toAvioType(),
             posterUrl = posterUrl,
             backgroundUrl = backgroundPosterUrl,
             description = plot,
@@ -734,7 +734,7 @@ private class PlavioDexCloudStreamProvider(
         )
     }
 
-    private fun com.lagradost.cloudstream3.Episode.toPlavioEpisode(
+    private fun com.lagradost.cloudstream3.Episode.toAvioEpisode(
         api: MainAPI,
         variant: String? = null,
     ): CloudStreamEpisode {
@@ -742,7 +742,7 @@ private class PlavioDexCloudStreamProvider(
         val displayName = listOfNotNull(baseName.takeIf(String::isNotBlank), variant).joinToString(" · ")
             .ifBlank { "Episode ${episode ?: ""}".trim() }
         return CloudStreamEpisode(
-            data = encodePlavioDexRoute(api.javaClass.name, data),
+            data = encodeAvioDexRoute(api.javaClass.name, data),
             name = displayName,
             season = season,
             episode = episode,
@@ -782,13 +782,13 @@ private class PlavioDexCloudStreamProvider(
     }
 }
 
-private data class PlavioDexRoute(val providerClassName: String, val data: String)
+private data class AvioDexRoute(val providerClassName: String, val data: String)
 
-private fun encodePlavioDexRoute(providerClassName: String, data: String): String =
-    "plavio-cs-api:${providerClassName.length}:$providerClassName$data"
+private fun encodeAvioDexRoute(providerClassName: String, data: String): String =
+    "avio-cs-api:${providerClassName.length}:$providerClassName$data"
 
-private fun decodePlavioDexRoute(value: String): PlavioDexRoute {
-    val payload = value.removePrefix("plavio-cs-api:")
+private fun decodeAvioDexRoute(value: String): AvioDexRoute {
+    val payload = value.removePrefix("avio-cs-api:")
     require(payload != value) { "Invalid CloudStream provider route" }
     val separator = payload.indexOf(':')
     require(separator > 0) { "Invalid CloudStream provider route" }
@@ -796,13 +796,13 @@ private fun decodePlavioDexRoute(value: String): PlavioDexRoute {
         ?: error("Invalid CloudStream provider route")
     val content = payload.substring(separator + 1)
     require(providerLength in 1..content.length) { "Invalid CloudStream provider route" }
-    return PlavioDexRoute(
+    return AvioDexRoute(
         providerClassName = content.substring(0, providerLength),
         data = content.substring(providerLength),
     )
 }
 
-private fun TvType?.toPlavioType(): CloudStreamTvType = when (this) {
+private fun TvType?.toAvioType(): CloudStreamTvType = when (this) {
     TvType.Movie -> CloudStreamTvType.Movie
     TvType.AnimeMovie -> CloudStreamTvType.AnimeMovie
     TvType.TvSeries -> CloudStreamTvType.TvSeries

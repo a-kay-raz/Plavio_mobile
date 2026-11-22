@@ -376,7 +376,7 @@ internal fun normalizeSportsName(value: String): String =
  * channels many providers create per match) rank first, then channels whose name matches one of
  * ESPN's broadcaster names as a whole-word sequence.
  *
- * Plavio note: only provider + M3U channels are LiveTvChannel here — addon
+ * Avio note: only provider + M3U channels are LiveTvChannel here — addon
  * channels live in CatalogRows and are not matched.
  */
 internal fun matchSportsChannels(

@@ -40,7 +40,7 @@ import androidx.media3.extractor.text.SubtitleParser
  * from SettingsStore.audioDelayMs and updated by the Audio modal.
  *
  * Deviation: Nuvio also keys the delay per output device
- * (rememberAudioDelayPerDevice) — Plavio keeps one value for the
+ * (rememberAudioDelayPerDevice) — Avio keeps one value for the
  * device. No per-output memory.
  */
 const val AUDIO_DELAY_MIN_MS = -60_000

@@ -180,9 +180,9 @@ class TvPairServer(
     """.trimIndent()
 
     private fun formPage(notice: String? = null): String = page(
-        "Add to Plavio TV",
+        "Add to Avio TV",
         """
-        <h1>Add addons to Plavio TV</h1>
+        <h1>Add addons to Avio TV</h1>
         <p>Paste one or more addon manifest URLs below (one per line — they
         usually end with <b>/manifest.json</b>), then tap <b>Send to TV</b>.
         The TV will fetch and validate each one.</p>

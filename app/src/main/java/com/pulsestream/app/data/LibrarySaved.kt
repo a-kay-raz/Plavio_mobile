@@ -100,7 +100,7 @@ data class SavedLibraryItem(
 
 /**
  * Nuvio sort gating (LibraryDisplaySettings.availableLibrarySortOptions):
- * MDBList offers all 7 (not a Plavio source); a single remote source
+ * MDBList offers all 7 (not an Avio source); a single remote source
  * (Trakt/Simkl) offers 5 (no Released sorts — remote lists carry no
  * release dates); Local offers 4 (no Default, no Released sorts). The
  * merged "all" source offers all 7 — local items carry added dates and
@@ -160,7 +160,7 @@ fun sortSavedItems(items: List<SavedLibraryItem>, sort: LibrarySortOption): List
 /**
  * Watched for the filter: a movie is watched when its movie mark exists;
  * a series counts as watched when any of its episodes is marked watched
- * (Plavio stores no per-series completion, so "any episode" is the proxy —
+ * (Avio stores no per-series completion, so "any episode" is the proxy —
  * partial watches show under Watched, not Unwatched).
  */
 fun isSavedItemWatched(item: SavedLibraryItem, watchedKeys: Set<String>): Boolean {

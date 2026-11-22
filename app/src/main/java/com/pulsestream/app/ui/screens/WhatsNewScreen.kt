@@ -61,11 +61,11 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /**
- * One commit from the Plavio repo's main branch — mirrors Nuvio's
+ * One commit from the Avio repo's main branch — mirrors Nuvio's
  * InfuseCommit. Only identity, title, author and date are shown; the
  * full commit detail lives on GitHub.
  */
-internal data class PlavioCommit(
+internal data class AvioCommit(
     val sha: String,
     val shortSha: String,
     val title: String,
@@ -94,12 +94,12 @@ internal object WhatsNewCommitsRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun load(): Result<List<PlavioCommit>> = withContext(Dispatchers.IO) {
+    suspend fun load(): Result<List<AvioCommit>> = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder()
                 .url(COMMITS_URL)
                 .header("Accept", "application/vnd.github+json")
-                .header("User-Agent", "Plavio/${BuildConfig.VERSION_NAME}")
+                .header("User-Agent", "Avio/${BuildConfig.VERSION_NAME}")
                 .build()
             client.newCall(request).execute().use { resp ->
                 check(resp.isSuccessful) { "GitHub commits request failed: ${resp.code}" }
@@ -112,7 +112,7 @@ internal object WhatsNewCommitsRepository {
                     val authorObj = commitObj?.get("author") as? JsonObject
                     val authorLogin = (obj["author"] as? JsonObject)?.str("login")
                     val authorName = authorObj?.str("name") ?: authorLogin ?: "Unknown"
-                    PlavioCommit(
+                    AvioCommit(
                         sha = sha,
                         shortSha = sha.take(7),
                         title = message.substringBefore("\n").trim().ifBlank { sha },
@@ -134,7 +134,7 @@ internal object WhatsNewCommitsRepository {
 
 /**
  * What's New, showing only the latest commits on main (Nuvio
- * WhatsNewSettingsScreen, Plavio components). No channel picker, no
+ * WhatsNewSettingsScreen, Avio components). No channel picker, no
  * release notes: tapping a commit opens it on GitHub.
  */
 @Composable
@@ -223,7 +223,7 @@ fun WhatsNewScreen(onBack: () -> Unit = {}) {
                                 tint = LocalPalette.current.accent
                             )
                             Text(
-                                text = "Plavio v${BuildConfig.VERSION_NAME}",
+                                text = "Avio v${BuildConfig.VERSION_NAME}",
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary,
@@ -292,11 +292,11 @@ fun WhatsNewScreen(onBack: () -> Unit = {}) {
 private sealed interface WhatsNewLoadState {
     data object Loading : WhatsNewLoadState
     data object Error : WhatsNewLoadState
-    data class Content(val commits: List<PlavioCommit>) : WhatsNewLoadState
+    data class Content(val commits: List<AvioCommit>) : WhatsNewLoadState
 }
 
 @Composable
-private fun CommitCard(commit: PlavioCommit) {
+private fun CommitCard(commit: AvioCommit) {
     val context = LocalContext.current
     GlassCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)

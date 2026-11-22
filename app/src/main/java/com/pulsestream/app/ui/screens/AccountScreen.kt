@@ -73,7 +73,7 @@ import com.pulsestream.app.data.ProfilesRepository
 import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.cloud.GoogleDriveSyncManager
-import com.pulsestream.app.data.cloud.PlavioAccountManager
+import com.pulsestream.app.data.cloud.AvioAccountManager
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.PRESET_AVATARS
 import com.pulsestream.app.ui.components.ProfileAvatarImage
@@ -139,16 +139,16 @@ fun AccountScreen(
     val lastBackup = remember(refreshTick) { sync.getLastBackupTime() }
     val lastRestore = remember(refreshTick) { sync.getLastRestoreTime() }
 
-    // Plavio account state (Sample C layout): while signed in there, the
+    // Avio account state (Sample C layout): while signed in there, the
     // section renders the identity + groups and the Google door folds
     // away behind its "Sync with Google" row; otherwise Google is the
     // only door and stays fully visible.
-    val plavioSignedIn = remember(refreshTick) {
-        PlavioAccountManager.isConfigured() &&
-            PlavioAccountManager(context, repository).isSignedIn()
+    val avioSignedIn = remember(refreshTick) {
+        AvioAccountManager.isConfigured() &&
+            AvioAccountManager(context, repository).isSignedIn()
     }
     var googleExpanded by remember { mutableStateOf(false) }
-    val showGoogle = googleExpanded || !plavioSignedIn
+    val showGoogle = googleExpanded || !avioSignedIn
 
     // Auth activity launcher (for when user needs to grant Drive access)
     // Defined first because accountPickerLauncher uses it
@@ -335,7 +335,7 @@ fun AccountScreen(
                 // Signed out it sits at the TOP of the screen (owner's
                 // order 2026-10-26), above the sign-in card; the
                 // signed-in layout below is unchanged.
-                if (!plavioSignedIn) {
+                if (!avioSignedIn) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -386,10 +386,10 @@ fun AccountScreen(
                     }
                 }
 
-                // Plavio account (2026-10-25): email + password account
+                // Avio account (2026-10-25): email + password account
                 // with full sync; Google Drive below stays as door two.
                 // Renders nothing until the backend is configured.
-                PlavioAccountSection(
+                AvioAccountSection(
                     repository = repository,
                     onChangePicture = { showPicker = true },
                     googleExpanded = googleExpanded,

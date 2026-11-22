@@ -16,7 +16,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Plavio account (owner's order 2026-10-25): email + password sign-in on
+ * Avio account (owner's order 2026-10-25): email + password sign-in on
  * Supabase Auth, with the full app backup (the same payload the Google
  * Drive sync carries — library, progress, addons, settings and API keys)
  * stored in a per-user row guarded by row-level security.
@@ -27,9 +27,9 @@ import java.util.concurrent.TimeUnit
  * available as a second door.
  *
  * The feature hides itself until the backend is configured at build
- * time (PLAVIO_SUPABASE_URL / PLAVIO_SUPABASE_ANON_KEY).
+ * time (AVIO_SUPABASE_URL / AVIO_SUPABASE_ANON_KEY).
  */
-class PlavioAccountManager(
+class AvioAccountManager(
     context: Context,
     private val repository: StreamRepository
 ) {
@@ -51,8 +51,8 @@ class PlavioAccountManager(
         private const val KEY_LAST_SYNC = "last_sync"
 
         fun isConfigured(): Boolean =
-            BuildConfig.PLAVIO_SUPABASE_URL.isNotBlank() &&
-                BuildConfig.PLAVIO_SUPABASE_ANON_KEY.isNotBlank()
+            BuildConfig.AVIO_SUPABASE_URL.isNotBlank() &&
+                BuildConfig.AVIO_SUPABASE_ANON_KEY.isNotBlank()
     }
 
     fun isSignedIn(): Boolean = prefs.getString(KEY_ACCESS, null) != null &&
@@ -92,12 +92,12 @@ class PlavioAccountManager(
 
     /**
      * Passwordless sign-in, step 1: sends a 6-digit sign-in code to the
-     * email. This is the Nuvio device-link equivalent on Plavio's
+     * email. This is the Nuvio device-link equivalent on Avio's
      * backend — no password is typed on the phone; the code is read
      * from email on any device. (A true Nuvio-style device link — phone
      * shows a code, another device approves it — needs server-side
      * RPCs + an edge function + a link page on the Supabase project,
-     * which Plavio's project does not have; the email code is
+     * which Avio's project does not have; the email code is
      * Supabase's native passwordless route and needs no backend work.)
      */
     suspend fun requestSignInCode(email: String): Result<Unit> = authCall {
@@ -216,9 +216,9 @@ class PlavioAccountManager(
 
     private fun baseRequest(path: String, accessToken: String?): Request.Builder =
         Request.Builder()
-            .url(BuildConfig.PLAVIO_SUPABASE_URL.trimEnd('/') + path)
-            .header("apikey", BuildConfig.PLAVIO_SUPABASE_ANON_KEY)
-            .header("Authorization", "Bearer ${accessToken ?: BuildConfig.PLAVIO_SUPABASE_ANON_KEY}")
+            .url(BuildConfig.AVIO_SUPABASE_URL.trimEnd('/') + path)
+            .header("apikey", BuildConfig.AVIO_SUPABASE_ANON_KEY)
+            .header("Authorization", "Bearer ${accessToken ?: BuildConfig.AVIO_SUPABASE_ANON_KEY}")
             .header("Content-Type", "application/json")
 
     private fun execute(req: Request): Resp {

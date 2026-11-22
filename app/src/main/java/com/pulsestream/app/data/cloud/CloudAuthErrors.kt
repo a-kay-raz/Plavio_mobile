@@ -6,10 +6,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import java.net.URI
 
-/** Local checks and user-safe translations for Plavio Cloud account requests. */
+/** Local checks and user-safe translations for Avio Cloud account requests. */
 internal object CloudAuthErrors {
     private const val CONFIG_ERROR =
-        "Plavio Cloud is not configured in this app build. Please install a correctly configured build or contact the app maintainer."
+        "Avio Cloud is not configured in this app build. Please install a correctly configured build or contact the app maintainer."
 
     fun configurationError(baseUrl: String, publicKeyConfigured: Boolean): String? {
         val uri = runCatching { URI(baseUrl) }.getOrNull() ?: return CONFIG_ERROR
@@ -29,13 +29,13 @@ internal object CloudAuthErrors {
         val apiKeyFailure = providerText.contains("api key") || providerText.contains("apikey") ||
             providerText.contains("invalid key") || providerText.contains("missing key")
         if (apiKeyFailure) {
-            return "Plavio Cloud rejected this app's API configuration (HTTP $statusCode). This is not an account password problem; the app maintainer must verify the cloud project and public API configuration."
+            return "Avio Cloud rejected this app's API configuration (HTTP $statusCode). This is not an account password problem; the app maintainer must verify the cloud project and public API configuration."
         }
         if (statusCode == 404) {
-            return "Plavio Cloud's authentication endpoint was not found (HTTP 404). The app maintainer must verify the cloud endpoint configuration."
+            return "Avio Cloud's authentication endpoint was not found (HTTP 404). The app maintainer must verify the cloud endpoint configuration."
         }
         if (statusCode in 500..599) {
-            return "Plavio Cloud authentication is temporarily unavailable (HTTP $statusCode). Please try again later."
+            return "Avio Cloud authentication is temporarily unavailable (HTTP $statusCode). Please try again later."
         }
         if (providerText.contains("email not confirmed") || providerText.contains("email_not_confirmed")) {
             return "Please verify your email using the link we sent, then try again."

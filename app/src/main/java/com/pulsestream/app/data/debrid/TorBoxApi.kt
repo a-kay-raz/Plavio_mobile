@@ -112,7 +112,7 @@ class TorBoxApi(private val apiKey: String) {
             opt(key).let { if (it is Boolean) it else null }
     }
 
-    private val userAgent = "Plavio/${BuildConfig.VERSION_NAME}"
+    private val userAgent = "Avio/${BuildConfig.VERSION_NAME}"
 
     private val client = OkHttpClient.Builder()
         .callTimeout(60, TimeUnit.SECONDS)

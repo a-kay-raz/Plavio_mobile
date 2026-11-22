@@ -4,19 +4,19 @@ import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.data.Subtitle
 
 /**
- * Maps CloudStream playback results onto Plavio's [StreamItem].
+ * Maps CloudStream playback results onto Avio's [StreamItem].
  *
  * Retarget of the TV port's CloudStreamTvAdapter: the playable URL, quality
  * label (encoded into the name, since StreamItem has no quality field — the
  * prober parses resolution out of the title downstream), request headers and
- * per-stream subtitles. Known loss vs TV: Plavio's Subtitle carries no
+ * per-stream subtitles. Known loss vs TV: Avio's Subtitle carries no
  * headers or addon attribution, so those are dropped.
  *
  * Magnet links (magnet:?xt=urn:btih:<hash>) become infoHash streams with url
  * "infohash:<hash>", exactly the shape the debrid leg in
  * StreamRepository.streamResultsFlow already resolves for Stremio torrents.
  */
-fun CloudStreamPlaybackSource.toPlavioStreamItem(providerName: String, pluginId: String): StreamItem {
+fun CloudStreamPlaybackSource.toAvioStreamItem(providerName: String, pluginId: String): StreamItem {
     val parsedUrl = parseCloudStreamPlaybackUrl(url)
     val requestHeaders = buildMap {
         putAll(parsedUrl.headers)
@@ -48,8 +48,8 @@ fun CloudStreamPlaybackSource.toPlavioStreamItem(providerName: String, pluginId:
     }
 }
 
-/** Per-stream subtitles as Plavio Subtitle(url, lang) — headers/addon dropped (see header). */
-fun CloudStreamPlaybackSource.toPlavioSubtitles(): List<Subtitle> =
+/** Per-stream subtitles as Avio Subtitle(url, lang) — headers/addon dropped (see header). */
+fun CloudStreamPlaybackSource.toAvioSubtitles(): List<Subtitle> =
     subtitles.map { subtitle -> Subtitle(url = subtitle.url, lang = subtitle.language) }
 
 private fun Int.cloudStreamQualityLabel(): String? =

@@ -199,7 +199,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import com.pulsestream.app.player.CENTER_MIX_LEVEL_MAX_DB
 import com.pulsestream.app.player.CENTER_MIX_LEVEL_MIN_DB
 import com.pulsestream.app.player.DownmixConfig
-import com.pulsestream.app.player.PlavioAudioRenderersFactory
+import com.pulsestream.app.player.AvioAudioRenderersFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -730,7 +730,7 @@ fun PlayerScreen(
         val mediaSourceFactory = playbackMediaSourceFactory(req)
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
-            .setRenderersFactory(PlavioAudioRenderersFactory(context, downmixConfig))
+            .setRenderersFactory(AvioAudioRenderersFactory(context, downmixConfig))
             .setMediaSourceFactory(mediaSourceFactory)
             // Belt and suspenders: also tell the track selector the preferred
             // subtitle languages, so his languages win even if the default
@@ -1535,7 +1535,7 @@ fun PlayerScreen(
     fun applyPreferredAudioLanguage() {
         if (userPickedAudio) return
         // Step 38: ordered targets — primary, then secondary (Nuvio
-        // resolvePreferredAudioLanguageTargets, Plavio-native). The first
+        // resolvePreferredAudioLanguageTargets, Avio-native). The first
         // target that has a matching track wins.
         val targets = listOfNotNull(
             settings.preferredAudioLanguage?.takeIf { it.isNotBlank() },
@@ -4385,7 +4385,7 @@ fun PlayerScreen(
                         }
                     }
                     // Top-right cluster, Nuvio legacy order (only the actions
-                    // Plavio has — no cast/party/engine-switch/rate;
+                    // Avio has — no cast/party/engine-switch/rate;
                     // video settings is iOS-only in Nuvio). Step 63: the
                     // order/visibility follow the user's toolbar layout.
                     // Back is last, always.
@@ -4535,7 +4535,7 @@ fun PlayerScreen(
                 // The action pill is shared by the live and on-demand
                 // bottom blocks — Nuvio legacy order: PiP, Quality, Subs,
                 // Audio, Resize, Speed, Sources, Episodes. (No Chapters /
-                // Live-channels buttons: Plavio has no chapters panel and
+                // Live-channels buttons: Avio has no chapters panel and
                 // no channels panel in the player.)
                 val actionPill: @Composable () -> Unit = {
                     Box(
@@ -4796,7 +4796,7 @@ fun PlayerScreen(
                 text = {
                     Column {
                         Text(
-                            "This source uses protected headers, which stay in Plavio — " +
+                            "This source uses protected headers, which stay in Avio — " +
                                 "the other app may not be able to play this link.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
@@ -4969,10 +4969,10 @@ fun PlayerScreen(
                         // a dB stepper on the existing LoudnessEnhancer —
                         // the value persists and applies on the next title.
                         // Nuvio's "Keep for next videos" toggle is not
-                        // ported: in Plavio a set boost always persists
+                        // ported: in Avio a set boost always persists
                         // (the plan's done-criteria is "setting +6 dB
                         // persists", which the toggle would break by
-                        // default). Nuvio's CenterMix has no Plavio
+                        // default). Nuvio's CenterMix has no Avio
                         // mechanism — no audio processor for it — so it
                         // is skipped, not faked.
                         item {
@@ -5856,7 +5856,7 @@ fun PlayerScreen(
         }
 
         // In-player Quality picker (Nuvio PlayerQualityPanel content in
-        // Plavio's bottom-sheet panel shape): Auto first, then one row per
+        // Avio's bottom-sheet panel shape): Auto first, then one row per
         // distinct quality, best first. Picking one switches to a stream
         // of that quality at the current position.
         if (qualityOpen) {
@@ -5954,7 +5954,7 @@ fun PlayerScreen(
             }
         }
 
-        // Playback info (Nuvio PlaybackInfoModal content in Plavio's
+        // Playback info (Nuvio PlaybackInfoModal content in Avio's
         // bottom-sheet panel shape): codec, resolution, fps, bitrate and
         // live network speed. Formats re-read every second while open, so
         // an adaptive switch updates the rows live.

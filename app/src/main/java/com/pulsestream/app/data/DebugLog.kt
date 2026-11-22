@@ -21,7 +21,7 @@ object DebugLog {
     private val secretPattern = Regex("""(?i)(key|token|secret|password|auth)=([^\s&]+)""")
 
     fun build(): String = buildString {
-        appendLine("Plavio debug log")
+        appendLine("Avio debug log")
         appendLine("App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
@@ -48,7 +48,7 @@ object DebugLog {
     fun share(context: Context) {
         runCatching {
             val dir = File(context.cacheDir, "debug").apply { mkdirs() }
-            val file = File(dir, "plavio-debug-log.txt")
+            val file = File(dir, "avio-debug-log.txt")
             file.writeText(build())
             val uri = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", file
@@ -56,7 +56,7 @@ object DebugLog {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Plavio debug log")
+                putExtra(Intent.EXTRA_SUBJECT, "Avio debug log")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(intent, "Share debug log"))

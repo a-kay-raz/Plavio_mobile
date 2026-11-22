@@ -4,7 +4,7 @@ import java.io.File
 
 /**
  * Small compatibility surface for providers that inspect the CloudStream plugin registry.
- * Plavio owns download/update state; downloaded plugins cannot invoke CloudStream's app UI.
+ * Avio owns download/update state; downloaded plugins cannot invoke CloudStream's app UI.
  */
 data class PluginData(
     val internalName: String,
@@ -42,7 +42,7 @@ object PluginManager {
         onlinePluginData.remove(filePath)
     }
 
-    /** Plavio owns installed packages; plugins may request deletion but cannot mutate host state. */
+    /** Avio owns installed packages; plugins may request deletion but cannot mutate host state. */
     suspend fun deletePlugin(file: File): Boolean = false
 
     fun clear() = synchronized(this) {

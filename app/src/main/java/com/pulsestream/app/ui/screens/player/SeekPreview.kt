@@ -84,11 +84,11 @@ import kotlin.math.abs
  *
  * Frame-extraction path, verified first (plan P23):
  * - MediaMetadataRetriever: rejected — a fresh connection per frame,
- *   unreliable on HLS across OEMs, and it bypasses Plavio's scoped
+ *   unreliable on HLS across OEMs, and it bypasses Avio's scoped
  *   header policy (PlaybackHttp).
  * - Thumbnail-track feed (Nuvio's SeekPreviewFeed): rejected — debrid
  *   HLS manifests essentially never carry EXT-X-IMAGE-STREAM-INF /
- *   DASH image tracks, and the feed needs native code Plavio has none of.
+ *   DASH image tracks, and the feed needs native code Avio has none of.
  * - Nuvio's GL readback (custom shader + renderer): rejected for the
  *   port — the same frame comes out of a TextureView with only stable
  *   public APIs, so ~450 lines of UnstableApi GL were not carried over.

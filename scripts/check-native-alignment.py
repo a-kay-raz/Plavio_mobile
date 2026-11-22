@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed 16 KiB ELF alignment check for Plavio's bundled JNI libraries.
+"""Fail-closed 16 KiB ELF alignment check for Avio's bundled JNI libraries.
 
 Checks each shared object's ELF class/machine for its Android ABI and requires
 all PT_LOAD segments to have p_align >= 16 KiB and valid offset/address

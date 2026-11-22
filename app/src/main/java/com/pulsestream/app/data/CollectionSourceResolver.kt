@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.first
  * - "tmdb": COLLECTION (TMDB collection id), LIST (TMDB list id) or
  *   DISCOVER (mediaType + sortBy) — needs the Step 6 TMDB key.
  * - "trakt": a Trakt list id stored in [CollectionSourceRow.catalogId]
- *   (Plavio's list id is a String); needs a linked Trakt account.
+ *   (Avio's list id is a String); needs a linked Trakt account.
  * Every failure resolves to an empty list — a bad source never breaks
  * the folder view.
  */

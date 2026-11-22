@@ -23,17 +23,17 @@ import org.json.JSONObject
  * chips on the stream row and (image badges only) in the player.
  *
  * Deviations from Nuvio:
- * - org.json instead of kotlinx-serialization (Plavio does not apply
+ * - org.json instead of kotlinx-serialization (Avio does not apply
  *   the serialization compiler plugin — same rule as everywhere else).
- * - No legacy debrid-badge storage migration (Plavio never had one).
+ * - No legacy debrid-badge storage migration (Avio never had one).
  * - No per-group expand/collapse UI in the settings screen; groups
  *   only matter for the player two-phase match (a group already hit
  *   by the playback text is not re-matched from the meta text).
  * - Player badges have no MediaInfo refinement (no getMediaInfo
- *   equivalent in Plavio) — the playback candidate is the playing
+ *   equivalent in Avio) — the playback candidate is the playing
  *   stream's filename/title.
  * - The file-size badge (Nuvio's StreamFileSizeBadge) is NOT ported:
- *   Plavio rows already show size via parseStreamInfo.
+ *   Avio rows already show size via parseStreamInfo.
  */
 
 const val STREAM_BADGE_IMPORT_LIMIT = 3
