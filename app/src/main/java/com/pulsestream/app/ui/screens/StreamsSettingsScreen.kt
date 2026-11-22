@@ -2,6 +2,7 @@ package com.pulsestream.app.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -54,11 +55,9 @@ import com.pulsestream.app.data.StreamItem
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.formatDebridStreamText
 import com.pulsestream.app.data.autoplaySizeName
-import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import com.pulsestream.app.ui.tv.tvFocusRing
 
 /**
@@ -216,62 +215,60 @@ fun StreamsSettingsScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "How sources are listed, ordered and auto-picked.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
                         modifier = Modifier.padding(start = 56.dp, end = 8.dp)
                     )
                 }
             }
 
             item(key = "perSource") {
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+                // Flat v1.17 row (gap report §2): 16dp / 14dp, 36dp icon
+                // tile, bodyLarge Medium title + bodyMedium muted subtitle.
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SettingsIconTile(Icons.Filled.FilterList, "Streams per source")
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Streams per source",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "Max streams shown from one addon",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                perSource = (perSource - 1).coerceIn(1, 10)
-                                settings.streamsPerSource = perSource
-                            },
-                            enabled = perSource > 1
-                        ) {
-                            Icon(Icons.Filled.Remove, "Fewer", tint = TextPrimary)
-                        }
+                    SettingsIconTile(Icons.Filled.FilterList, "Streams per source")
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            text = perSource.toString(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = LocalPalette.current.accent,
-                            modifier = Modifier.width(28.dp),
+                            "Streams per source",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
                         )
-                        IconButton(
-                            onClick = {
-                                perSource = (perSource + 1).coerceIn(1, 10)
-                                settings.streamsPerSource = perSource
-                            },
-                            enabled = perSource < 10
-                        ) {
-                            Icon(Icons.Filled.Add, "More", tint = TextPrimary)
-                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Max streams shown from one addon",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = V117Muted
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            perSource = (perSource - 1).coerceIn(1, 10)
+                            settings.streamsPerSource = perSource
+                        },
+                        enabled = perSource > 1
+                    ) {
+                        Icon(Icons.Filled.Remove, "Fewer", tint = TextPrimary)
+                    }
+                    Text(
+                        text = perSource.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = LocalPalette.current.accent,
+                        modifier = Modifier.width(28.dp),
+                    )
+                    IconButton(
+                        onClick = {
+                            perSource = (perSource + 1).coerceIn(1, 10)
+                            settings.streamsPerSource = perSource
+                        },
+                        enabled = perSource < 10
+                    ) {
+                        Icon(Icons.Filled.Add, "More", tint = TextPrimary)
                     }
                 }
             }
@@ -280,18 +277,19 @@ fun StreamsSettingsScreen(
                 SettingsSectionHeader("Quality order")
             }
             itemsIndexed(qualityOrder, key = { _, q -> q }) { index, quality ->
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                ) {
+                // Flat v1.17 rows (gap report §2): 16dp / 14dp, hairline
+                // 0.5dp divider inset 66dp between rows, muted rank number.
+                Column(Modifier.fillMaxWidth()) {
+                    if (index > 0) V117Divider()
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "${index + 1}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
+                            color = V117Muted,
                             modifier = Modifier.width(28.dp)
                         )
                         Icon(
@@ -303,8 +301,8 @@ fun StreamsSettingsScreen(
                         Spacer(Modifier.width(12.dp))
                         Text(
                             text = quality,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
                             color = TextPrimary,
                             modifier = Modifier.weight(1f)
                         )
@@ -340,8 +338,8 @@ fun StreamsSettingsScreen(
             item(key = "qualityOrderNote") {
                 Text(
                     "Top = highest priority in the stream list.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = V117Muted,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                 )
             }
@@ -350,7 +348,7 @@ fun StreamsSettingsScreen(
                 SettingsSectionHeader("Autoplay")
             }
             item(key = "autoplay") {
-                SettingsToggleRow(
+                V117ToggleRow(
                     icon = Icons.Filled.PlayArrow,
                     title = "Autoplay by rule",
                     subtitle = "Play picks the stream matching your quality and size rule",
@@ -363,86 +361,52 @@ fun StreamsSettingsScreen(
             }
             item(key = "autoplayQuality") {
                 val enabled = autoplay
-                GlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 5.dp)
-                        .alpha(if (enabled) 1f else 0.45f),
-                    onClick = { if (enabled) qualityPickerOpen = true }
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SettingsIconTile(Icons.Filled.Sort, "Preferred quality")
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
+                Box(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f)) {
+                    V117NavRow(
+                        icon = Icons.Filled.Sort,
+                        title = "Preferred quality",
+                        subtitle = if (autoplayQuality == "Auto") "Follow the quality order above"
+                        else "Prefer $autoplayQuality streams",
+                        onClick = { if (enabled) qualityPickerOpen = true },
+                        trailing = {
                             Text(
-                                "Preferred quality",
-                                style = MaterialTheme.typography.titleSmall,
+                                autoplayQuality,
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
+                                color = LocalPalette.current.accent
                             )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                if (autoplayQuality == "Auto") "Follow the quality order above"
-                                else "Prefer $autoplayQuality streams",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
+                            Spacer(Modifier.width(8.dp))
+                            V117Chevron()
                         }
-                        Text(
-                            autoplayQuality,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = LocalPalette.current.accent
-                        )
-                    }
+                    )
                 }
             }
             item(key = "autoplaySize") {
                 val enabled = autoplay
-                GlassCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 5.dp)
-                        .alpha(if (enabled) 1f else 0.45f),
-                    onClick = { if (enabled) sizePickerOpen = true }
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SettingsIconTile(Icons.Filled.Storage, "Max file size")
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
+                Box(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f)) {
+                    V117NavRow(
+                        icon = Icons.Filled.Storage,
+                        title = "Max file size",
+                        subtitle = "Skip streams bigger than this when auto-playing",
+                        onClick = { if (enabled) sizePickerOpen = true },
+                        trailing = {
                             Text(
-                                "Max file size",
-                                style = MaterialTheme.typography.titleSmall,
+                                autoplaySizeName(autoplayMaxSize),
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
+                                color = LocalPalette.current.accent
                             )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "Skip streams bigger than this when auto-playing",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
+                            Spacer(Modifier.width(8.dp))
+                            V117Chevron()
                         }
-                        Text(
-                            autoplaySizeName(autoplayMaxSize),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = LocalPalette.current.accent
-                        )
-                    }
+                    )
                 }
             }
             item(key = "autoplayNote") {
                 Text(
                     "The source list button next to Play always opens the full stream list.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = V117Muted,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                 )
             }
@@ -546,8 +510,8 @@ fun StreamsSettingsScreen(
                     }
                     Text(
                         preview,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                     )
                 }
@@ -569,16 +533,16 @@ fun StreamsSettingsScreen(
                     }
                     Text(
                         preview,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                     )
                 }
             }
             item(key = "debridPrefsReset") {
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
-                    onClick = {
+                // Flat v1.17 action row: 16dp / 14dp, accent label, no card.
+                Row(
+                    Modifier.fillMaxWidth().clickable {
                         debridMinQuality = "any"; settings.debridMinQuality = "any"
                         debridDvFilter = "any"; settings.debridDvFilter = "any"
                         debridHdrFilter = "any"; settings.debridHdrFilter = "any"
@@ -588,20 +552,16 @@ fun StreamsSettingsScreen(
                         debridExcludedTags = ""; settings.debridExcludedTags = emptySet()
                         debridNameTemplate = ""; settings.debridNameTemplate = ""
                         debridDescriptionTemplate = ""; settings.debridDescriptionTemplate = ""
-                    }
+                    }.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Reset debrid stream preferences",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = LocalPalette.current.accent,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    Text(
+                        "Reset debrid stream preferences",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = LocalPalette.current.accent,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
@@ -652,7 +612,7 @@ private fun SingleSelectDialog(
     )
 }
 
-/** Select row for the Step 44 debrid stream prefs (same GlassCard shape as the autoplay rows). */
+/** Select row for the Step 44 debrid stream prefs (flat v1.17 row: 16dp / 14dp, no icon, value + chevron trailing). */
 @Composable
 private fun DebridPrefSelectRow(
     title: String,
@@ -660,36 +620,22 @@ private fun DebridPrefSelectRow(
     valueLabel: String,
     onClick: () -> Unit,
 ) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
-        onClick = onClick
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-            }
+    V117StaticRow(
+        icon = null,
+        title = title,
+        subtitle = subtitle,
+        onClick = onClick,
+        trailing = {
             Text(
                 valueLabel,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = LocalPalette.current.accent
             )
+            Spacer(Modifier.width(8.dp))
+            V117Chevron()
         }
-    }
+    )
 }
 
 /** Free-text row for the Step 44 tag lists and templates; saves on every change. */
@@ -701,31 +647,27 @@ private fun DebridPrefTextRow(
     placeholder: String,
     onChange: (String) -> Unit,
 ) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
-    ) {
-        Column(Modifier.fillMaxWidth().padding(14.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = value,
-                onValueChange = onChange,
-                placeholder = { Text(placeholder, color = TextSecondary) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = TextPrimary
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = V117Muted
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            placeholder = { Text(placeholder, color = V117Muted) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

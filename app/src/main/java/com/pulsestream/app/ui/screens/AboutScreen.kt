@@ -3,7 +3,6 @@ package com.pulsestream.app.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,13 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Gavel
@@ -35,12 +32,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.DebugLog
-import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
-import com.pulsestream.app.ui.theme.AppPalette
-import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import com.pulsestream.app.ui.tv.tvFocusRing
 
 @Composable
@@ -87,22 +80,21 @@ fun AboutScreen(
 
 /**
  * What's New row (Nuvio): opens the latest-commits screen.
+ * Grouped v1.17 card (gap report §2): 24dp radius, 0.5dp dividers
+ * inset 66dp between rows; rows are 16dp / 14dp with a 36dp icon
+ * tile and a caller-supplied chevron.
  */
 @Composable
 private fun WhatsNewRow(onGoToWhatsNew: () -> Unit = {}) {
-    val palette = LocalPalette.current
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
-    ) {
-        Column(Modifier.fillMaxWidth()) {
+    SettingsGroup(
+        {
             LegalRow(
                 icon = Icons.Filled.NewReleases,
                 title = "What's New",
-                onClick = onGoToWhatsNew,
-                palette = palette
+                onClick = onGoToWhatsNew
             )
         }
-    }
+    )
 }
 
 /**
@@ -112,19 +104,15 @@ private fun WhatsNewRow(onGoToWhatsNew: () -> Unit = {}) {
 @Composable
 private fun SupportRows() {
     val context = LocalContext.current
-    val palette = LocalPalette.current
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
-    ) {
-        Column(Modifier.fillMaxWidth()) {
+    SettingsGroup(
+        {
             LegalRow(
                 icon = Icons.Filled.BugReport,
                 title = "Share debug log",
-                onClick = { DebugLog.share(context) },
-                palette = palette
+                onClick = { DebugLog.share(context) }
             )
         }
-    }
+    )
 }
 
 /**
@@ -135,17 +123,15 @@ private fun LegalRows(
     onGoToLicenses: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val palette = LocalPalette.current
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
-    ) {
-        Column(Modifier.fillMaxWidth()) {
+    SettingsGroup(
+        {
             LegalRow(
                 icon = Icons.Filled.Description,
                 title = "Open source licenses",
-                onClick = onGoToLicenses,
-                palette = palette
+                onClick = onGoToLicenses
             )
+        },
+        {
             LegalRow(
                 icon = Icons.Filled.PrivacyTip,
                 title = "Privacy Policy",
@@ -159,9 +145,10 @@ private fun LegalRows(
                             )
                         )
                     }
-                },
-                palette = palette
+                }
             )
+        },
+        {
             LegalRow(
                 icon = Icons.Filled.Gavel,
                 title = "Terms of Service",
@@ -174,19 +161,17 @@ private fun LegalRows(
                             )
                         )
                     }
-                },
-                palette = palette
+                }
             )
         }
-    }
+    )
 }
 
 @Composable
 private fun LegalRow(
     icon: ImageVector,
     title: String,
-    onClick: () -> Unit,
-    palette: AppPalette
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -196,24 +181,15 @@ private fun LegalRow(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = palette.accent,
-            modifier = Modifier.size(22.dp)
-        )
+        SettingsIconTile(icon, title)
         Spacer(Modifier.width(14.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
             color = TextPrimary,
             modifier = Modifier.weight(1f)
         )
-        Icon(
-            Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = TextSecondary,
-            modifier = Modifier.size(20.dp)
-        )
+        V117Chevron()
     }
 }

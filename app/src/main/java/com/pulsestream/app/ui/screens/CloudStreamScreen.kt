@@ -29,14 +29,12 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -65,7 +63,6 @@ import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
@@ -213,8 +210,8 @@ fun CloudStreamScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Community plugins. Streams from enabled plugins appear in Choose Stream.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
                         modifier = Modifier.padding(start = 56.dp, end = 8.dp)
                     )
                 }
@@ -237,8 +234,8 @@ fun CloudStreamScreen(
                                 "A CloudStream plugin is third-party code that runs inside Plavio " +
                                     "with the app's permissions. Only add repositories you trust, " +
                                     "and only install plugins from authors you trust.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = V117Muted
                             )
                             Spacer(Modifier.height(12.dp))
                             Button(onClick = { CloudStreamRepository.acceptSecurityWarning() }) {
@@ -271,8 +268,8 @@ fun CloudStreamScreen(
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 "Paste a repo URL, or type MegaRepo to discover community repositories.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = V117Muted
                             )
                             Spacer(Modifier.height(10.dp))
                             Row(
@@ -313,8 +310,8 @@ fun CloudStreamScreen(
                     item(key = "message") {
                         Text(
                             info,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = V117Muted,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         )
                     }
@@ -380,7 +377,7 @@ fun CloudStreamScreen(
                                 label = { Text("Search plugins") },
                                 placeholder = { Text("Name, author, or description") },
                                 leadingIcon = {
-                                    Icon(Icons.Filled.Search, contentDescription = null, tint = TextSecondary)
+                                    Icon(Icons.Filled.Search, contentDescription = null, tint = V117Muted)
                                 },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -437,7 +434,7 @@ fun CloudStreamScreen(
                             }
                             bulkMessage?.let { info ->
                                 Spacer(Modifier.height(8.dp))
-                                Text(info, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                Text(info, style = MaterialTheme.typography.bodyMedium, color = V117Muted)
                             }
                         }
                     }
@@ -445,8 +442,8 @@ fun CloudStreamScreen(
                     item(key = "plugins_empty") {
                         Text(
                             "No plugins found in these repositories.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = V117Muted,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
@@ -516,18 +513,18 @@ private fun describeBulkResult(result: CloudStreamBulkInstallResult): String {
 
 @Composable
 private fun CsSectionHeader(text: String) {
-    Text(
+    // Nuvio v1.17 section label (gap report §2): 12sp Bold, ls 0.8sp,
+    // muted #969CA3, no uppercase; 24dp horizontal, 10dp gap below.
+    V117SectionLabel(
         text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        color = TextPrimary,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 10.dp)
     )
 }
 
 /**
- * Flat Infuse-style repo row: 16dp horizontal / 14dp vertical, plain 24dp accent icon,
- * bodyLarge Medium title + bodyMedium muted subtitle, thin divider below.
+ * Flat v1.17 repo row (gap report §2): 16dp horizontal / 14dp vertical,
+ * 36dp icon tile, bodyLarge Medium title + bodyMedium muted subtitle,
+ * gradient switch, 0.5dp divider inset 66dp below.
  */
 @Composable
 private fun CsRepoRow(
@@ -539,12 +536,7 @@ private fun CsRepoRow(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Filled.Extension,
-                contentDescription = null,
-                tint = LocalPalette.current.accent,
-                modifier = Modifier.size(24.dp)
-            )
+            SettingsIconTile(Icons.Filled.Extension, "Repository")
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -571,7 +563,7 @@ private fun CsRepoRow(
                 Text(
                     repo.manifest.sourceUrl,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
+                    color = V117Muted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -580,7 +572,7 @@ private fun CsRepoRow(
                     Text(
                         description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        color = V117Muted,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -590,26 +582,23 @@ private fun CsRepoRow(
                     Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
-            Switch(
+            SettingsGradientSwitch(
                 checked = repo.enabled,
                 onCheckedChange = {
                     CloudStreamRepository.setRepositoryEnabled(repo.manifest.sourceUrl, it)
                 }
             )
             IconButton(onClick = onEdit) {
-                Icon(Icons.Filled.Edit, contentDescription = "Edit repository", tint = TextSecondary)
+                Icon(Icons.Filled.Edit, contentDescription = "Edit repository", tint = V117Muted)
             }
             IconButton(onClick = { CloudStreamRepository.refreshRepository(repo.manifest.sourceUrl) }) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Refresh repository", tint = TextSecondary)
+                Icon(Icons.Filled.Refresh, contentDescription = "Refresh repository", tint = V117Muted)
             }
             IconButton(onClick = { CloudStreamRepository.removeRepository(repo.manifest.sourceUrl) }) {
-                Icon(Icons.Filled.Delete, contentDescription = "Remove repository", tint = TextSecondary)
+                Icon(Icons.Filled.Delete, contentDescription = "Remove repository", tint = V117Muted)
             }
         }
-        HorizontalDivider(
-            Modifier.padding(horizontal = 16.dp),
-            color = TextSecondary.copy(alpha = 0.2f)
-        )
+        V117Divider()
     }
 }
 
@@ -654,7 +643,7 @@ private fun CsDiscoveredRow(
                 Text(
                     manifest.sourceUrl,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
+                    color = V117Muted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -663,10 +652,7 @@ private fun CsDiscoveredRow(
                 Text("Add")
             }
         }
-        HorizontalDivider(
-            Modifier.padding(horizontal = 16.dp),
-            color = TextSecondary.copy(alpha = 0.2f)
-        )
+        V117Divider()
     }
 }
 
@@ -734,7 +720,7 @@ private fun CsPluginRow(
                         plugin.metadata.authors.joinToString(", ")
                             .ifBlank { plugin.metadata.internalName },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
+                        color = V117Muted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -745,11 +731,11 @@ private fun CsPluginRow(
                     Icon(
                         Icons.Filled.PushPin,
                         contentDescription = if (plugin.pinned) "Unpin source" else "Pin source",
-                        tint = if (plugin.pinned) LocalPalette.current.accent else TextSecondary
+                        tint = if (plugin.pinned) LocalPalette.current.accent else V117Muted
                     )
                 }
                 if (plugin.isInstalled && !plugin.hasUpdate) {
-                    Switch(
+                    SettingsGradientSwitch(
                         checked = plugin.enabled,
                         enabled = canToggle,
                         onCheckedChange = { CloudStreamRepository.setPluginEnabled(pluginId, it) }
@@ -761,7 +747,7 @@ private fun CsPluginRow(
                 Text(
                     description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
+                    color = V117Muted,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -814,10 +800,7 @@ private fun CsPluginRow(
                 }
             }
         }
-        HorizontalDivider(
-            Modifier.padding(horizontal = 16.dp),
-            color = TextSecondary.copy(alpha = 0.2f)
-        )
+        V117Divider()
     }
 }
 
@@ -835,7 +818,7 @@ private fun CsFilterRow(
             label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium,
-            color = TextSecondary
+            color = V117Muted
         )
         Spacer(Modifier.height(6.dp))
         FlowRow(
@@ -864,14 +847,14 @@ private fun CsFilterChip(
     Surface(
         onClick = onClick,
         color = if (selected) accent.copy(alpha = 0.15f) else Color.Transparent,
-        border = BorderStroke(1.dp, if (selected) accent else TextSecondary.copy(alpha = 0.4f)),
+        border = BorderStroke(1.dp, if (selected) accent else V117Muted.copy(alpha = 0.4f)),
         shape = RoundedCornerShape(999.dp),
     ) {
         Text(
             label,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium,
-            color = if (selected) accent else TextSecondary,
+            color = if (selected) accent else V117Muted,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
     }
@@ -887,7 +870,7 @@ private fun CsBadge(text: String) {
             text,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
-            color = TextSecondary,
+            color = V117Muted,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }

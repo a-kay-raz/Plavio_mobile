@@ -48,11 +48,9 @@ import com.pulsestream.app.data.tracking.TrackingLibrarySource
 import com.pulsestream.app.data.tracking.TrackingProgressSource
 import com.pulsestream.app.data.tracking.isSimklLinked
 import com.pulsestream.app.data.tracking.isTraktLinked
-import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
@@ -119,11 +117,9 @@ fun TrackingSettingsScreen(
             }
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                 item {
-                    Text(
-                        text = "Linked services",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = TextPrimary,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                    V117SectionLabel(
+                        "Linked services",
+                        modifier = Modifier.padding(top = 8.dp, bottom = 10.dp)
                     )
                     TrackingLinkedRow(
                         icon = Icons.Filled.Sync,
@@ -139,8 +135,8 @@ fun TrackingSettingsScreen(
                     )
                     Text(
                         text = "Link services in Settings > Integrations.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                     )
                 }
@@ -226,14 +222,14 @@ fun TrackingSettingsScreen(
                         } else {
                             "Never pulled yet."
                         },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted
                     )
                     pullMessage?.let {
                         Text(
                             it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = V117Muted,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
@@ -301,12 +297,13 @@ fun TrackingSettingsScreen(
 }
 
 /**
- * Picker rows, restyled 2026-11-22 to the app's standard settings row
- * (SettingsStaticRow): a GlassCard with 14dp inside and 5dp between
- * cards, icon tile on the left. The old plain rows had no card, no icon
- * and only 10dp vertical padding, so they sat tighter and flatter than
- * every other settings row. The LazyColumn already supplies the 16dp
- * horizontal inset, so the card itself adds none.
+ * Picker rows, restyled to the Nuvio v1.17 flat settings row
+ * (gap report §2): 16dp horizontal / 14dp vertical, 36dp icon tile,
+ * bodyLarge Medium title + bodyMedium muted subtitle, caller-supplied
+ * chevron. The old GlassCards (14dp inside, 5dp between cards) sat
+ * heavier than every other settings row — see the tracking-removal
+ * note in the file history. The value label sits on the title line,
+ * the note under the subtitle.
  */
 @Composable
 private fun TrackingPickerRow(
@@ -317,43 +314,40 @@ private fun TrackingPickerRow(
     note: String?,
     onClick: () -> Unit,
 ) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-        onClick = onClick
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SettingsIconTile(icon, title)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = valueLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                if (note != null) {
-                    Text(
-                        note,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
+        SettingsIconTile(icon, title)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = valueLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = V117Muted)
+            if (note != null) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = V117Muted,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
         }
+        Spacer(Modifier.width(12.dp))
+        V117Chevron()
     }
 }
 
@@ -364,34 +358,29 @@ private fun TrackingLinkedRow(
     subtitle: String,
     linked: Boolean,
 ) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-        onClick = null
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SettingsIconTile(icon, title)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            }
-            Spacer(Modifier.width(12.dp))
+        SettingsIconTile(icon, title)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
             Text(
-                text = if (linked) "Linked" else "Not linked",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (linked) LocalPalette.current.accent else TextSecondary
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
             )
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = V117Muted)
         }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = if (linked) "Linked" else "Not linked",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (linked) LocalPalette.current.accent else V117Muted
+        )
     }
 }
 
