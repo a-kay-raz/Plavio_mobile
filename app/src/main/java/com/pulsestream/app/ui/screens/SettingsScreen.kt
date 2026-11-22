@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Storage
@@ -851,80 +850,7 @@ fun SettingsScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(12.dp))
-                    // The heart follows the picked accent (owner's
-                    // order 2026-10-25) — a real icon, not the old
-                    // fixed-green emoji, so it can be tinted.
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Made with ",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = TextPrimary
-                        )
-                        Icon(
-                            Icons.Filled.Favorite,
-                            contentDescription = null,
-                            tint = LocalPalette.current.accent,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = " by Kotlinsyd",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = TextPrimary
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    SocialIconRow()
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SocialIconRow() {
-    val context = LocalContext.current
-    val palette = LocalPalette.current
-    val links = listOf(
-        Triple(R.drawable.ic_discord, "Discord", "https://discord.gg/cwzHH3r9pa"),
-        Triple(R.drawable.ic_github, "GitHub", "https://github.com/kotlinsyd/Plavio"),
-        Triple(R.drawable.ic_gitlab, "GitLab", "https://gitlab.com/KotlinJS5/plavio"),
-        Triple(R.drawable.ic_reddit, "Reddit", "https://www.reddit.com/r/Plavio/"),
-    )
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        links.forEach { (iconRes, label, url) ->
-            IconButton(
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                        )
-                    }
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        color = palette.panel.copy(alpha = 0.7f),
-                        shape = CircleShape
-                    )
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = label,
-                    // No tint — show icons in their native white for clean look
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
             }
         }
     }
