@@ -38,7 +38,7 @@ import kotlinx.coroutines.Job
  *
  * Constructor params are used only for initial values and are not stored.
  */
-class PlayerScreenState(
+internal class PlayerScreenState(
     settings: SettingsStore,
     initialRequest: PlaybackRequest,
     isTv: Boolean,

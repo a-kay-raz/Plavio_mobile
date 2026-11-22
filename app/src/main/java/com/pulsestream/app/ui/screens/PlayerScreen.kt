@@ -1798,9 +1798,7 @@ fun PlayerScreen(
                         poster = oldReq.poster,
                         videoId = oldReq.videoId,
                         streamUrl = oldReq.streamUrl,
-                        state.positionMs = posMs,
-                        state.durationMs = durMs,
-                        imdbId = oldReq.imdbId,
+                        positionMs = posMs,                        durationMs = durMs,                        imdbId = oldReq.imdbId,
                         season = oldReq.season,
                         episode = oldReq.episode
                     )
@@ -2208,8 +2206,7 @@ fun PlayerScreen(
                     isTv = false,
                     playWhenReady = watchedPlayer.playWhenReady,
                     hasEverPlayed = hasEverPlayed,
-                    state.isBuffering = buffering,
-                    elapsedMs = elapsedMs,
+                    isBuffering = buffering,                    elapsedMs = elapsedMs,
                     // Step 40: configurable startup timeout (default 15s).
                     timeoutMs = settings.fallbackStartupTimeoutSeconds * 1000L
                 )) {
@@ -2251,8 +2248,7 @@ fun PlayerScreen(
                         isTv = isTv,
                         playWhenReady = watchedPlayer.playWhenReady,
                         hasEverPlayed = hasPlayed,
-                        state.isBuffering = watchedPlayer.playbackState == Player.STATE_BUFFERING,
-                        elapsedMs = nowMs - rebufferSinceMs!!
+                        isBuffering = watchedPlayer.playbackState == Player.STATE_BUFFERING,                        elapsedMs = nowMs - rebufferSinceMs!!
                     )) {
                     val maxRecoveries = 2
                     if (state.liveRebufferRecoveries < maxRecoveries) {
@@ -2310,8 +2306,7 @@ fun PlayerScreen(
                     isLive = false,
                     playWhenReady = watchedPlayer.playWhenReady,
                     hasEverPlayed = hasPlayed,
-                    state.isBuffering = buffering,
-                    positionProgressed = progressed,
+                    isBuffering = buffering,                    positionProgressed = progressed,
                     elapsedMs = elapsedMs,
                     // Step 40: configurable startup timeout (default 15s);
                     // the mid-play rebuffer timeout stays 30s.
@@ -2750,9 +2745,7 @@ fun PlayerScreen(
                 poster = req.poster,
                 videoId = req.videoId,
                 streamUrl = req.streamUrl,
-                state.positionMs = pos,
-                state.durationMs = if (dur == C.TIME_UNSET) 0L else dur,
-                imdbId = req.imdbId,
+                positionMs = pos,                durationMs = if (dur == C.TIME_UNSET) 0L else dur,                imdbId = req.imdbId,
                 season = req.season,
                 episode = req.episode
             )
@@ -4094,10 +4087,7 @@ fun PlayerScreen(
                         .padding(bottom = 16.dp)
                 ) {
                     LegacySeekBar(
-                        state.positionMs = state.positionMs,
-                        state.durationMs = state.durationMs,
-                        state.bufferedMs = state.bufferedMs,
-                        chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
+                        positionMs = state.positionMs,                        durationMs = state.durationMs,                        bufferedMs = state.bufferedMs,                        chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                         onSeek = {},
                         enabled = false,
                         isTv = isTv
@@ -4489,8 +4479,7 @@ fun PlayerScreen(
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.SPEED -> {
                                         SpeedMenuButton(
-                                            state.speed = state.speed,
-                                            menuOpen = state.speedMenuOpen,
+                                            speed = state.speed,                                            menuOpen = state.speedMenuOpen,
                                             onOpenMenu = { state.speedMenuOpen = true },
                                             onDismissMenu = { state.speedMenuOpen = false },
                                             onSpeedSelected = { s ->
@@ -4628,15 +4617,10 @@ fun PlayerScreen(
                             SeekPreviewOverlay(
                                 controller = seekPreviewController,
                                 active = state.scrubPositionMs != null,
-                                state.positionMs = state.scrubPositionMs ?: state.positionMs,
-                                state.durationMs = state.durationMs,
-                                modifier = Modifier.fillMaxWidth().height(22.dp)
+                                positionMs = state.scrubPositionMs ?: state.positionMs,                                durationMs = state.durationMs,                                modifier = Modifier.fillMaxWidth().height(22.dp)
                             )
                             LegacySeekBar(
-                                state.positionMs = state.positionMs,
-                                state.durationMs = state.durationMs,
-                                state.bufferedMs = state.bufferedMs,
-                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
+                                positionMs = state.positionMs,                                durationMs = state.durationMs,                                bufferedMs = state.bufferedMs,                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                                 onSeek = { player.seekTo(it) },
                                 modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
                                 isTv = isTv,
