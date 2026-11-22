@@ -282,7 +282,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                         val seasons = meta.videos.map { it.season }.distinct().sorted()
                         selectSeason(seasons.first(), meta)
                     } else {
-                        loadStreams(meta.type, meta.id)
+                        loadStreams(meta.type, meta.id, meta.name)
                     }
                 }
             } catch (e: Exception) {
@@ -318,7 +318,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     fun selectEpisode(video: Video) {
         selectedVideo = video
         val meta = (metaState as? MetaUiState.Content)?.meta ?: return
-        loadStreams(meta.type, video.id)
+        loadStreams(meta.type, video.id, meta.name)
     }
 
     fun retryLoad(repo: StreamRepository, addonId: String, type: String, metaId: String) {
@@ -334,7 +334,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
      * fires) as soon as the first addon answers instead of waiting for
      * every addon — the fix for slow stream loading.
      */
-    fun loadStreams(type: String, videoId: String) {
+    fun loadStreams(type: String, videoId: String, title: String? = null) {
         streamsJob?.cancel()
         probeJob?.cancel()
         pickState = PickState.Idle
@@ -342,7 +342,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
             streamsState = StreamsUiState.Loading
             var gotAny = false
             try {
-                repo.streamResultsFlow(type, videoId).collect { result ->
+                repo.streamResultsFlow(type, videoId, title = title).collect { result ->
                     if (result.streams.isNotEmpty()) {
                         gotAny = true
                         streamsState = StreamsUiState.Content(result.streams, result.subtitles, loadingMore = true)
@@ -362,7 +362,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                 while (!gotAny && attempt < 3) {
                     attempt++
                     kotlinx.coroutines.delay(1500L * attempt)
-                    repo.streamResultsFlow(type, videoId).collect { result ->
+                    repo.streamResultsFlow(type, videoId, title = title).collect { result ->
                         if (result.streams.isNotEmpty()) {
                             gotAny = true
                             streamsState = StreamsUiState.Content(result.streams, result.subtitles, loadingMore = true)
@@ -444,7 +444,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                 val meta = (metaState as? MetaUiState.Content)?.meta
                 if (meta != null && s is StreamsUiState.Idle) {
                     val videoId = if (meta.type == "series") selectedVideo?.id ?: meta.id else meta.id
-                    loadStreams(meta.type, videoId)
+                    loadStreams(meta.type, videoId, meta.name)
                 }
             }
         }
@@ -1971,7 +1971,7 @@ private fun DetailContent(
         loading = vm.streamsState is StreamsUiState.Loading,
         errorMessage = (vm.streamsState as? StreamsUiState.Error)?.message,
         onDismiss = { sourcePickerOpen = false },
-        onRetry = { vm.loadStreams(meta.type, vm.selectedVideo?.id ?: meta.id) },
+        onRetry = { vm.loadStreams(meta.type, vm.selectedVideo?.id ?: meta.id, meta.name) },
         onPick = { stream ->
             sourcePickerOpen = false
             if (streamsContent != null) {
@@ -1998,7 +1998,7 @@ private fun DetailContent(
             loading = vm.streamsState is StreamsUiState.Loading,
             errorMessage = (vm.streamsState as? StreamsUiState.Error)?.message,
             onBack = { fullPageSourceOpen = false },
-            onRetry = { vm.loadStreams(meta.type, vm.selectedVideo?.id ?: meta.id) },
+            onRetry = { vm.loadStreams(meta.type, vm.selectedVideo?.id ?: meta.id, meta.name) },
             onPick = { stream ->
                 fullPageSourceOpen = false
                 if (streamsContent != null) {
