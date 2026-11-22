@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Swipe
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -121,6 +122,7 @@ fun PlaybackSettingsScreen(
     // Step 68: parental guide overlay (default on).
     var showParentalGuide by remember { mutableStateOf(settings.showParentalGuide) }
     var keepScreenOn by remember { mutableStateOf(settings.keepScreenOn) }
+    var hideStatusBar by remember { mutableStateOf(settings.hideStatusBarInPlayer) }
     var showSkip by remember { mutableStateOf(settings.showSkipButton) }
     var pipEnabled by remember { mutableStateOf(settings.pipEnabled) }
     // Step 67: what the external player gets on handoff.
@@ -249,6 +251,18 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 keepScreenOn = it
                                 settings.keepScreenOn = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.VisibilityOff,
+                            title = "Hide status bar",
+                            subtitle = "Hide the clock, battery and signal bar while playing",
+                            checked = hideStatusBar,
+                            onCheckedChange = {
+                                hideStatusBar = it
+                                settings.hideStatusBarInPlayer = it
                             }
                         )
                     },
