@@ -3437,10 +3437,25 @@ fun PlayerScreen(
         if (window != null) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
         }
+        // Hide status bar: the pill (clock, battery, signal) the owner
+        // reported still showing. The player always hid the bars on
+        // entry, so a visible bar means the system showed it again
+        // afterwards (shade pull-down, PiP return, controls tap) — the
+        // resume observer + the showControls effect below re-hide it.
+        // Default on; the Playback setting turns it off.
+        val hideStatusBar = settings.hideStatusBarInPlayer
         val controller = window?.let { WindowInsetsControllerCompat(it, it.decorView) }
-        controller?.hide(WindowInsetsCompat.Type.systemBars())
-        controller?.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (hideStatusBar) {
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+            controller?.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        val resumeObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && hideStatusBar) {
+                controller?.hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        lifecycle.addObserver(resumeObserver)
 
         onDispose {
             MainActivity.pipEmergencyStop = null
@@ -3465,7 +3480,19 @@ fun PlayerScreen(
                 w.attributes = lp
             }
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            controller?.show(WindowInsetsCompat.Type.systemBars())
+            lifecycle.removeObserver(resumeObserver)
+            if (hideStatusBar) controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    // Re-hide the status bar when the controls toggle — on some devices
+    // showing the controls (or a swipe) brings the bar back, and nothing
+    // re-hid it until now. Reads the setting live, so flipping it in
+    // Playback applies on the next controls tap.
+    LaunchedEffect(showControls) {
+        if (settings.hideStatusBarInPlayer) {
+            activity?.window?.let { WindowInsetsControllerCompat(it, it.decorView) }
+                ?.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 

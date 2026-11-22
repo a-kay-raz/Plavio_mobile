@@ -1166,6 +1166,13 @@ class SettingsStore(
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
         set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
 
+    // Hide the status bar (clock, battery, signal) during playback.
+    // Default on — the player already hid it in landscape; the setting
+    // also covers portrait and re-hides it if the system shows it again.
+    var hideStatusBarInPlayer: Boolean
+        get() = prefs.getBoolean(KEY_HIDE_STATUS_BAR_IN_PLAYER, true)
+        set(value) = prefs.edit().putBoolean(KEY_HIDE_STATUS_BAR_IN_PLAYER, value).apply()
+
     /** Show the "Skip intro / recap / outro" button when segments are known. */
     var showSkipButton: Boolean
         get() = prefs.getBoolean(KEY_SHOW_SKIP, true)
@@ -2234,6 +2241,7 @@ class SettingsStore(
         private const val KEY_CS3_PROVIDER_SELECTION_RESTORED = "cloudstream_provider_selection_restored"
         private const val KEY_HOME_ROW_PREFS = "home_catalog_row_prefs"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+        private const val KEY_HIDE_STATUS_BAR_IN_PLAYER = "hide_status_bar_in_player"
         private const val KEY_SHOW_SKIP = "show_skip_button"
         private const val KEY_SUBTITLE_LANGS = "subtitle_languages"
         private const val KEY_ACCENT = "accent_theme"
