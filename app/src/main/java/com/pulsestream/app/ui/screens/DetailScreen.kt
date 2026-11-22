@@ -1476,6 +1476,11 @@ private fun DetailContent(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
+                        // Guard: if this Text is ever squeezed to ~0dp wide
+                        // again, it must truncate on one line — a 0-width
+                        // Text wraps "Episodes" into 8 lines and inflates
+                        // the whole header Row to ~200dp tall.
+                        maxLines = 1,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = { shuffleSheetOpen = true }) {
@@ -1509,7 +1514,21 @@ private fun DetailContent(
                             tint = TextSecondary
                         )
                     }
-                    if (!isTvDetail) {
+                }
+            }
+            // Spoiler filters on their own row: sharing the header Row
+            // with the 4 action icons overflowed on a 360dp phone — the
+            // "Episodes" title was squeezed to 0dp and "Blur unwatched"
+            // was clipped off-screen.
+            if (!isTvDetail) {
+                item(key = "episodes_filters") {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
                         FilterChip(
                             selected = hideEpisodeDetails,
                             onClick = {
@@ -1525,7 +1544,6 @@ private fun DetailContent(
                                 labelColor = TextSecondary
                             )
                         )
-                        Spacer(Modifier.width(8.dp))
                         FilterChip(
                             selected = blurUnwatched,
                             onClick = {
