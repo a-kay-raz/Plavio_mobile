@@ -707,6 +707,9 @@ class StreamRepository(
     private var catalogRefreshJob: Deferred<List<CatalogRow>>? = null
     private val catalogRefreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val addonRequestGate = Semaphore(4)
+    // Same single-flight sharing for the separate CS3 home refresh.
+    private val cs3RefreshLock = Any()
+    private var cs3RefreshJob: Deferred<List<CatalogRow>>? = null
 
     private suspend fun <T> addonRequest(block: suspend () -> T): T {
         addonRequestGate.acquire()
@@ -725,6 +728,42 @@ class StreamRepository(
         }
         return job.await()
     }
+
+    /**
+     * Refreshes the CS3 home rows (one row per provider main-page
+     * category) separately from the Stremio refresh, so a slow provider
+     * never holds the Home load. Fresh rows are written to the catalog
+     * cache and returned with the home row prefs applied (hidden rows
+     * dropped, CS3 sorts last). The search cache is NOT rebuilt here —
+     * it picks the fresh rows up on the next Home load via
+     * loadCatalogRowsCached(). If a refresh is already in flight, joins
+     * it instead of starting duplicate work. Never throws.
+     */
+    suspend fun refreshCloudStreamHomeRows(): List<CatalogRow> {
+        val job = synchronized(cs3RefreshLock) {
+            val active = cs3RefreshJob?.takeIf { it.isActive }
+            active ?: catalogRefreshScope.async { doRefreshCloudStreamHomeRows() }
+                .also { cs3RefreshJob = it }
+        }
+        return job.await()
+    }
+
+    private suspend fun doRefreshCloudStreamHomeRows(): List<CatalogRow> =
+        withContext(Dispatchers.IO) {
+            val rows = runCatching { loadCloudStreamHomeRows() }.getOrElse { emptyList() }
+            if (rows.isNotEmpty()) {
+                db.catalogCacheDao().upsertAll(rows.map { row ->
+                    CatalogCache("${row.addonId}|${row.type}|${row.catalogId}", row.addonId,
+                        row.addonName, row.baseUrl, row.type, row.catalogId, row.catalogName,
+                        cappedItemsJson(row.items), System.currentTimeMillis())
+                })
+            }
+            val installed = enabledAddons()
+            applyHomeRowPrefs(
+                sortRowsByPreference(rows, installed.associateBy { it.id }),
+                installed.associateBy { it.id }
+            )
+        }
 
     /**
      * True when Home's catalog cache was refreshed within [maxAgeMs].
@@ -821,8 +860,10 @@ class StreamRepository(
      * Phase 2: CS3 home sections — one row per (provider, main-page
      * category), titled "CS3 • <Provider> - <Category>" (Infuse
      * loadCloudSections). Per-provider isolation: one bad provider never
-     * breaks the others; Semaphore(2), 30s per provider, 35s total, cap 18
-     * items per category, deduped by normalized title.
+     * breaks the others; Semaphore(4) like the stream leg, 30s per
+     * provider, 35s total, cap 18 items per category, deduped by
+     * normalized title. Runs on its own refresh (see
+     * refreshCloudStreamHomeRows), never inside the blocking Home load.
      */
     private suspend fun loadCloudStreamHomeRows(): List<CatalogRow> {
         val selection = resolveCloudStreamHomeSelection()
@@ -833,7 +874,7 @@ class StreamRepository(
         if (runnable.isEmpty()) return emptyList()
         return withTimeoutOrNull(CLOUDSTREAM_HOME_TOTAL_TIMEOUT_MS) {
             coroutineScope {
-                val gate = Semaphore(2)
+                val gate = Semaphore(4)
                 runnable.map { plugin ->
                     async {
                         gate.withPermit {
@@ -921,13 +962,14 @@ class StreamRepository(
         val successfulManifests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val authoritativeKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
         val listedManifestKeys = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        // Stremio only. CS3 home rows refresh separately via
+        // refreshCloudStreamHomeRows() (background, merged in by Home):
+        // a slow provider used to hold this whole refresh for up to 35s,
+        // so a cold Home load stared at Loading until the slowest CS3
+        // provider answered. Cached CS3 rows stay visible through the
+        // retained-rows logic below until the background refresh replaces
+        // them.
         val rows = coroutineScope {
-            // CS3 home sections run alongside the Stremio fan-out (own
-            // 35s budget) so they never serialize behind slow addons. A
-            // CS3 failure must never fail the whole Home refresh.
-            val cs3Deferred = async {
-                runCatching { loadCloudStreamHomeRows() }.getOrElse { emptyList() }
-            }
             val stremioRows = installed.map { addon ->
                 async {
                     val manifest = cachedManifest(addon.baseUrl) ?: return@async emptyList<CatalogRow>()
@@ -970,7 +1012,7 @@ class StreamRepository(
                     }
                 }
             }.awaitAll().flatten()
-            (stremioRows + cs3Deferred.await())
+            stremioRows
         }.distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
 
         val now = System.currentTimeMillis()
@@ -1952,29 +1994,41 @@ class StreamRepository(
             // providers); saved/library ids are `cs3:<providerId>|<data>`
             // direct routes. A CS3 id never matches a Stremio addon, so
             // there is no Stremio fall-through for it.
+            // A CS3 load has no outer budget of its own — the plugin's
+            // load timeout is 120s — so cap it at the same 15s a Stremio
+            // addon gets, or a slow provider hangs the detail page.
             if (id.startsWith("plavio-cs-api:")) {
-                return@withContext CloudStreamRepository.loadByRoute(id)
-                    .getOrNull()?.toPlavioMetaDetail()
+                return@withContext withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
+                    CloudStreamRepository.loadByRoute(id)
+                        .getOrNull()?.toPlavioMetaDetail()
+                }
             }
             if (id.startsWith(CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX)) {
                 val rest = id.removePrefix(CloudStreamStreamSource.CS3_VIDEO_ID_PREFIX)
                 val providerId = rest.substringBefore('|').trim()
                 val data = rest.substringAfter('|', missingDelimiterValue = "").trim()
                 if (providerId.isNotEmpty() && data.isNotEmpty()) {
-                    return@withContext CloudStreamRepository.load(providerId, data)
-                        .getOrNull()?.toPlavioMetaDetail()
+                    return@withContext withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
+                        CloudStreamRepository.load(providerId, data)
+                            .getOrNull()?.toPlavioMetaDetail()
+                    }
                 }
                 return@withContext null
             }
-            for (addon in metaAddonsFor(type, hintBaseUrl)) {
-                // Per-addon budget instead of unbounded sequential waits —
-                // one hanging addon must not stall the whole lookup.
-                val meta = withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
-                    runCatching { api.fetchMeta(addon.baseUrl, type, id) }.getOrNull()
-                } ?: continue
-                return@withContext meta
+            // Meta used to be fetched addon-by-addon in order, 15s each —
+            // N meta addons could stall the detail page for N x 15s. Fetch
+            // from all of them at once; the first hit in preference order
+            // wins, so the page waits on the slowest single addon only.
+            val addons = metaAddonsFor(type, hintBaseUrl)
+            coroutineScope {
+                addons.map { addon ->
+                    async {
+                        withTimeoutOrNull(META_FETCH_TIMEOUT_MS) {
+                            runCatching { api.fetchMeta(addon.baseUrl, type, id) }.getOrNull()
+                        }
+                    }
+                }.awaitAll().firstOrNull { it != null }
             }
-            null
         }
 
     /**

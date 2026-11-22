@@ -186,6 +186,36 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
     }
 
     /**
+     * CS3 home rows refresh separately, in the background: the Stremio
+     * refresh never waits for a slow provider, and the CS3 rows merge in
+     * when they arrive. Cached CS3 rows stay visible until then (the
+     * Stremio refresh keeps them via its retained-rows logic).
+     */
+    private fun refreshCloudStreamRows() {
+        viewModelScope.launch {
+            runCatching { repo.refreshCloudStreamHomeRows() }
+                .onSuccess { mergeCloudStreamRows(it) }
+        }
+    }
+
+    private fun mergeCloudStreamRows(cs3Rows: List<CatalogRow>) {
+        val state = uiState
+        val fresh = cs3Rows.filter { it.type != "tv" }
+        val current = (state as? HomeUiState.Content)?.rows
+        if (current != null) {
+            val kept = current.filterNot { repo.isCloudStreamRowAddonId(it.addonId) }
+            uiState = HomeUiState.Content(
+                (kept + fresh).distinctBy { "${it.addonId}|${it.type}|${it.catalogId}" }
+            )
+        } else if (state is HomeUiState.Empty && fresh.isNotEmpty()) {
+            // Cold load with no Stremio rows at all: the CS3 rows ARE Home.
+            uiState = HomeUiState.Content(fresh)
+        }
+        // Loading/Error: a fresh load is in flight and will run its own
+        // CS3 refresh — never clobber it with stale rows.
+    }
+
+    /**
      * Cache-first loading: show cached catalogs instantly, then quietly
      * refresh in the background — but only when the cache is stale (the
      * splash warm-up may have just refreshed it). [forceRefresh] skips
@@ -204,8 +234,14 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
                     uiState = HomeUiState.Content(cached, refreshing = stale)
                     if (stale) {
                         runCatching { repo.refreshCatalogRows().filter { it.type != "tv" } }
-                            .onSuccess { uiState = HomeUiState.Content(it) }
-                            .onFailure { uiState = HomeUiState.Content(cached) }
+                            .onSuccess {
+                                uiState = HomeUiState.Content(it)
+                                refreshCloudStreamRows()
+                            }
+                            .onFailure {
+                                uiState = HomeUiState.Content(cached)
+                                refreshCloudStreamRows()
+                            }
                     }
                     return@launch
                 }
@@ -218,6 +254,7 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
                 homePrefs = repo.homeRowPrefs()
                 syncCloudStreamSelection()
                 uiState = if (rows.isEmpty()) HomeUiState.Empty else HomeUiState.Content(rows)
+                refreshCloudStreamRows()
             } catch (e: Exception) {
                 uiState = HomeUiState.Error(e.message ?: "Couldn't load catalogs")
             }
@@ -242,6 +279,7 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
                 .onSuccess {
                     syncCloudStreamSelection()
                     uiState = HomeUiState.Content(it)
+                    refreshCloudStreamRows()
                 }
                 .onFailure { uiState = HomeUiState.Content(current) }
         }
