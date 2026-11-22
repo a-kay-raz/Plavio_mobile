@@ -35,9 +35,10 @@ import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
 
 /**
- * Nuvio v1.17 Notifications hub: episode release alerts + test
- * notification live here instead of at root. Behaviour unchanged —
- * the toggle logic is the same as the old root rows.
+ * Nuvio v1.17 Notifications hub, grouped like the source page:
+ * Alerts (episode release alerts) then Test (test notification
+ * card). Behaviour unchanged — the toggle logic is the same as
+ * the old root rows.
  */
 @Composable
 fun NotificationsSettingsScreen(
@@ -72,7 +73,8 @@ fun NotificationsSettingsScreen(
                     )
                 }
             }
-            item(key = "group") {
+            item(key = "alerts_section") {
+                SettingsSectionHeader("Alerts")
                 SettingsGroup(
                     {
                         SettingsToggleRow(
@@ -95,7 +97,12 @@ fun NotificationsSettingsScreen(
                                 }
                             }
                         )
-                    },
+                    }
+                )
+            }
+            item(key = "test_section") {
+                SettingsSectionHeader("Test")
+                SettingsGroup(
                     {
                         // Re-read on every recomposition so a grant made elsewhere is picked up.
                         val notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled() &&

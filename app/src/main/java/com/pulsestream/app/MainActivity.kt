@@ -174,6 +174,7 @@ import com.pulsestream.app.ui.screens.ActorScreen
 import com.pulsestream.app.ui.screens.StreamsSettingsScreen
 import com.pulsestream.app.ui.screens.SubtitleSettingsScreen
 import com.pulsestream.app.ui.screens.AppearanceSettingsScreen
+import com.pulsestream.app.ui.screens.LayoutSettingsScreen
 import com.pulsestream.app.ui.screens.AboutScreen
 import com.pulsestream.app.ui.screens.WhatsNewScreen
 import com.pulsestream.app.ui.screens.LicensesScreen
@@ -1564,6 +1565,7 @@ private fun PulseNavGraph(
                 onGoToPlayback = { navController.navigate(Routes.PLAYBACK_SETTINGS) },
                 onGoToSubtitles = { navController.navigate(Routes.SUBTITLE_SETTINGS) },
                 onGoToAppearance = { navController.navigate(Routes.APPEARANCE_SETTINGS) },
+                onGoToLayout = { navController.navigate(Routes.LAYOUT_SETTINGS) },
                 onGoToStreams = { navController.navigate(Routes.STREAMS_SETTINGS) },
                 onGoToAbout = { navController.navigate(Routes.ABOUT) },
                 onGoToFeedback = { navController.navigate(Routes.FEEDBACK) },
@@ -1722,6 +1724,13 @@ private fun PulseNavGraph(
         }
         composable(Routes.APPEARANCE_SETTINGS) {
             AppearanceSettingsScreen(
+                repository = repository,
+                onThemeChanged = onThemeChanged,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.LAYOUT_SETTINGS) {
+            LayoutSettingsScreen(
                 repository = repository,
                 onThemeChanged = onThemeChanged,
                 onGoToHomeCatalogs = { navController.navigate(Routes.HOME_CATALOGS) },
