@@ -464,12 +464,17 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
-                        SettingsNavRow(
-                            icon = Icons.Filled.History,
-                            title = "Last-link cache",
-                            subtitle = "Links stay reusable for ${settings.reuseLastLinkCacheHours}h",
-                            onClick = { reuseLinkHoursOpen = true }
-                        )
+                        // The cache hours do nothing while reuse is off —
+                        // hide the row, like Fine-tune buffers hides when
+                        // custom buffers are off.
+                        if (reuseLastLink) {
+                            SettingsNavRow(
+                                icon = Icons.Filled.History,
+                                title = "Last-link cache",
+                                subtitle = "Links stay reusable for ${settings.reuseLastLinkCacheHours}h",
+                                onClick = { reuseLinkHoursOpen = true }
+                            )
+                        }
                     }
                 )
                 SettingsSectionHeader("Stream auto-play")
@@ -557,20 +562,27 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
-                        SettingsNavRow(
-                            icon = Icons.Filled.SkipNext,
-                            title = "Auto-skip",
-                            subtitle = autoSkipLabel(settings),
-                            onClick = { autoSkipOpen = true }
-                        )
+                        // Auto-skip and the offset only act while the skip
+                        // button is on (the player gates both on
+                        // showSkipButton) — hide them when it is off.
+                        if (showSkip) {
+                            SettingsNavRow(
+                                icon = Icons.Filled.SkipNext,
+                                title = "Auto-skip",
+                                subtitle = autoSkipLabel(settings),
+                                onClick = { autoSkipOpen = true }
+                            )
+                        }
                     },
                     {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Schedule,
-                            title = "Skip offset",
-                            subtitle = skipOffsetLabel(settings),
-                            onClick = { skipOffsetOpen = true }
-                        )
+                        if (showSkip) {
+                            SettingsNavRow(
+                                icon = Icons.Filled.Schedule,
+                                title = "Skip offset",
+                                subtitle = skipOffsetLabel(settings),
+                                onClick = { skipOffsetOpen = true }
+                            )
+                        }
                     }
                 )
                 SettingsSectionHeader("Next episode")
