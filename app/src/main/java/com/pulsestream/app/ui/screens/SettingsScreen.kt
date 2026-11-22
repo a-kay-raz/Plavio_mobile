@@ -627,11 +627,14 @@ fun SettingsScreen(
 
     )
     val normalizedQuery = settingsQuery.trim().lowercase()
+    // Downloads is both a root row and a Content & Discovery hub child,
+    // so the index holds it twice — dedupe by title so search shows it
+    // once (two "entry_Downloads" keys crashed the LazyColumn).
     val visibleEntries = if (normalizedQuery.isEmpty()) entries
         else entries.filter { entry ->
             entry.title.lowercase().contains(normalizedQuery) ||
                 entry.searchText.contains(normalizedQuery)
-        }
+        }.distinctBy { it.title }
 
     GlowBackground {
         LazyColumn(
@@ -790,7 +793,7 @@ fun SettingsScreen(
                     }
                 }
             } else {
-                items(visibleEntries, key = { "entry_${it.title}" }) { entry ->
+                items(visibleEntries, key = { "entry_${it.title}_${it.hub ?: "root"}" }) { entry ->
                     entry.content()
                 }
                 if (visibleEntries.isEmpty()) {
