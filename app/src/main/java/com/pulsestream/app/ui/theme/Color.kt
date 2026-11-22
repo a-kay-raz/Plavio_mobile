@@ -68,7 +68,12 @@ enum class AccentTheme(val label: String, val primary: Color, val secondary: Col
     VIOLET("Violet", Color(0xFFA78BFA), Color(0xFFF0ABFC)),
     EMERALD("Emerald", Color(0xFF34D399), Color(0xFF22D3EE)),
     AMBER("Amber", Color(0xFFFBBF24), Color(0xFFF97316)),
-    ROSE("Rose", Color(0xFFEC407A), Color(0xFFF48FB1));
+    ROSE("Rose", Color(0xFFEC407A), Color(0xFFF48FB1)),
+    /** Nuvio GOLD theme: primary is Nuvio's gold secondary 0xFFE8A91C,
+     * secondary is its nativeAccentHex #FFD45C (light gold highlight).
+     * Deeper gold than AMBER, and its secondary is pale gold, not
+     * AMBER's orange — the two stay visually distinct in the picker. */
+    GOLD("Gold", Color(0xFFE8A91C), Color(0xFFFFD45C));
 
     /** Picker swatch: the Weave wears the logo gradient; every other
      * accent is a solid disc (the picker's approved look). */
