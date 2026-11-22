@@ -34,7 +34,7 @@ internal sealed interface PlayerIndicator {
     data class Message(val text: String) : PlayerIndicator
 }
 
-internal val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+internal val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
 internal fun speedLabel(s: Float): String =
     if (s == s.toInt().toFloat()) "${s.toInt()}x" else "${s}x"

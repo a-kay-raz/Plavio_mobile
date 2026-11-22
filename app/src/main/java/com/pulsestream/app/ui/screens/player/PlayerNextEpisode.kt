@@ -4,8 +4,8 @@ import com.pulsestream.app.data.SkipSegment
 import com.pulsestream.app.data.SegmentType
 import com.pulsestream.app.data.Video
 
-/** Next-episode countdown length (Nuvio's "Next episode in 10…9…"). */
-const val NEXT_EPISODE_COUNTDOWN_SECONDS = 10
+/** Next-episode countdown length (Nuvio counts 3…2…1 after pre-resolving the next episode's sources). */
+const val NEXT_EPISODE_COUNTDOWN_SECONDS = 3
 
 /** Threshold mode for the next-episode card (Nuvio NextEpisodeThresholdMode). */
 const val NEXT_EPISODE_MODE_PERCENTAGE = "percentage"
