@@ -4497,8 +4497,15 @@ fun PlayerScreen(
                 // top-centre pill, only when the status overlay is on
                 // (default off in Nuvio). The header leaves 36dp clear
                 // of it on both sides (see the title/icon paddings above).
+                // Remember the device status unconditionally (as in build
+                // 34): making this remember call conditional on the
+                // overlay setting produced a VerifyError in build 35 —
+                // the giant PlayerScreen method failed dex verification
+                // on the phone (copy of a MutableState into the wrong
+                // register). The strip itself still renders only when
+                // the overlay setting is on.
+                val deviceStatus = rememberPlayerDeviceStatus()
                 if (settings.playerStatusOverlayEnabled) {
-                    val deviceStatus = rememberPlayerDeviceStatus()
                     PlayerDeviceStatusStrip(
                         status = deviceStatus,
                         modifier = Modifier
