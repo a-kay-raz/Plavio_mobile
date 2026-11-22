@@ -41,6 +41,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.LiveTvEpgSource
+import com.pulsestream.app.data.M3uParser
 import com.pulsestream.app.data.StreamRepository
 import com.pulsestream.app.data.fetchStalkerChannels
 import com.pulsestream.app.data.fetchXtreamChannels
@@ -53,10 +54,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Live TV providers (Nuvio `settings/LiveTvSettingsPage`): Xtream Codes
- * login, Stalker Portal login (MAC), and XMLTV guide sources. Channels
- * from a configured provider appear in the Live tab next to addons and
- * M3U playlists; the tab reloads on resume, so saving here takes effect
- * as soon as you go back.
+ * login, Stalker Portal login (MAC), manually added M3U playlist URLs,
+ * and XMLTV guide sources. Channels from a configured provider appear
+ * in the Live tab next to addons and M3U playlists; the tab reloads on
+ * resume, so saving here takes effect as soon as you go back.
  */
 @Composable
 fun LiveTvSettingsScreen(
@@ -81,6 +82,10 @@ fun LiveTvSettingsScreen(
     var epgAutoDetect by remember { mutableStateOf(settings.liveTvEpgAutoDetect) }
     var epgSources by remember { mutableStateOf(settings.liveTvEpgSources) }
     var addEpgOpen by remember { mutableStateOf(false) }
+    var m3uPlaylists by remember { mutableStateOf(settings.m3uPlaylists) }
+    var m3uUrl by remember { mutableStateOf("") }
+    var m3uStatus by remember { mutableStateOf<String?>(null) }
+    var m3uAdding by remember { mutableStateOf(false) }
 
     fun saveXtream() {
         settings.liveTvXtreamServerUrl = xtreamServer
@@ -311,6 +316,113 @@ fun LiveTvSettingsScreen(
                     }
                 }
             }
+            item(key = "m3u") {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(
+                        "M3U playlists",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ProviderField(
+                        value = m3uUrl,
+                        onValueChange = { m3uUrl = it; m3uStatus = null },
+                        label = "Playlist URL (https://…/playlist.m3u)"
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = {
+                                val url = m3uUrl.trim()
+                                if (url.isEmpty()) {
+                                    m3uStatus = "Paste a playlist URL first."
+                                    return@TextButton
+                                }
+                                if (m3uPlaylists.any {
+                                        M3uParser.comparisonKey(it) == M3uParser.comparisonKey(url)
+                                    }
+                                ) {
+                                    m3uStatus = "That playlist is already added."
+                                    return@TextButton
+                                }
+                                m3uAdding = true
+                                m3uStatus = null
+                                scope.launch {
+                                    val result = repository.addM3uPlaylist(url)
+                                    result.fold(
+                                        onSuccess = { count ->
+                                            m3uPlaylists = settings.m3uPlaylists
+                                            m3uUrl = ""
+                                            m3uStatus = "Added — $count channels ✓"
+                                        },
+                                        onFailure = {
+                                            m3uStatus = "Failed: ${it.message ?: "couldn't load the playlist"}"
+                                        }
+                                    )
+                                    m3uAdding = false
+                                }
+                            },
+                            enabled = !m3uAdding
+                        ) {
+                            Text(
+                                if (m3uAdding) "Adding…" else "Add playlist",
+                                color = LocalPalette.current.accent,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        m3uStatus?.let { message ->
+                            Text(
+                                message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    if (m3uPlaylists.isEmpty()) {
+                        Text(
+                            "No playlists added — paste an M3U URL above to add live channels.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    m3uPlaylists.forEach { url ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    m3uHost(url),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    url,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                            IconButton(onClick = {
+                                scope.launch {
+                                    repository.removeM3uPlaylist(url)
+                                    m3uPlaylists = settings.m3uPlaylists
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Filled.Delete, "Remove playlist",
+                                    tint = TextSecondary, modifier = Modifier.padding(4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item(key = "epg") {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text(
@@ -441,6 +553,12 @@ private fun ProviderField(
         modifier = Modifier.fillMaxWidth()
     )
 }
+
+/** Display host for a playlist URL ("IPTV" when the URL has no usable host). */
+private fun m3uHost(url: String): String =
+    runCatching {
+        java.net.URI(url).host?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: "IPTV"
+    }.getOrDefault("IPTV")
 
 @Composable
 private fun AddEpgSourceDialog(
