@@ -21,7 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Contrast
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -65,6 +68,10 @@ import kotlin.math.roundToInt
 fun AppearanceSettingsScreen(
     repository: StreamRepository,
     onThemeChanged: () -> Unit = {},
+    onGoToHomeCatalogs: () -> Unit = {},
+    onGoToDetailSections: () -> Unit = {},
+    onGoToStreamBadges: () -> Unit = {},
+    onGoToPlayerToolbar: () -> Unit = {},
     onBack: () -> Unit = {}
 ) {
     val settings = repository.settings
@@ -489,6 +496,46 @@ fun AppearanceSettingsScreen(
                         }
                     }
                 }
+            }
+            // Nuvio v1.17 Appearance page: nav rows to the layout
+            // sub-pages (Home catalogs, Detail sections, Stream badges,
+            // Player buttons) live here, not at root.
+            item(key = "layout-pages") {
+                SettingsSectionHeader("Layout")
+                SettingsGroup(
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.GridView,
+                            title = "Home catalogs",
+                            subtitle = "Choose and arrange catalogs on the Home screen",
+                            onClick = onGoToHomeCatalogs
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Tune,
+                            title = "Detail sections",
+                            subtitle = "Reorder and hide the detail page's sections",
+                            onClick = onGoToDetailSections
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Style,
+                            title = "Stream badges",
+                            subtitle = "Import badge rules shown on matching streams",
+                            onClick = onGoToStreamBadges
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Dashboard,
+                            title = "Player buttons",
+                            subtitle = "Reorder and hide the player's pill and top buttons",
+                            onClick = onGoToPlayerToolbar
+                        )
+                    }
+                )
             }
         }
     }
