@@ -478,10 +478,19 @@ fun rememberStreamBrowserState(
         limitPerSource, isEpisode
     ) {
         val base = if (settings != null) applyStreamPreferences(streams, settings, limitPerSource, isEpisode) else streams
+        // A filter that matches nothing must not blank the picker while
+        // the player happily plays the first stream: fall back to the
+        // unfiltered list when the filtered one is empty (same rule as
+        // pickAutoplayStream — autoplay never dead-ends on an empty pick).
+        // The filter chips stay visible, so the user still sees a filter
+        // is on and can change it; the list just never hides playable
+        // streams. Genuinely stream-less titles stay empty (streams is
+        // empty too), so the empty state is unchanged for them.
+        val effective = if (base.isEmpty() && streams.isNotEmpty()) streams else base
         // Step 61: match imported badge rules onto the ordered list.
         val badgeRules = settings?.let { com.pulsestream.app.data.StreamBadgeRules.parseStored(it.streamBadgeRulesJson) }
             ?: com.pulsestream.app.data.StreamBadgeRules()
-        if (badgeRules.hasImport) com.pulsestream.app.data.StreamBadgePresentation.applyToStreams(base, badgeRules) else base
+        if (badgeRules.hasImport) com.pulsestream.app.data.StreamBadgePresentation.applyToStreams(effective, badgeRules) else effective
     }
     // Saveable: the addon tab the user picked survives rotation. A stale
     // key (tab gone after the stream list changed) falls back to "All".

@@ -2207,7 +2207,15 @@ fun PlayerScreen(
             streamsLoading = true
             try {
                 val results = if (liveChannel != null) repository.liveStreamResultsFlow(liveChannel)
-                    else repository.streamResultsFlow(type, videoId)
+                    else repository.streamResultsFlow(
+                        type, videoId,
+                        // CS3 title fallback needs the title: without it a
+                        // non-IMDb id finds nothing here, while the detail
+                        // page (which passes title+year) does — Sources
+                        // would stay empty even though playback works.
+                        title = requestAtStart.seriesName?.takeIf { it.isNotBlank() }
+                            ?: requestAtStart.title.takeIf { it.isNotBlank() }
+                    )
                 results.collect { result ->
                     if (result.streams.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
@@ -3248,7 +3256,13 @@ fun PlayerScreen(
             // position on the fresh URL. Falls back to the stored URL when
             // re-resolution fails.
             val fresh = withTimeoutOrNull(20_000) {
-                repository.streamResultsFlow(req.type, req.videoId)
+                repository.streamResultsFlow(
+                    req.type, req.videoId,
+                    // Same CS3 title fallback as the background refresh:
+                    // a non-IMDb id resolves by title, not by id alone.
+                    title = req.seriesName?.takeIf { it.isNotBlank() }
+                        ?: req.title.takeIf { it.isNotBlank() }
+                )
                     .firstOrNull { it.streams.any { stream -> com.pulsestream.app.data.isPlayableLiveStreamUrl(stream.url) } }
             }
             val (playableFresh, hiddenFresh) = fresh?.streams?.let { ( it to 0 ) } ?: (emptyList<com.pulsestream.app.data.StreamItem>() to 0)
