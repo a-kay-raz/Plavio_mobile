@@ -15,6 +15,7 @@ import com.pulsestream.app.data.db.SubtitleCache
 import com.pulsestream.app.data.db.WatchlistItem
 import com.pulsestream.app.data.simkl.SimklSyncEngine
 import com.pulsestream.app.data.cloudstream.CloudStreamRepository
+import com.pulsestream.app.data.cloudstream.CloudStreamStorage
 import com.pulsestream.app.data.cloudstream.CloudStreamStreamSource
 import com.pulsestream.app.data.cloudstream.CloudStreamLoadItem
 import com.pulsestream.app.data.cloudstream.CloudStreamSearchItem
@@ -57,7 +58,8 @@ sealed interface AddonRefreshOutcome {
 }
 
 data class BackupPreview(val version: Int, val addonCount: Int, val watchlistCount: Int,
-                         val playbackCount: Int, val customListCount: Int, val customListItemCount: Int)
+                         val playbackCount: Int, val customListCount: Int, val customListItemCount: Int,
+                         val cloudstreamRepoCount: Int = 0, val cloudstreamPluginCount: Int = 0)
 
 class StreamRepository(
     private val db: AppDatabase,
@@ -2015,8 +2017,10 @@ class StreamRepository(
             }
         }
         // Starred addons go first — in every emission, so their streams show
-        // and autoplay before anyone else's.
-        val starredIds = addons.filter { it.starred }.map { it.id }.toSet()
+        // and autoplay before anyone else's. Pinned CloudStream providers join
+        // them (CS3 StreamItems carry sourceId = pluginId).
+        val starredIds = addons.filter { it.starred }.map { it.id }.toSet() +
+            CloudStreamRepository.pinnedProviderIds()
         fun prioritize(streams: List<StreamItem>): List<StreamItem> =
             streams.sortedWith(
                 compareByDescending<StreamItem> { it.sourceId in starredIds }
@@ -2995,7 +2999,9 @@ class StreamRepository(
         val listItems: List<CustomListItem>?,
         val apiKeys: Map<String, String>?,
         /** Base64 JPEG of the user's own profile photo, when the backup carries one. */
-        val profilePhotoBase64: String? = null
+        val profilePhotoBase64: String? = null,
+        /** Raw StoredCloudStreamState JSON (repos + plugin enablement/pins), when present. */
+        val cloudstream: String? = null,
     )
 
     suspend fun exportBackupJson(enabledCategories: Set<String>? = null): Result<String> = try {
@@ -3049,6 +3055,14 @@ class StreamRepository(
                         put("logoUrl", safeAddonAuxUrl(a.logoUrl)); put("sortOrder", a.sortOrder)
                         put("starred", a.starred); put("addedAt", a.addedAt)
                     } }))
+                    // CloudStream repos + plugin enablement ride with the addons section:
+                    // the raw stored registry JSON, restored by CloudStreamRepository.importState.
+                    // Installed .cs3 packages are device files, not backup data — on a fresh
+                    // device the restored plugins show as not-installed until re-installed.
+                    runCatching { CloudStreamStorage.loadState(1) }
+                        .getOrNull()?.takeIf { it.isNotBlank() }?.let { cs3State ->
+                            runCatching { put("cloudstream", JSONObject(cs3State)) }
+                        }
                 }
                 if (includeWatchlist) {
                     put("watchlist", JSONArray(profileDb.watchlistDao().getAll().map { w -> JSONObject().apply {
@@ -3087,9 +3101,12 @@ class StreamRepository(
     /** Fully validates a backup without mutating app state; suitable for a replacement preview. */
     fun previewBackupJson(json: String): Result<BackupPreview> = try {
         val parsed = parseBackup(json)
+        val cs3 = parsed.cloudstream?.let { runCatching { JSONObject(it) }.getOrNull() }
         Result.success(BackupPreview(parsed.version, parsed.addons?.size ?: 0,
             parsed.watchlist?.size ?: 0, parsed.playback?.size ?: 0,
-            parsed.lists?.size ?: 0, parsed.listItems?.size ?: 0))
+            parsed.lists?.size ?: 0, parsed.listItems?.size ?: 0,
+            cs3?.optJSONArray("repositories")?.length() ?: 0,
+            cs3?.optJSONArray("plugins")?.length() ?: 0))
     } catch (e: Exception) { Result.failure(e) }
 
     suspend fun importBackupJson(json: String): Result<Unit> = try {
@@ -3127,6 +3144,15 @@ class StreamRepository(
             parsed.profilePhotoBase64?.let { encoded ->
                 runCatching {
                     settings.writeProfilePhoto(android.util.Base64.decode(encoded, android.util.Base64.DEFAULT))
+                }
+            }
+            // Restore the CloudStream registry (repos + plugin enablement/pins). The
+            // stored state was validated as a JSON object by parseBackup; importState
+            // validates the registry schema before mutating anything, so a bad payload
+            // fails the import without touching the current registry.
+            parsed.cloudstream?.let { payload ->
+                if (!CloudStreamRepository.importState(payload)) {
+                    throw IllegalArgumentException("CloudStream backup state is invalid.")
                 }
             }
             // All provider-owned cached responses are invalid after replacing settings/addons.
@@ -3263,7 +3289,17 @@ class StreamRepository(
             require(v.length <= 4_000_000) { "Profile photo in backup is too large." }
             v
         } else null
-        return ParsedBackup(version, prefs, addons, watch, play, lists, listItems, apiKeys, profilePhoto)
+        // CloudStream registry state: a JSON object holding the stored registry. Only
+        // its shape is validated here (a JSON object, capped at 1 MiB); the registry
+        // schema itself is validated by CloudStreamRepository.importState before use.
+        val cloudstream = if (root.has("cloudstream") && !root.isNull("cloudstream")) {
+            val obj = root.get("cloudstream") as? JSONObject
+                ?: throw IllegalArgumentException("Backup cloudstream must be an object.")
+            val raw = obj.toString()
+            require(raw.length <= 1_000_000) { "CloudStream backup state is too large." }
+            raw
+        } else null
+        return ParsedBackup(version, prefs, addons, watch, play, lists, listItems, apiKeys, profilePhoto, cloudstream)
     }
 
     private fun isSecretPreference(key: String): Boolean {
