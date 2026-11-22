@@ -452,35 +452,12 @@ fun PlayerScreen(
     val disposed = remember { AtomicBoolean(false) }
     /** Monotonic generation: a stale subtitle transform may never overwrite a newer selection/offset. */
     val subtitleShiftGeneration = remember { AtomicInteger(0) }
-    /** Non-null while the current stream is in a failed state (#4). */
-    var playerError by remember { mutableStateOf<String?>(null) }
-    /** Last ExoPlayer error code, so effects can tell a dead link from a stall. */
-    var lastPlayerErrorCode by remember { mutableStateOf(0) }
-    /** Auto-failover count; generic playback caps at the fallback setting, mobile Live uses its policy cap. */
-    var autoFailoverCount by remember { mutableStateOf(0) }
-    /**
-     * Stream URL the VOD stall watchdog already resumed once (Step 40,
-     * Nuvio PlaybackReopenSession: one reopen per source). Reset when
-     * playback resumes playing.
-     */
-    var vodStallResumeAttemptedFor by remember { mutableStateOf<String?>(null) }
-    /** Bounded recovery budget for streams that play and later stall, per channel session. */
-    var liveRebufferRecoveries by remember { mutableIntStateOf(0) }
+    // All mutable UI/playback state lives in PlayerScreenState: a single
+    // `remember` instead of 130 `by remember` delegates, so D8's register
+    // allocator stops producing invalid dex for this giant composable.
+    val state = remember { PlayerScreenState(settings, initialRequest, isTv) }
     /** Invalidates callbacks from listeners attached to released/replaced players. */
     val activePlayerListenerGeneration = remember { AtomicInteger(0) }
-    /** Nuvio parity: self-heal — probe Content-Type and retry once on format errors. */
-    var mimeHealAttempted by remember { mutableStateOf(false) }
-    /**
-     * Set after player state exists; invoked by errorListener for the
-     * self-heal path. Indirection avoids forward-reference issues.
-     */
-    var healOnFormatError: ((PlaybackException) -> Unit)? by remember { mutableStateOf(null) }
-    /**
-     * Set after the local helpers below are declared; invoked by errorListener
-     * for the auto-failover path. Indirection avoids forward-reference issues
-     * (same pattern as healOnFormatError).
-     */
-    var failoverToNextSource: ((attempt: Int) -> Unit)? by remember { mutableStateOf(null) }
     /**
      * Registered on every player instance we build (#4). ExoPlayer invokes
      * listeners on the player's application thread (main here), so touching
@@ -490,13 +467,13 @@ fun PlayerScreen(
         object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 if (disposed.get()) return
-                lastPlayerErrorCode = error.errorCode
+                state.lastPlayerErrorCode = error.errorCode
                 val cause = generateSequence<Throwable>(error) { it.cause }.firstOrNull {
                     it::class.java.simpleName == "UnrecognizedInputFormatException"
                 }
-                if (cause != null && !mimeHealAttempted) {
-                    mimeHealAttempted = true
-                    healOnFormatError?.invoke(error)
+                if (cause != null && !state.mimeHealAttempted) {
+                    state.mimeHealAttempted = true
+                    state.healOnFormatError?.invoke(error)
                     return
                 }
                 // Auto-failover: generic playback tries 3 sources; mobile Live
@@ -512,34 +489,34 @@ fun PlayerScreen(
                     isLive = initialRequest.isLive,
                     isTv = isTv,
                     errorCode = error.errorCode,
-                    attemptsSoFar = autoFailoverCount
+                    attemptsSoFar = state.autoFailoverCount
                 )
-                if ((isSourceError && autoFailoverCount < settings.fallbackMaxSources) || mobileLiveFallback) {
-                    autoFailoverCount++
+                if ((isSourceError && state.autoFailoverCount < settings.fallbackMaxSources) || mobileLiveFallback) {
+                    state.autoFailoverCount++
                     if (initialRequest.isLive && !isTv) {
                         com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_attempt", 0)
                     }
-                    failoverToNextSource?.invoke(autoFailoverCount)
+                    state.failoverToNextSource?.invoke(state.autoFailoverCount)
                     return
                 }
                 if (initialRequest.isLive && !isTv &&
                     com.pulsestream.app.data.LivePlaybackPolicy.isRecoverableSourceError(error.errorCode)) {
                     com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", 0)
                 }
-                autoFailoverCount = 0
-                playerError = error.message?.takeIf { it.isNotBlank() }
+                state.autoFailoverCount = 0
+                state.playerError = error.message?.takeIf { it.isNotBlank() }
                     ?: "Playback failed (code ${error.errorCode})"
             }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
+            override fun onIsPlayingChanged(playing: Boolean) {
                 // Keeps the PiP window's play/pause RemoteAction icon in sync.
-                (activity as? MainActivity)?.updatePipActions(isPlaying)
+                (activity as? MainActivity)?.updatePipActions(playing)
                 // Reset auto-failover counter on successful playback
-                if (isPlaying) {
-                    autoFailoverCount = 0
+                if (playing) {
+                    state.autoFailoverCount = 0
                     // Step 40: a source that plays again earns a fresh
                     // stall-resume attempt (Nuvio PlaybackReopenSession.onReady).
-                    vodStallResumeAttemptedFor = null
+                    state.vodStallResumeAttemptedFor = null
                 }
             }
 
@@ -562,8 +539,8 @@ fun PlayerScreen(
             override fun onPlayerError(error: PlaybackException) {
                 if (isCurrent()) errorListener.onPlayerError(error)
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isCurrent()) errorListener.onIsPlayingChanged(isPlaying)
+            override fun onIsPlayingChanged(playing: Boolean) {
+                if (isCurrent()) errorListener.onIsPlayingChanged(playing)
             }
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (isCurrent()) errorListener.onVideoSizeChanged(videoSize)
@@ -632,10 +609,9 @@ fun PlayerScreen(
     // next title too. Declared here (before buildPlaybackMediaSource)
     // because that factory builder reads the ref.
     val audioDelayUsRef = remember { AtomicLong(settings.audioDelayMs * 1000L) }
-    var audioDelayMs by remember { mutableIntStateOf(settings.audioDelayMs) }
     fun setAudioDelayMs(ms: Int) {
         val clamped = ms.coerceIn(AUDIO_DELAY_MIN_MS, AUDIO_DELAY_MAX_MS)
-        audioDelayMs = clamped
+        state.audioDelayMs = clamped
         audioDelayUsRef.set(clamped * 1000L)
         settings.audioDelayMs = clamped
     }
@@ -656,38 +632,31 @@ fun PlayerScreen(
         DownmixConfig().apply {
             enabled = settings.downmixEnabled
             targetChannels = settings.downmixTargetChannels
-            centerMixDb = settings.centerMixLevelDb
+            state.centerMixDb = settings.centerMixLevelDb
             maintainOriginal = settings.maintainOriginalAudioOnDownmix
         }
     }
-    var downmixOn by remember { mutableStateOf(settings.downmixEnabled) }
-    var downmixTarget by remember { mutableIntStateOf(settings.downmixTargetChannels) }
-    var centerMixDb by remember { mutableIntStateOf(settings.centerMixLevelDb) }
-    var keepOriginalLevels by remember { mutableStateOf(settings.maintainOriginalAudioOnDownmix) }
     fun setDownmixEnabled(on: Boolean) {
-        downmixOn = on
+        state.downmixOn = on
         settings.downmixEnabled = on
         downmixConfig.enabled = on
     }
     fun setDownmixTarget(channels: Int) {
-        downmixTarget = channels.coerceIn(1, 2)
-        settings.downmixTargetChannels = downmixTarget
-        downmixConfig.targetChannels = downmixTarget
+        state.downmixTarget = channels.coerceIn(1, 2)
+        settings.downmixTargetChannels = state.downmixTarget
+        downmixConfig.targetChannels = state.downmixTarget
     }
     fun setCenterMixDb(db: Int) {
-        centerMixDb = db.coerceIn(CENTER_MIX_LEVEL_MIN_DB, CENTER_MIX_LEVEL_MAX_DB)
-        settings.centerMixLevelDb = centerMixDb
-        downmixConfig.centerMixDb = centerMixDb
+        state.centerMixDb = db.coerceIn(CENTER_MIX_LEVEL_MIN_DB, CENTER_MIX_LEVEL_MAX_DB)
+        settings.centerMixLevelDb = state.centerMixDb
+        downmixConfig.centerMixDb = state.centerMixDb
     }
     fun setKeepOriginalLevels(keep: Boolean) {
-        keepOriginalLevels = keep
+        state.keepOriginalLevels = keep
         settings.maintainOriginalAudioOnDownmix = keep
         downmixConfig.maintainOriginal = keep
     }
 
-    // Step 68: parental guide warnings for the current title.
-    var parentalWarnings by remember { mutableStateOf(emptyList<ParentalWarning>()) }
-    var parentalGuideVisible by remember { mutableStateOf(false) }
 
     fun playbackMediaSourceFactory(req: PlaybackRequest): MediaSource.Factory {
         val playbackHeaders = PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv)
@@ -883,48 +852,40 @@ fun PlayerScreen(
     }
 
 
-    var currentRequest by remember { mutableStateOf(initialRequest) }
-    LaunchedEffect(currentRequest.videoId, currentRequest.liveChannel) {
-        liveRebufferRecoveries = 0
+    LaunchedEffect(state.currentRequest.videoId, state.currentRequest.liveChannel) {
+        state.liveRebufferRecoveries = 0
     }
     var player by remember {
         mutableStateOf(buildExo(initialRequest).also { it.addListener(guardedPlayerListener()) })
     }
     val latestPlayer = rememberUpdatedState(player)
-    val latestRequest = rememberUpdatedState(currentRequest)
+    val latestRequest = rememberUpdatedState(state.currentRequest)
 
-    // Step 38: SDH cue filtering — Media3 1.4.1 has no ExoPlayer.setTextOutput,
-    // so cues are intercepted via Player.Listener.onCues. The listener is
-    // (re)attached after PlayerView registers its own, so the filtered cues
-    // are applied last to the same SubtitleView.
-    var cueFilterListener by remember { mutableStateOf<Player.Listener?>(null) }
-    var cueFilterPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
     fun attachSdhCueFilter(targetPlayer: ExoPlayer, sv: SubtitleView) {
-        if (cueFilterPlayer === targetPlayer && cueFilterListener != null) return
-        cueFilterListener?.let { cueFilterPlayer?.removeListener(it) }
+        if (state.cueFilterPlayer === targetPlayer && state.cueFilterListener != null) return
+        state.cueFilterListener?.let { state.cueFilterPlayer?.removeListener(it) }
         val output = SdhFilteringTextOutput(sv) { settings.subtitleSdhFilter }
         val listener = object : Player.Listener {
             override fun onCues(cueGroup: CueGroup) { output.onCues(cueGroup) }
         }
         targetPlayer.addListener(listener)
-        cueFilterListener = listener
-        cueFilterPlayer = targetPlayer
+        state.cueFilterListener = listener
+        state.cueFilterPlayer = targetPlayer
     }
 
     // Step 59: seek-preview thumbnails — a second player that grabs
     // frames while the main player keeps playing. Keyed by stream URL
     // so a source switch rebuilds it; the grabber sends the same
     // scoped headers as playback.
-    val seekPreviewHeaders = remember(currentRequest.streamUrl) {
-        PlaybackHeaders.buildPlaybackHeaders(currentRequest.headers, isTv)
+    val seekPreviewHeaders = remember(state.currentRequest.streamUrl) {
+        PlaybackHeaders.buildPlaybackHeaders(state.currentRequest.headers, isTv)
     }
     val seekPreviewController = rememberSeekPreviewController(
         activity = activity,
-        url = currentRequest.streamUrl,
+        url = state.currentRequest.streamUrl,
         headers = seekPreviewHeaders,
-        mimeType = PlaybackHeaders.inferMimeType(currentRequest.streamUrl)
+        mimeType = PlaybackHeaders.inferMimeType(state.currentRequest.streamUrl)
     )
-    var scrubPositionMs by remember { mutableStateOf<Long?>(null) }
 
     // Step 61: player badges — matched image badges for the playing
     // stream, from the user's imported badge rules (Nuvio's
@@ -933,10 +894,10 @@ fun PlayerScreen(
     val badgeRules by badgeSettings.rules.collectAsState()
     val showPlayerBadges by badgeSettings.showInPlayer.collectAsState()
     val playerBadgeSource by badgeSettings.playerBadgeSource.collectAsState()
-    val playerBadges = remember(currentRequest.streamUrl, badgeRules, showPlayerBadges, playerBadgeSource) {
+    val playerBadges = remember(state.currentRequest.streamUrl, badgeRules, showPlayerBadges, playerBadgeSource) {
         if (!showPlayerBadges) emptyList()
         else {
-            val stream = currentRequest.streams.firstOrNull { it.url == currentRequest.streamUrl }
+            val stream = state.currentRequest.streams.firstOrNull { it.url == state.currentRequest.streamUrl }
             val rules = badgeRules.forPlayer(playerBadgeSource)
             val filters = com.pulsestream.app.data.StreamBadgeMatcher.compile(rules)
             val playbackCandidate = stream?.filename?.takeIf { it.isNotBlank() } ?: stream?.title
@@ -951,14 +912,13 @@ fun PlayerScreen(
     // playing is saved under the series id, so the next episode's
     // autoplay prefers the same group instead of re-ranking.
     val bingeGroupCache = remember { BingeGroupCache(repository.settings) }
-    LaunchedEffect(currentRequest.metaId, currentRequest.videoId, currentRequest.streamUrl) {
-        val stream = currentRequest.streams.firstOrNull { it.url == currentRequest.streamUrl }
+    LaunchedEffect(state.currentRequest.metaId, state.currentRequest.videoId, state.currentRequest.streamUrl) {
+        val stream = state.currentRequest.streams.firstOrNull { it.url == state.currentRequest.streamUrl }
         val group = stream?.bingeGroup
-        if (group != null && currentRequest.metaId.isNotBlank()) {
-            bingeGroupCache.save(currentRequest.metaId, group, stream.filename, stream.infoHash)
+        if (group != null && state.currentRequest.metaId.isNotBlank()) {
+            bingeGroupCache.save(state.currentRequest.metaId, group, stream.filename, stream.infoHash)
         }
     }
-    var playerView by remember { mutableStateOf<PlayerView?>(null) }
 
     // PiP RemoteAction: the floating window's play/pause button toggles the
     // player here. The player listener's onIsPlayingChanged then refreshes
@@ -970,32 +930,11 @@ fun PlayerScreen(
         }
     }
     /**
-     * Side-loaded subtitles, resolved (downloaded + format-sniffed) in the
-     * background for the current request. Kept in state so a rebuilt player
-     * (source switch) can carry them from its first prepare instead of
-     * re-preparing the video to attach them (#29).
-     */
-    var resolvedSubs by remember { mutableStateOf(emptyList<ResolvedSubtitle>()) }
-    /**
-     * Raw (unshifted) downloaded subtitles — the source of truth for timing
-     * shifts. The in-player +/- timing buttons re-shift from these files,
-     * never from already-shifted output (which would compound the offset).
-     */
-    var rawResolvedSubs by remember { mutableStateOf(emptyList<ResolvedSubtitle>()) }
-    /**
-     * Per-video subtitle delay (ms), added to the global
-     * [SettingsStore.subtitleOffsetMs]. Set from the Style rail's delay
-     * stepper / Auto Sync and persisted per video id
-     * ([SettingsStore.subtitleDelayMsFor]); reloaded whenever the title
-     * changes (see the load effect below the resolver).
-     */
-    var subOffsetOverrideMs by remember { mutableLongStateOf(0L) }
-    /**
      * Effective subtitle timing offset for the current title: global default
      * plus the per-video delay, clamped to ±60s.
      */
     fun effectiveSubOffsetMs(): Long =
-        (settings.subtitleOffsetMs + subOffsetOverrideMs).coerceIn(-60_000L, 60_000L)
+        (settings.subtitleOffsetMs + state.subOffsetOverrideMs).coerceIn(-60_000L, 60_000L)
     /**
      * Re-applies the effective timing offset to the raw subtitles and
      * publishes the shifted list (which re-attaches to the player via the
@@ -1003,17 +942,17 @@ fun PlayerScreen(
      * to shift.
      */
     fun applySubtitleTiming() {
-        val raw = rawResolvedSubs
+        val raw = state.rawResolvedSubs
         if (raw.isEmpty()) return
         val offset = effectiveSubOffsetMs()
         val generation = subtitleShiftGeneration.incrementAndGet()
         ioScope.launch {
             val shifted = withContext(Dispatchers.IO) { shiftSubtitles(raw, offset, context.cacheDir) }
-            if (!disposed.get() && subtitleShiftGeneration.get() == generation) resolvedSubs = shifted
+            if (!disposed.get() && subtitleShiftGeneration.get() == generation) state.resolvedSubs = shifted
         }
     }
     // Self-heal handler: probe Content-Type, rebuild once with probed MIME.
-    healOnFormatError = { error ->
+    state.healOnFormatError = { error ->
         val req = latestRequest.value
         val old = latestPlayer.value
         ioScope.launch {
@@ -1029,12 +968,12 @@ fun PlayerScreen(
                     val playWhenReady = old.playWhenReady
                     val position = old.currentPosition
                     val playbackSpeed = old.playbackParameters.speed
-                    val fresh = buildExo(req, resolvedSubs, forcedMime = probed)
+                    val fresh = buildExo(req, state.resolvedSubs, forcedMime = probed)
                         .also { it.addListener(guardedPlayerListener()) }
-                    playerView?.player = null
+                    state.playerView?.player = null
                     old.release()
                     player = fresh
-                    playerError = null
+                    state.playerError = null
                     fresh.setPlaybackSpeed(playbackSpeed)
                     fresh.seekTo(position)
                     fresh.prepare()
@@ -1043,28 +982,23 @@ fun PlayerScreen(
                         isLive = req.isLive,
                         isTv = isTv,
                         errorCode = error.errorCode,
-                        attemptsSoFar = autoFailoverCount
+                        attemptsSoFar = state.autoFailoverCount
                     )) {
-                    autoFailoverCount++
+                    state.autoFailoverCount++
                     com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_attempt", 0)
-                    playerError = null
-                    failoverToNextSource?.invoke(autoFailoverCount)
+                    state.playerError = null
+                    state.failoverToNextSource?.invoke(state.autoFailoverCount)
                 } else {
                     if (req.isLive && !isTv &&
                         com.pulsestream.app.data.LivePlaybackPolicy.isRecoverableSourceError(error.errorCode)) {
                         com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", 0)
                     }
-                    playerError = error.message?.takeIf { it.isNotBlank() }
+                    state.playerError = error.message?.takeIf { it.isNotBlank() }
                         ?: "Playback failed (code ${error.errorCode})"
                 }
             }
         }
     }
-    /**
-     * Which subtitle set is already attached to which player instance.
-     * Attaching the same set twice would re-prepare the video for nothing.
-     */
-    var subsAttached by remember { mutableStateOf<Pair<ExoPlayer, String>?>(null) }
 
     // Unified scrobbling: one pipeline fans playback events out to every
     // linked backend (Trakt, Simkl, …). Each service is enabled/disabled
@@ -1073,33 +1007,14 @@ fun PlayerScreen(
     val trakt = remember { TraktManager(settings) }
     val scrobbler = remember { ScrobbleManager(listOf(simkl, trakt), ioScope) }
 
-    var showControls by remember { mutableStateOf(true) }
-    var controlsTick by remember { mutableIntStateOf(0) }
     // PiP: drop the transport UI the moment the window floats (the system
     // draws its own PiP controls); restore the default on return.
     LaunchedEffect(inPip) {
-        if (inPip) showControls = false
+        if (inPip) state.showControls = false
         // Caption sizing switches between fixed sp and fractional in
         // PiP — re-apply so the change lands without a player rebuild.
-        playerView?.let { applySubtitleStyle(it) }
+        state.playerView?.let { applySubtitleStyle(it) }
     }
-    var locked by remember { mutableStateOf(false) }
-    // Nuvio legacy locked overlay: shown on lock, auto-hides after 3.5s,
-    // revealed again by tapping while locked.
-    var lockedOverlayVisible by remember { mutableStateOf(true) }
-    var isPlaying by remember { mutableStateOf(true) }
-    var positionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(0L) }
-    var bufferedMs by remember { mutableLongStateOf(0L) }
-    // Nuvio legacy: the total time pill toggles elapsed / remaining on tap.
-    var showRemainingTime by remember { mutableStateOf(false) }
-    var volumePercent by remember { mutableIntStateOf(0) }
-    // Volume boost (past 100%): a LoudnessEnhancer on the player's audio
-    // session adds up to +10 dB on top of the system max. volumeBoost is
-    // 0f..1f; the shown percent is 100 + boost*100 while system is at max.
-    // It starts at the persisted Audio-modal value (Step 13: Nuvio
-    // audioAmplificationDb) so a set boost applies on the next title.
-    var volumeBoost by remember { mutableFloatStateOf(settings.audioBoostDb / 10f) }
     val boostHolder = remember {
         object {
             var enhancer: LoudnessEnhancer? = null
@@ -1116,15 +1031,15 @@ fun PlayerScreen(
         }
         runCatching {
             boostHolder.enhancer?.apply {
-                setTargetGain((volumeBoost * 1000).roundToInt())
-                enabled = volumeBoost > 0f
+                setTargetGain((state.volumeBoost * 1000).roundToInt())
+                enabled = state.volumeBoost > 0f
             }
         }
     }
     fun displayVolumePercent(): Int {
         val sys = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         val sysPct = sys * 100 / maxVolume.coerceAtLeast(1)
-        return if (sys >= maxVolume) sysPct + (volumeBoost * 100).roundToInt() else sysPct
+        return if (sys >= maxVolume) sysPct + (state.volumeBoost * 100).roundToInt() else sysPct
     }
 
     /** Audio modal stepper (Nuvio setAudioAmplification): set the boost
@@ -1133,75 +1048,22 @@ fun PlayerScreen(
      *  still moves volumeBoost for this session only. */
     fun setAudioBoostDb(db: Int) {
         val clamped = db.coerceIn(0, 10)
-        volumeBoost = clamped / 10f
+        state.volumeBoost = clamped / 10f
         applyVolumeBoost()
         settings.audioBoostDb = clamped
     }
-    var speed by remember { mutableFloatStateOf(1f) }
-    var speedMenuOpen by remember { mutableStateOf(false) }
-    /** True while the hold-for-speed gesture is boosting playback (v0.12.0). */
-    var holdSpeedActive by remember { mutableStateOf(false) }
-    /** Current hold-boost speed shown in the hold pill: the Hold speed
-     * setting at engage, sliding up to 5x while held (v0.12.1). */
-    var holdSpeedStep by remember { mutableFloatStateOf(2f) }
-    /** Accumulated double-tap seek (Nuvio handleDoubleTapSeek): repeated
-     * taps in the same direction add up from one baseline; the 800ms
-     * reset job clears it. */
-    var accumulatedSeekDirection by remember { mutableStateOf<Int?>(null) }
-    var accumulatedSeekBaselineMs by remember { mutableLongStateOf(0L) }
-    var accumulatedSeekAmountMs by remember { mutableLongStateOf(0L) }
-    var accumulatedSeekResetJob by remember { mutableStateOf<Job?>(null) }
-    /** Pinch zoom factor on the video surface (Nuvio pinchVideoZoom):
-     * 0.8–2.0x, snapped to 1.0x within 0.04. */
-    var videoZoom by remember { mutableFloatStateOf(1f) }
-    var rawVideoZoom by remember { mutableFloatStateOf(1f) }
-    /** Pre-resolved next-episode streams (Nuvio preloadNextEpisodeSources):
-     * fetched while the countdown card shows, consumed by playEpisode. */
-    var prefetchedNextStreams by remember { mutableStateOf<Pair<String, com.pulsestream.app.data.StreamResult>?>(null) }
-    var prefetchingNextId by remember { mutableStateOf<String?>(null) }
-    /** Skip-button auto-hide (Nuvio SkipIntroButton): manually dismissed
-     * for this segment, auto-hidden after 10s with controls down, and
-     * the 0..1 progress of that countdown. */
-    var skipDismissed by remember { mutableStateOf(false) }
-    var skipAutoHidden by remember { mutableStateOf(false) }
     val skipProgress = remember { Animatable(0f) }
     /** Main-thread scope for the delayed single-tap toggle in videoGestures. */
     val gestureUiScope = rememberCoroutineScope()
-    var indicator by remember { mutableStateOf<PlayerIndicator?>(null) }
-    var indicatorTick by remember { mutableIntStateOf(0) }
 
-    // YouTube opens portrait-first (user rotates via the Rotate pill);
-    // everything else opens landscape as before.
-    var isPortrait by remember { mutableStateOf(initialRequest.sourceName == "YouTube") }
-    // Aspect ratio (in-player only — cycles Fit → Fill → Zoom)
-    var aspectMode by remember { mutableIntStateOf(settings.resizeMode) }
-    val aspectLabel = ASPECT_MODES.firstOrNull { it.first == aspectMode }?.second ?: "Fit"
+    val aspectLabel = ASPECT_MODES.firstOrNull { it.first == state.aspectMode }?.second ?: "Fit"
 
-    var isBuffering by remember { mutableStateOf(true) }
-    // Staged startup text (Nuvio PlayerLoadingStatus): what the player is
-    // doing right now, updated by the poll below — "Opening source…" while
-    // the media is being (re)built or the player is idle, "Reading
-    // tracks…" once preparing but before any track is known, "Buffering…"
-    // once tracks are in and data is awaited.
-    var loadingStep by remember { mutableStateOf("Opening source…") }
-    var switchingMedia by remember { mutableStateOf(false) }
     /** True once the current request has actually played — gates the
      * startup presentation (backdrop + orbit) against a plain rebuffer
      * orbit. Resets whenever the request changes, so episode and
      * source switches start a fresh startup. */
-    var hasStartedPlayback by remember(currentRequest) { mutableStateOf(false) }
+    var hasStartedPlayback by remember(state.currentRequest) { mutableStateOf(false) }
 
-    // Track switching
-    var tracksOpen by remember { mutableStateOf(false) }
-    // External-player protected-link warning (owner's order 2026-10-26):
-    // non-null while the warning popup is up for that request.
-    var externalWarningReq by remember { mutableStateOf<PlaybackRequest?>(null) }
-    var externalWarningHide by remember { mutableStateOf(false) }
-    var tracksMode by remember { mutableStateOf("subs") } // "subs" or "audio"
-    var trackTick by remember { mutableIntStateOf(0) }
-    /** Set when the user hand-picks an audio track — the preferred-language
-     * auto-select then leaves their pick alone for this player session. */
-    var userPickedAudio by remember { mutableStateOf(false) }
 
     /**
      * Attaches resolved (downloaded + format-sniffed) subtitles to the current
@@ -1218,21 +1080,21 @@ fun PlayerScreen(
     fun attachResolvedSubtitles(resolved: List<ResolvedSubtitle>, defaultUrl: String? = null) {
         if (resolved.isEmpty()) return
         val key = subtitleIdentity(resolved)
-        val attached = subsAttached
+        val attached = state.subsAttached
         if (attached != null && attached.first === player && attached.second == key) return
         val pos = player.currentPosition
         val wasPlaying = player.isPlaying
         // YouTube DASH keeps its merged audio via the shared builder;
         // everything else keeps the setMediaItem path.
-        if (currentRequest.mergeAudioUrl != null) {
-            player.setMediaSource(buildPlaybackMediaSource(currentRequest, resolved, null), pos)
+        if (state.currentRequest.mergeAudioUrl != null) {
+            player.setMediaSource(buildPlaybackMediaSource(state.currentRequest, resolved, null), pos)
         } else {
             player.setMediaItem(
                 MediaItem.Builder()
-                    .setUri(currentRequest.streamUrl)
+                    .setUri(state.currentRequest.streamUrl)
                     .apply {
-                        (com.pulsestream.app.data.PlaybackContentProbe.recognizedMime(currentRequest.mimeType)
-                            ?: PlaybackHeaders.inferMimeType(currentRequest.streamUrl))?.let { setMimeType(it) }
+                        (com.pulsestream.app.data.PlaybackContentProbe.recognizedMime(state.currentRequest.mimeType)
+                            ?: PlaybackHeaders.inferMimeType(state.currentRequest.streamUrl))?.let { setMimeType(it) }
                     }
                     .setSubtitleConfigurations(subtitleConfigs(resolved, defaultUrl))
                     .build(),
@@ -1241,180 +1103,94 @@ fun PlayerScreen(
         }
         player.prepare()
         player.playWhenReady = wasPlaying
-        subsAttached = player to key
-        trackTick++
+        state.subsAttached = player to key
+        state.trackTick++
     }
 
-    // Sources + episodes sheets
-    var sourcesOpen by remember { mutableStateOf(false) }
-    var episodesOpen by remember { mutableStateOf(false) }
-    // Step 41: shuffle sheet state + one no-repeat picker per request.
-    var shuffleOpen by remember { mutableStateOf(false) }
     val shuffleWatchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
-    val playerShufflePicker = remember(currentRequest.metaId) {
+    val playerShufflePicker = remember(state.currentRequest.metaId) {
         com.pulsestream.app.data.RandomEpisodePicker(emptyList(), emptySet())
     }
-    LaunchedEffect(currentRequest.episodes, shuffleWatchedKeys) {
+    LaunchedEffect(state.currentRequest.episodes, shuffleWatchedKeys) {
         playerShufflePicker.update(
-            currentRequest.episodes,
-            com.pulsestream.app.data.watchedEpisodeKeys(currentRequest.metaId, shuffleWatchedKeys),
+            state.currentRequest.episodes,
+            com.pulsestream.app.data.watchedEpisodeKeys(state.currentRequest.metaId, shuffleWatchedKeys),
         )
     }
-    // Per-episode stream choice (Nuvio PlayerEpisodesPanel): the episode
-    // whose streams are being browsed in its own sheet.
-    var episodeStreamsVideo by remember { mutableStateOf<Video?>(null) }
-    var episodeStreams by remember { mutableStateOf<List<com.pulsestream.app.data.StreamItem>>(emptyList()) }
-    var episodeStreamsSubtitles by remember { mutableStateOf<List<Subtitle>>(emptyList()) }
-    var episodeStreamsLoading by remember { mutableStateOf(false) }
-    var episodeStreamsTick by remember { mutableStateOf(0) }
 
     // Fetch the chosen episode's streams for its streams sheet.
-    LaunchedEffect(episodeStreamsVideo, episodeStreamsTick) {
-        val video = episodeStreamsVideo ?: return@LaunchedEffect
-        episodeStreamsLoading = true
-        episodeStreams = emptyList()
-        episodeStreamsSubtitles = emptyList()
+    LaunchedEffect(state.episodeStreamsVideo, state.episodeStreamsTick) {
+        val video = state.episodeStreamsVideo ?: return@LaunchedEffect
+        state.episodeStreamsLoading = true
+        state.episodeStreams = emptyList()
+        state.episodeStreamsSubtitles = emptyList()
         val result = withTimeoutOrNull(20_000) {
-            repository.streamResultsFlow(currentRequest.type, video.id)
+            repository.streamResultsFlow(state.currentRequest.type, video.id)
                 .firstOrNull { it.streams.any { stream -> com.pulsestream.app.data.isPlayableLiveStreamUrl(stream.url) } }
         }
-        episodeStreams = result?.streams ?: emptyList()
-        episodeStreamsSubtitles = result?.subtitles ?: emptyList()
-        episodeStreamsLoading = false
+        state.episodeStreams = result?.streams ?: emptyList()
+        state.episodeStreamsSubtitles = result?.subtitles ?: emptyList()
+        state.episodeStreamsLoading = false
     }
-    // Quality picker: null = Auto (best available quality), otherwise
-    // the picked quality label. Resets per video.
-    var qualityOpen by remember { mutableStateOf(false) }
-    var infoOpen by remember { mutableStateOf(false) }
-    var qualitySelection by remember(currentRequest.videoId) { mutableStateOf<String?>(null) }
+    var qualitySelection by remember(state.currentRequest.videoId) { mutableStateOf<String?>(null) }
     // HLS variant rows (Nuvio PlayerQualitySelector): the master playlist's
     // actual variants for the playing stream, resolved lazily when the
     // Quality picker opens. Resets per video.
-    var hlsQualityState by remember(currentRequest.videoId) { mutableStateOf<HlsQualityState?>(null) }
-    var hlsVariantSelection by remember(currentRequest.videoId) { mutableStateOf<String?>(null) }
-    var hlsVariantsLoading by remember(currentRequest.videoId) { mutableStateOf(false) }
+    var hlsQualityState by remember(state.currentRequest.videoId) { mutableStateOf<HlsQualityState?>(null) }
+    var hlsVariantSelection by remember(state.currentRequest.videoId) { mutableStateOf<String?>(null) }
+    var hlsVariantsLoading by remember(state.currentRequest.videoId) { mutableStateOf(false) }
     // Resolve HLS variants lazily when the Quality picker opens (one extra
     // master-playlist GET per HLS title, only for users who open the picker).
     // Temp-playlist URLs are skipped: they ARE a variant already.
-    LaunchedEffect(qualityOpen) {
-        if (!qualityOpen) return@LaunchedEffect
-        val url = currentRequest.streamUrl
-        if (currentRequest.hlsMasterUrl != null) return@LaunchedEffect
+    LaunchedEffect(state.qualityOpen) {
+        if (!state.qualityOpen) return@LaunchedEffect
+        val url = state.currentRequest.streamUrl
+        if (state.currentRequest.hlsMasterUrl != null) return@LaunchedEffect
         if (hlsQualityState?.sourceUrl == url) return@LaunchedEffect
         if (!HlsQualityResolver.looksLikeHlsPlaylist(url)) return@LaunchedEffect
         hlsVariantsLoading = true
         hlsQualityState = HlsQualityResolver.resolve(
-            context.applicationContext, url, currentRequest.headers
+            context.applicationContext, url, state.currentRequest.headers
         )
         hlsVariantsLoading = false
     }
-    var downloadStream by remember { mutableStateOf<com.pulsestream.app.data.StreamItem?>(null) }
-    var zapping by remember { mutableStateOf(false) }
-    var availableStreams by remember {
-        mutableStateOf(com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
-            emptyList(), initialRequest.streams, includeHeadersInIdentity = initialRequest.isLive && !isTv
-        ))
-    }
     /** Distinct qualities across the loaded streams, best first — the Quality picker options. */
-    val qualityOptions = remember(availableStreams) {
+    val qualityOptions = remember(state.availableStreams) {
         val order = listOf("4K", "2160P", "1440P", "1080P", "720P", "480P", "360P")
-        availableStreams
+        state.availableStreams
             .mapNotNull { stream -> streamQualityLabel(stream)?.let { it to stream } }
             .groupBy({ it.first }, { it.second })
             .entries
             .sortedBy { (label, _) -> order.indexOf(label).takeIf { it >= 0 } ?: Int.MAX_VALUE }
             .map { (label, streams) -> label to streams.first() }
     }
-    /** Live fallback never retries the same URL/header tuple during this channel session. */
-    var attemptedLiveSourceIds by remember { mutableStateOf(emptySet<String>()) }
-    /** Count of streams hidden because the device can't decode them (e.g. 4K on budget phones). */
-    var hiddenIncompatibleCount by remember { mutableStateOf(0) }
-    var streamsLoading by remember { mutableStateOf(false) }
-    var streamsJob by remember { mutableStateOf<Job?>(null) }
     /** A bounded late-source wait is invalidated by manual navigation and disposal. */
     val liveFallbackGeneration = remember { AtomicInteger(0) }
-    var pendingLiveFallbackJob by remember { mutableStateOf<Job?>(null) }
 
     fun preemptPendingLiveFallback() {
         liveFallbackGeneration.incrementAndGet()
-        pendingLiveFallbackJob?.cancel()
-        pendingLiveFallbackJob = null
+        state.pendingLiveFallbackJob?.cancel()
+        state.pendingLiveFallbackJob = null
     }
 
-    // Resume prompt
-    var resumeOfferMs by remember { mutableStateOf<Long?>(null) }
 
-    // Skip segments: IntroDB intervals (per title) + chapter-derived
-    // intervals (per source) merge with chapters winning per type.
-    var apiSkipSegments by remember { mutableStateOf(emptyList<SkipSegment>()) }
-    var chapterSkipSegments by remember { mutableStateOf(emptyList<SkipSegment>()) }
-    val skipSegments = mergeSkipIntervals(apiSkipSegments, chapterSkipSegments, isMovie = currentRequest.isMovie)
-    var activeSegment by remember { mutableStateOf<SkipSegment?>(null) }
-    // Segments already auto-skipped for this title (Nuvio
-    // autoSkippedIntervals): once per segment — a manual seek back
-    // into one doesn't instantly re-skip it.
-    var autoSkippedSegments by remember { mutableStateOf<Set<SkipSegment>>(emptySet()) }
+    val skipSegments = mergeSkipIntervals(state.apiSkipSegments, state.chapterSkipSegments, isMovie = state.currentRequest.isMovie)
 
-    // Chapters (Nuvio PlayerChapters): read once per source from the
-    // file itself (ExoPlayer's Matroska extractor skips them).
-    var chapters by remember { mutableStateOf<List<PlayerChapter>>(emptyList()) }
-    var chaptersOpen by remember { mutableStateOf(false) }
-    // Step 63: in-player live-channels panel.
-    var channelsOpen by remember { mutableStateOf(false) }
 
-    // Next-episode countdown card (Nuvio NextEpisodeCard): the resolved
-    // next episode + the live countdown; Cancel marks the episode handled
-    // so the silent end-of-playback advance never fires for it.
-    var nextEpisodeCard by remember { mutableStateOf<Video?>(null) }
-    var nextEpisodeCountdown by remember { mutableStateOf<Int?>(null) }
-    var nextEpisodeDismissedFor by remember { mutableStateOf<String?>(null) }
 
-    // Movie recommendations (Nuvio MovieRecommendationCard): "More like
-    // this" after a movie ends, loaded once per title.
-    var movieRecs by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
-    var movieRecsLoadedFor by remember { mutableStateOf<String?>(null) }
-    var movieRecsAddonId by remember { mutableStateOf<String?>(null) }
-    var movieRecsDismissed by remember { mutableStateOf(false) }
-    var movieRecsAutoHidden by remember { mutableStateOf(false) }
 
     // A new episode/movie clears the end-of-playback cards.
-    LaunchedEffect(currentRequest.videoId) {
-        nextEpisodeCard = null
-        nextEpisodeCountdown = null
-        movieRecs = emptyList()
-        movieRecsLoadedFor = null
-        movieRecsAddonId = null
-        movieRecsDismissed = false
-        movieRecsAutoHidden = false
-        autoSkippedSegments = emptySet()
+    LaunchedEffect(state.currentRequest.videoId) {
+        state.nextEpisodeCard = null
+        state.nextEpisodeCountdown = null
+        state.movieRecs = emptyList()
+        state.movieRecsLoadedFor = null
+        state.movieRecsAddonId = null
+        state.movieRecsDismissed = false
+        state.movieRecsAutoHidden = false
+        state.autoSkippedSegments = emptySet()
     }
 
-    // Subtitle search
-    var subSearchOpen by remember { mutableStateOf(false) }
-    var subSearchLoading by remember { mutableStateOf(false) }
-    var subSearchResults by remember { mutableStateOf(emptyList<Subtitle>()) }
-    var subSearchError by remember { mutableStateOf<String?>(null) }
-    var addedSubs by remember { mutableStateOf(emptyList<Subtitle>()) }
-    // Subtitle overlay (v0.14.5): chosen language rail + the URL of the
-    // subtitle the user last picked in the panel (drives the Style
-    // rail's appearance before the player finishes attaching it).
-    var panelLang by remember { mutableStateOf<String?>(null) }
-    var panelPickedUrl by remember { mutableStateOf<String?>(null) }
-    // Style-rail mirrors of the persisted style: font size (sp), text
-    // colour (ARGB — its alpha is the opacity control), bold / outline /
-    // outline colour / bottom offset, plus auto-sync capture state and
-    // the reload tick that re-runs the subtitle resolver effect.
-    var subFontSpUi by remember { mutableIntStateOf(settings.subtitleFontSizeSp) }
-    var subColorUi by remember { mutableIntStateOf(settings.subtitleTextColor) }
-    var subBoldUi by remember { mutableStateOf(settings.subtitleBold) }
-    var subEdgeUi by remember { mutableIntStateOf(settings.subtitleEdgeType) }
-    var subEdgeColorUi by remember { mutableIntStateOf(settings.subtitleEdgeColor) }
-    var subBottomUi by remember { mutableIntStateOf(settings.subtitleBottomOffset) }
-    var subReloadTick by remember { mutableIntStateOf(0) }
-    var captureCues by remember { mutableStateOf<List<Pair<Long, String>>?>(null) }
-    var captureLoading by remember { mutableStateOf(false) }
-    /** Playback position stored when Auto Sync > Capture is pressed. */
-    var capturePositionMs by remember { mutableLongStateOf(0L) }
 
     // Back hierarchy, in one handler so the order is explicit: sheets first,
     // then hide visible controls, and only then leave the player (#27).
@@ -1422,27 +1198,27 @@ fun PlayerScreen(
     // they still dismiss themselves before this runs.)
     BackHandler {
         when {
-            tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen || chaptersOpen -> {
-                tracksOpen = false
-                subSearchOpen = false
-                sourcesOpen = false
-                episodesOpen = false
-                qualityOpen = false
-                infoOpen = false
-                chaptersOpen = false
+            state.tracksOpen || state.subSearchOpen || state.sourcesOpen || state.episodesOpen || state.qualityOpen || state.infoOpen || state.chaptersOpen -> {
+                state.tracksOpen = false
+                state.subSearchOpen = false
+                state.sourcesOpen = false
+                state.episodesOpen = false
+                state.qualityOpen = false
+                state.infoOpen = false
+                state.chaptersOpen = false
             }
-            showControls && !locked -> showControls = false
+            state.showControls && !state.locked -> state.showControls = false
             else -> onBack()
         }
     }
 
-    val audioOpts = remember(trackTick, player) { trackOptions(player, C.TRACK_TYPE_AUDIO) }
-    val textOpts = remember(trackTick, player) { trackOptions(player, C.TRACK_TYPE_TEXT) }
+    val audioOpts = remember(state.trackTick, player) { trackOptions(player, C.TRACK_TYPE_AUDIO) }
+    val textOpts = remember(state.trackTick, player) { trackOptions(player, C.TRACK_TYPE_TEXT) }
     // When preferred subtitle languages are set, the Subs picker only offers
     // tracks in those languages (plus Off and Search). Preferences are read
     // fresh every time the dialog opens. Falls back to all tracks if none
     // match, so the menu is never empty.
-    val subOpts = remember(trackTick, player, tracksOpen) {
+    val subOpts = remember(state.trackTick, player, state.tracksOpen) {
         val prefs = settings.subtitleLanguages
         if (prefs.isEmpty()) textOpts
         else textOpts.filter { opt ->
@@ -1451,11 +1227,11 @@ fun PlayerScreen(
             }
         }.ifEmpty { textOpts }
     }
-    val subtitlesOff = remember(trackTick, player) { !hasSelectedTrack(player, C.TRACK_TYPE_TEXT) }
+    val subtitlesOff = remember(state.trackTick, player) { !hasSelectedTrack(player, C.TRACK_TYPE_TEXT) }
 
     fun pokeIndicator(i: PlayerIndicator) {
-        indicator = i
-        indicatorTick++
+        state.indicator = i
+        state.indicatorTick++
     }
 
     fun seekBy(deltaMs: Long) {
@@ -1480,34 +1256,34 @@ fun PlayerScreen(
     fun doubleTapSeek(direction: Int) {
         val stepMs = (if (direction < 0) settings.skipBackwardSeconds else settings.skipForwardSeconds) * 1000L
         val pos = player.currentPosition.coerceAtLeast(0L)
-        if (accumulatedSeekDirection == direction) {
-            accumulatedSeekAmountMs += stepMs
+        if (state.accumulatedSeekDirection == direction) {
+            state.accumulatedSeekAmountMs += stepMs
         } else {
-            accumulatedSeekDirection = direction
-            accumulatedSeekBaselineMs = pos
-            accumulatedSeekAmountMs = stepMs
+            state.accumulatedSeekDirection = direction
+            state.accumulatedSeekBaselineMs = pos
+            state.accumulatedSeekAmountMs = stepMs
         }
         val dur = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
         val target = if (direction < 0) {
-            (accumulatedSeekBaselineMs - accumulatedSeekAmountMs).coerceAtLeast(0L)
+            (state.accumulatedSeekBaselineMs - state.accumulatedSeekAmountMs).coerceAtLeast(0L)
         } else {
-            (accumulatedSeekBaselineMs + accumulatedSeekAmountMs).coerceIn(0L, dur)
+            (state.accumulatedSeekBaselineMs + state.accumulatedSeekAmountMs).coerceIn(0L, dur)
         }
         player.seekTo(target)
-        val seconds = accumulatedSeekAmountMs / 1000L
+        val seconds = state.accumulatedSeekAmountMs / 1000L
         pokeIndicator(PlayerIndicator.Seek((if (direction >= 0) "+" else "−") + "${seconds}s"))
-        accumulatedSeekResetJob?.cancel()
-        accumulatedSeekResetJob = gestureUiScope.launch {
+        state.accumulatedSeekResetJob?.cancel()
+        state.accumulatedSeekResetJob = gestureUiScope.launch {
             delay(800)
-            accumulatedSeekDirection = null
-            accumulatedSeekAmountMs = 0L
+            state.accumulatedSeekDirection = null
+            state.accumulatedSeekAmountMs = 0L
         }
     }
 
     fun toggleControls() {
-        if (locked) return
-        showControls = !showControls
-        if (showControls) controlsTick++
+        if (state.locked) return
+        state.showControls = !state.showControls
+        if (state.showControls) state.controlsTick++
     }
 
     fun togglePlay() {
@@ -1536,16 +1312,16 @@ fun PlayerScreen(
     }
 
     fun cycleAspect() {
-        aspectMode = when (aspectMode) {
+        state.aspectMode = when (state.aspectMode) {
             AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_FILL
             AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
-        settings.resizeMode = aspectMode
+        settings.resizeMode = state.aspectMode
         // Nuvio cycleResizeMode: a resize reset clears the pinch zoom.
-        videoZoom = 1f
-        rawVideoZoom = 1f
-        playerView?.resizeMode = aspectMode
+        state.videoZoom = 1f
+        state.rawVideoZoom = 1f
+        state.playerView?.resizeMode = state.aspectMode
         pokeIndicator(PlayerIndicator.Message("Aspect: $aspectLabel"))
     }
 
@@ -1562,12 +1338,12 @@ fun PlayerScreen(
     fun applyAudioSelection(opt: TrackOption?) {
         // A manual pick (including "Auto", which hands selection back) is
         // the user's word for this session — auto-select steps aside.
-        userPickedAudio = true
+        state.userPickedAudio = true
         val params = player.trackSelectionParameters.buildUpon()
         if (opt == null) params.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
         else params.setOverrideForType(TrackSelectionOverride(opt.group, listOf(opt.trackIndex)))
         player.trackSelectionParameters = params.build()
-        trackTick++
+        state.trackTick++
         pokeIndicator(PlayerIndicator.Message(if (opt == null) "Audio: Auto" else "Audio: ${opt.label}"))
     }
 
@@ -1583,7 +1359,7 @@ fun PlayerScreen(
      * the default selection).
      */
     fun applyPreferredAudioLanguage() {
-        if (userPickedAudio) return
+        if (state.userPickedAudio) return
         // Step 38: ordered targets — primary, then secondary (Nuvio
         // resolvePreferredAudioLanguageTargets, Avio-native). The first
         // target that has a matching track wins.
@@ -1622,13 +1398,13 @@ fun PlayerScreen(
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
             .setOverrideForType(TrackSelectionOverride(match.first.mediaTrackGroup, listOf(match.second)))
             .build()
-        trackTick++
+        state.trackTick++
     }
 
     // Apply the preferred audio language on player (re)creation and on
     // every track-set change for that player.
     LaunchedEffect(player) {
-        userPickedAudio = false
+        state.userPickedAudio = false
         val listener = object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
                 applyPreferredAudioLanguage()
@@ -1652,7 +1428,7 @@ fun PlayerScreen(
             params.setOverrideForType(TrackSelectionOverride(opt.group, listOf(opt.trackIndex)))
         }
         player.trackSelectionParameters = params.build()
-        trackTick++
+        state.trackTick++
         pokeIndicator(
             PlayerIndicator.Message(if (opt == null) "Subtitles: Off" else "Subtitles: ${opt.label}")
         )
@@ -1662,48 +1438,45 @@ fun PlayerScreen(
         // Panel-integrated (v0.14.2): results merge into the subtitle
         // panel's list instead of opening a separate sheet.
 
-        subSearchLoading = true
-        subSearchError = null
-        subSearchResults = emptyList()
+        state.subSearchLoading = true
+        state.subSearchError = null
+        state.subSearchResults = emptyList()
         // Capture request data on the main thread before hopping to IO.
-        val imdb = currentRequest.imdbId
-        val isMovie = currentRequest.isMovie
-        val existingUrls = (currentRequest.subtitles + addedSubs).map { it.url }.toSet()
+        val imdb = state.currentRequest.imdbId
+        val isMovie = state.currentRequest.isMovie
+        val existingUrls = (state.currentRequest.subtitles + state.addedSubs).map { it.url }.toSet()
         ioScope.launch {
             try {
                 if (imdb.isNullOrBlank()) {
                     withContext(Dispatchers.Main) {
-                        subSearchError = "No title info available for subtitle search."
+                        state.subSearchError = "No title info available for subtitle search."
                     }
                 } else {
                     val type = if (isMovie) "movie" else "series"
                     val results = repository.searchSubtitles(type, imdb)
                         .filter { it.url !in existingUrls }
                     withContext(Dispatchers.Main) {
-                        subSearchResults = results
-                        if (results.isEmpty()) subSearchError = "No subtitles found for this title."
+                        state.subSearchResults = results
+                        if (results.isEmpty()) state.subSearchError = "No subtitles found for this title."
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    subSearchError = e.message ?: "Subtitle search failed."
+                    state.subSearchError = e.message ?: "Subtitle search failed."
                 }
             } finally {
-                withContext(Dispatchers.Main + NonCancellable) { subSearchLoading = false }
+                withContext(Dispatchers.Main + NonCancellable) { state.subSearchLoading = false }
             }
         }
     }
 
-    var pendingDefaultSubUrl by remember { mutableStateOf<String?>(null) }
-    // True when side-loaded subtitles existed but none could be downloaded.
-    var subLoadError by remember { mutableStateOf(false) }
 
     fun addExternalSubtitle(sub: Subtitle) {
-        addedSubs = addedSubs + sub
-        subSearchOpen = false
+        state.addedSubs = state.addedSubs + sub
+        state.subSearchOpen = false
         // The resolver effect below picks this up, downloads it and makes it
         // the active subtitle.
-        pendingDefaultSubUrl = sub.url
+        state.pendingDefaultSubUrl = sub.url
         pokeIndicator(
             PlayerIndicator.Message("Subtitles: ${displayLanguage(sub.lang) ?: sub.lang.uppercase()}")
         )
@@ -1715,7 +1488,7 @@ fun PlayerScreen(
      *  (straight from the addon response — no waiting), the user's
      *  additions and online-search results, deduped by URL. */
     fun panelSubs(): List<Subtitle> =
-        (currentRequest.subtitles + addedSubs + subSearchResults).distinctBy { it.url }
+        (state.currentRequest.subtitles + state.addedSubs + state.subSearchResults).distinctBy { it.url }
 
     fun panelTrackId(opt: TrackOption): String? =
         runCatching { opt.group.getFormat(opt.trackIndex).id }.getOrNull()
@@ -1724,13 +1497,13 @@ fun PlayerScreen(
     // Preparation (subtitle ordering + IntroDB lookup) lives in
     // ExternalPlayer.prepareLaunch; the intent fires on Main.
     fun launchExternalPlayer(ctx: Context, req: PlaybackRequest) {
-        val posAtClick = positionMs
+        val posAtClick = state.positionMs
         ioScope.launch {
             val selectedUrl = textOpts.firstOrNull { it.selected }
                 ?.let { panelTrackId(it) }
             val extras = ExternalPlayer.prepareLaunch(
                 ctx, req, settings,
-                alreadyResolved = resolvedSubs,
+                alreadyResolved = state.resolvedSubs,
                 selectedSubtitleUrl = selectedUrl,
                 isTv = isTv
             )
@@ -1778,9 +1551,9 @@ fun PlayerScreen(
         val opt = textOpts.firstOrNull { panelTrackId(it) == sub.url }
         when {
             opt != null -> applySubtitleSelection(opt)
-            addedSubs.any { it.url == sub.url } ||
-                currentRequest.subtitles.any { it.url == sub.url } -> {
-                pendingDefaultSubUrl = sub.url
+            state.addedSubs.any { it.url == sub.url } ||
+                state.currentRequest.subtitles.any { it.url == sub.url } -> {
+                state.pendingDefaultSubUrl = sub.url
                 pokeIndicator(
                     PlayerIndicator.Message(
                         "Subtitles: ${displayLanguage(sub.lang) ?: sub.lang.uppercase()}"
@@ -1844,44 +1617,40 @@ fun PlayerScreen(
      */
     fun setSubtitleDelay(delayMs: Long) {
         val clamped = delayMs.coerceIn(-60_000L, 60_000L)
-        subOffsetOverrideMs = clamped
-        settings.setSubtitleDelayMsFor(currentRequest.videoId, clamped)
-        captureCues = null
+        state.subOffsetOverrideMs = clamped
+        settings.setSubtitleDelayMsFor(state.currentRequest.videoId, clamped)
+        state.captureCues = null
         applySubtitleTiming()
     }
 
-    /** Sync by ear (Nuvio SubtitleSyncByEarCard): the playback position
-     *  captured when the user hears a line / sees its subtitle. */
-    var syncByEarHeardMs by remember { mutableStateOf<Long?>(null) }
-    var syncByEarSawMs by remember { mutableStateOf<Long?>(null) }
 
     /** Both taps captured: shift the delay by (heard − saw) — heard
      *  before seen means the subtitles are late, so the delay drops —
      *  persist it per video via setSubtitleDelay, then clear the
      *  captures so the user can measure again. */
     fun applySyncByEarIfReady() {
-        val heard = syncByEarHeardMs ?: return
-        val saw = syncByEarSawMs ?: return
-        syncByEarHeardMs = null
-        syncByEarSawMs = null
-        setSubtitleDelay(subOffsetOverrideMs + heard - saw)
+        val heard = state.syncByEarHeardMs ?: return
+        val saw = state.syncByEarSawMs ?: return
+        state.syncByEarHeardMs = null
+        state.syncByEarSawMs = null
+        setSubtitleDelay(state.subOffsetOverrideMs + heard - saw)
         pokeIndicator(PlayerIndicator.Message("Subtitles synced: ${panelDelayLabel(effectiveSubOffsetMs())}"))
     }
 
     fun captureSyncByEarHeard() {
-        syncByEarHeardMs = player.currentPosition.coerceAtLeast(0L)
+        state.syncByEarHeardMs = player.currentPosition.coerceAtLeast(0L)
         applySyncByEarIfReady()
     }
 
     fun captureSyncByEarSaw() {
-        syncByEarSawMs = player.currentPosition.coerceAtLeast(0L)
+        state.syncByEarSawMs = player.currentPosition.coerceAtLeast(0L)
         applySyncByEarIfReady()
     }
 
     /** Auto Sync > Reload: drop the cached downloads + shifted copies
      *  and re-resolve every subtitle fresh from its source. */
     fun reloadPanelSubtitles() {
-        rawResolvedSubs.forEach { raw ->
+        state.rawResolvedSubs.forEach { raw ->
             runCatching { raw.file.delete() }
             val key = raw.file.absolutePath.hashCode().toUInt().toString(16)
             context.cacheDir.listFiles()?.forEach { f ->
@@ -1890,7 +1659,7 @@ fun PlayerScreen(
                 }
             }
         }
-        subReloadTick++
+        state.subReloadTick++
         pokeIndicator(PlayerIndicator.Message("Subtitles reloading…"))
     }
 
@@ -1899,25 +1668,25 @@ fun PlayerScreen(
      *  line they are hearing and the delay is set from it. */
     fun startCaptureSync() {
         val selectedUrl = textOpts.firstOrNull { it.selected }?.let { panelTrackId(it) }
-        val raw = rawResolvedSubs.firstOrNull { it.sub.url == selectedUrl }
-            ?: rawResolvedSubs.firstOrNull()
+        val raw = state.rawResolvedSubs.firstOrNull { it.sub.url == selectedUrl }
+            ?: state.rawResolvedSubs.firstOrNull()
         if (raw == null) {
             pokeIndicator(PlayerIndicator.Message("Auto sync needs a downloaded subtitle track"))
             return
         }
         // The position is captured NOW (when the line is heard); a cue
         // tap later computes the delay from this stored position.
-        capturePositionMs = player.currentPosition
-        captureLoading = true
+        state.capturePositionMs = player.currentPosition
+        state.captureLoading = true
         ioScope.launch {
             val cues = parseSubtitleCues(raw.file)
-            val center = (capturePositionMs - effectiveSubOffsetMs()).coerceAtLeast(0L)
+            val center = (state.capturePositionMs - effectiveSubOffsetMs()).coerceAtLeast(0L)
             // The five cues nearest the captured position, in time order.
             val near = cues.sortedBy { kotlin.math.abs(it.first - center) }
                 .take(5).sortedBy { it.first }
             withContext(Dispatchers.Main) {
-                captureLoading = false
-                captureCues = near
+                state.captureLoading = false
+                state.captureCues = near
                 if (near.isEmpty()) {
                     pokeIndicator(PlayerIndicator.Message("No subtitle lines found to sync from"))
                 }
@@ -1933,12 +1702,12 @@ fun PlayerScreen(
     // resolved list goes into state; a separate effect attaches it, so a
     // source switch can carry the subtitles into the fresh player instead of
     // re-preparing the video (#29).
-    LaunchedEffect(currentRequest, addedSubs, subReloadTick) {
-        val reqAtStart = currentRequest
-        val all = reqAtStart.subtitles + addedSubs
-        subLoadError = false
-        resolvedSubs = emptyList()
-        rawResolvedSubs = emptyList()
+    LaunchedEffect(state.currentRequest, state.addedSubs, state.subReloadTick) {
+        val reqAtStart = state.currentRequest
+        val all = reqAtStart.subtitles + state.addedSubs
+        state.subLoadError = false
+        state.resolvedSubs = emptyList()
+        state.rawResolvedSubs = emptyList()
         if (all.isEmpty() || disposed.get()) return@LaunchedEffect
         val resolved = resolveSubtitleFiles(
             all, context.cacheDir,
@@ -1948,55 +1717,55 @@ fun PlayerScreen(
         )
         // Superseded while resolving (source/episode/zap switch) — the newer
         // effect run owns the result.
-        if (currentRequest != reqAtStart || disposed.get()) return@LaunchedEffect
-        subLoadError = resolved.isEmpty()
+        if (state.currentRequest != reqAtStart || disposed.get()) return@LaunchedEffect
+        state.subLoadError = resolved.isEmpty()
         // Store the raw files, then publish the timing-shifted list. The
         // separate attach effect picks up resolvedSubs.
-        rawResolvedSubs = resolved
+        state.rawResolvedSubs = resolved
         val generation = subtitleShiftGeneration.incrementAndGet()
         val shifted = withContext(Dispatchers.IO) {
             shiftSubtitles(resolved, effectiveSubOffsetMs(), context.cacheDir)
         }
-        if (currentRequest == reqAtStart && subtitleShiftGeneration.get() == generation && !disposed.get()) {
-            resolvedSubs = shifted
+        if (state.currentRequest == reqAtStart && subtitleShiftGeneration.get() == generation && !disposed.get()) {
+            state.resolvedSubs = shifted
         }
     }
 
     // Load the persisted per-video delay only when the actual
     // title/episode changes; adding a subtitle or switching source does
     // not discard the user's delay.
-    LaunchedEffect(currentRequest.metaId, currentRequest.videoId, currentRequest.season, currentRequest.episode) {
-        subOffsetOverrideMs = settings.subtitleDelayMsFor(currentRequest.videoId)
+    LaunchedEffect(state.currentRequest.metaId, state.currentRequest.videoId, state.currentRequest.season, state.currentRequest.episode) {
+        state.subOffsetOverrideMs = settings.subtitleDelayMsFor(state.currentRequest.videoId)
         // A new title invalidates any half-finished sync-by-ear capture.
-        syncByEarHeardMs = null
-        syncByEarSawMs = null
-        if (rawResolvedSubs.isNotEmpty()) applySubtitleTiming()
+        state.syncByEarHeardMs = null
+        state.syncByEarSawMs = null
+        if (state.rawResolvedSubs.isNotEmpty()) applySubtitleTiming()
     }
 
     // Attach resolved subtitles to the player. Skips silently when the fresh
     // player was already built carrying them (source switch) — no re-prepare.
-    LaunchedEffect(player, resolvedSubs) {
-        if (resolvedSubs.isEmpty() || disposed.get()) return@LaunchedEffect
-        val wantDefault = pendingDefaultSubUrl
-        pendingDefaultSubUrl = null
-        attachResolvedSubtitles(resolvedSubs, wantDefault)
+    LaunchedEffect(player, state.resolvedSubs) {
+        if (state.resolvedSubs.isEmpty() || disposed.get()) return@LaunchedEffect
+        val wantDefault = state.pendingDefaultSubUrl
+        state.pendingDefaultSubUrl = null
+        attachResolvedSubtitles(state.resolvedSubs, wantDefault)
     }
 
     // Step 68: parental guide — fetch once playback starts; the overlay
     // shows itself for ~5s and fades out. A new title clears the old
     // warnings first so they never linger on the wrong video.
-    LaunchedEffect(currentRequest.videoId, hasStartedPlayback) {
-        parentalGuideVisible = false
-        parentalWarnings = emptyList()
+    LaunchedEffect(state.currentRequest.videoId, hasStartedPlayback) {
+        state.parentalGuideVisible = false
+        state.parentalWarnings = emptyList()
         if (!settings.showParentalGuide || !hasStartedPlayback) return@LaunchedEffect
         val imdb = extractParentalGuideImdbId(
-            currentRequest.imdbId ?: currentRequest.metaId
+            state.currentRequest.imdbId ?: state.currentRequest.metaId
         ) ?: return@LaunchedEffect
         val guide = ParentalGuideRepository.getParentalGuide(imdb) ?: return@LaunchedEffect
         val warnings = buildParentalWarnings(guide)
         if (warnings.isEmpty() || disposed.get()) return@LaunchedEffect
-        parentalWarnings = warnings
-        parentalGuideVisible = true
+        state.parentalWarnings = warnings
+        state.parentalGuideVisible = true
     }
 
     /**
@@ -2014,7 +1783,7 @@ fun PlayerScreen(
         preemptPendingLiveFallback()
         val gen = replaceGen.incrementAndGet()
         val old = player
-        val oldReq = currentRequest
+        val oldReq = state.currentRequest
         // Read the old player's position on THIS thread (the player's own
         // thread, normally main). Touching it from a background thread crashes.
         val posMs = old.currentPosition
@@ -2029,8 +1798,8 @@ fun PlayerScreen(
                         poster = oldReq.poster,
                         videoId = oldReq.videoId,
                         streamUrl = oldReq.streamUrl,
-                        positionMs = posMs,
-                        durationMs = durMs,
+                        state.positionMs = posMs,
+                        state.durationMs = durMs,
                         imdbId = oldReq.imdbId,
                         season = oldReq.season,
                         episode = oldReq.episode
@@ -2042,32 +1811,32 @@ fun PlayerScreen(
                 // run on the main thread no matter which thread called us.
                 withContext(Dispatchers.Main) {
                     if (gen != replaceGen.get() || disposed.get()) return@withContext
-                    playerError = null
-                    mimeHealAttempted = false
+                    state.playerError = null
+                    state.mimeHealAttempted = false
                     if (oldReq.type != newReq.type || oldReq.videoId != newReq.videoId || oldReq.liveChannel != newReq.liveChannel) {
-                        streamsJob?.cancel()
-                        availableStreams = com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
+                        state.streamsJob?.cancel()
+                        state.availableStreams = com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
                             emptyList(), newReq.streams, includeHeadersInIdentity = newReq.isLive && !isTv
                         )
-                        attemptedLiveSourceIds = emptySet()
+                        state.attemptedLiveSourceIds = emptySet()
                     }
-                    currentRequest = newReq
+                    state.currentRequest = newReq
                     repository.pendingPlayback = newReq
                     saveLinkForReuse(newReq)
-                    resumeOfferMs = null
+                    state.resumeOfferMs = null
                     // #29: carry already-resolved subtitles (same title) into
                     // the fresh player so the attach effect doesn't re-prepare
                     // the video just to add them back.
                     val carrySubs =
-                        newReq.subtitles == oldReq.subtitles && resolvedSubs.isNotEmpty()
-                    val carried = if (carrySubs) resolvedSubs else emptyList()
+                        newReq.subtitles == oldReq.subtitles && state.resolvedSubs.isNotEmpty()
+                    val carried = if (carrySubs) state.resolvedSubs else emptyList()
                     val fresh = buildExo(newReq, carried).also { it.addListener(guardedPlayerListener()) }
                     // #16: a fresh player defaults to 1x — re-apply the pill.
-                    fresh.setPlaybackSpeed(speed)
-                    subsAttached =
+                    fresh.setPlaybackSpeed(state.speed)
+                    state.subsAttached =
                         if (carried.isNotEmpty()) fresh to subtitleIdentity(carried) else null
                     // Detach the surface from the old player before releasing it.
-                    playerView?.player = null
+                    state.playerView?.player = null
                     player = fresh
                     old.release()
                     seekToPlaybackStart(
@@ -2078,8 +1847,8 @@ fun PlayerScreen(
                     )
                     fresh.prepare()
                     fresh.playWhenReady = autoplay
-                    showControls = true
-                    controlsTick++
+                    state.showControls = true
+                    state.controlsTick++
                 }
             }
         }
@@ -2088,14 +1857,14 @@ fun PlayerScreen(
     fun switchSource(stream: StreamItem) {
         if (!com.pulsestream.app.data.isPlayableLiveStreamUrl(stream.url)) return
         preemptPendingLiveFallback()
-        val mobileLive = currentRequest.isLive && !isTv
+        val mobileLive = state.currentRequest.isLive && !isTv
         val sameCandidate = if (mobileLive) {
             com.pulsestream.app.data.LivePlaybackPolicy.isSameMobileLiveCandidate(
-                currentRequest.streamUrl, currentRequest.headers, stream.url, stream.headers
+                state.currentRequest.streamUrl, state.currentRequest.headers, stream.url, stream.headers
             )
-        } else stream.url == currentRequest.streamUrl
+        } else stream.url == state.currentRequest.streamUrl
         if (sameCandidate) return
-        sourcesOpen = false
+        state.sourcesOpen = false
         // Picking a stream directly is an explicit quality choice.
         qualitySelection = streamQualityLabel(stream)
         // A new stream is not a variant of the old master: clear the HLS
@@ -2106,7 +1875,7 @@ fun PlayerScreen(
             PlayerIndicator.Message("Source: ${streamQualityLabel(stream) ?: stream.sourceName ?: "switched"}")
         )
         replaceStream(
-            currentRequest.copy(
+            state.currentRequest.copy(
                 streamUrl = stream.url,
                 headers = stream.headers,
                 mimeType = stream.mimeType,
@@ -2127,7 +1896,7 @@ fun PlayerScreen(
     fun switchQuality(label: String?) {
         val target = if (label == null) qualityOptions.firstOrNull()?.second
         else qualityOptions.firstOrNull { it.first == label }?.second
-        qualityOpen = false
+        state.qualityOpen = false
         if (target != null) switchSource(target)
         qualitySelection = label
     }
@@ -2141,13 +1910,13 @@ fun PlayerScreen(
      * segment requests keep the stream's headers.
      */
     fun switchHlsVariant(variant: HlsQualityVariant?) {
-        qualityOpen = false
+        state.qualityOpen = false
         if (variant == null) {
             val master = hlsQualityState?.sourceUrl ?: return
             hlsVariantSelection = null
             qualitySelection = null
             replaceStream(
-                currentRequest.copy(
+                state.currentRequest.copy(
                     streamUrl = master,
                     hlsMasterUrl = null,
                     streamLabel = qualityOptions.firstOrNull()?.first
@@ -2162,7 +1931,7 @@ fun PlayerScreen(
                 PlayerIndicator.Message("Quality: ${variant.displayLabel}")
             )
             replaceStream(
-                currentRequest.copy(
+                state.currentRequest.copy(
                     streamUrl = variant.playbackUrl,
                     hlsMasterUrl = hlsQualityState?.sourceUrl,
                     streamLabel = variant.qualityName,
@@ -2185,7 +1954,7 @@ fun PlayerScreen(
     val zapChannels: List<TvChannelRef> = repository.pendingTvChannels
 
     fun canZap(): Boolean =
-        currentRequest.isLive && zapChannels.size > 1
+        state.currentRequest.isLive && zapChannels.size > 1
 
     fun zapTo(index: Int) {
         // #9: never start zap work on disposed state (ghost audio).
@@ -2196,10 +1965,10 @@ fun PlayerScreen(
         // Same channel tapped twice — nothing to do. M3U ids are URLs and
         // videoId holds the URL too, so this covers addon AND M3U channels:
         // double-tap CH+ must not rebuild the player (#19).
-        if (target.metaId == currentRequest.videoId &&
-            (currentRequest.liveChannel == null || currentRequest.liveChannel == target)) return
+        if (target.metaId == state.currentRequest.videoId &&
+            (state.currentRequest.liveChannel == null || state.currentRequest.liveChannel == target)) return
         preemptPendingLiveFallback()
-        zapping = true
+        state.zapping = true
         ioScope.launch {
             try {
                 val result = if (target.addonId == "m3u") {
@@ -2223,7 +1992,7 @@ fun PlayerScreen(
                 withContext(Dispatchers.Main) {
                     pokeIndicator(PlayerIndicator.Message(target.name))
                     replaceStream(
-                        currentRequest.copy(
+                        state.currentRequest.copy(
                             streamUrl = stream.url,
                             headers = stream.headers,
                             mimeType = stream.mimeType,
@@ -2242,7 +2011,7 @@ fun PlayerScreen(
                     )
                 }
             } finally {
-                withContext(Dispatchers.Main) { zapping = false }
+                withContext(Dispatchers.Main) { state.zapping = false }
             }
         }
     }
@@ -2255,11 +2024,11 @@ fun PlayerScreen(
 
     /** Quietly (re)fills the Sources list in the background, progressively. */
     fun refreshStreamsBackground(type: String, videoId: String) {
-        streamsJob?.cancel()
-        val requestAtStart = currentRequest
+        state.streamsJob?.cancel()
+        val requestAtStart = state.currentRequest
         val liveChannel = requestAtStart.liveChannel
-        streamsJob = ioScope.launch {
-            streamsLoading = true
+        state.streamsJob = ioScope.launch {
+            state.streamsLoading = true
             try {
                 val results = if (liveChannel != null) repository.liveStreamResultsFlow(liveChannel)
                     else repository.streamResultsFlow(
@@ -2274,34 +2043,34 @@ fun PlayerScreen(
                 results.collect { result ->
                     if (result.streams.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
-                            if (disposed.get() || currentRequest.type != type || currentRequest.videoId != videoId ||
-                                currentRequest.liveChannel != liveChannel) return@withContext
+                            if (disposed.get() || state.currentRequest.type != type || state.currentRequest.videoId != videoId ||
+                                state.currentRequest.liveChannel != liveChannel) return@withContext
                             val incoming = if (requestAtStart.isLive) result.streams.filter {
                                 com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url)
                             } else result.streams
                             val complete = com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
-                                availableStreams, incoming,
+                                state.availableStreams, incoming,
                                 includeHeadersInIdentity = requestAtStart.isLive && !isTv
                             )
                             // Preserve the original handoff while slow addons and debrid finish.
-                            if (complete != availableStreams) {
-                                availableStreams = complete
-                                hiddenIncompatibleCount = 0
+                            if (complete != state.availableStreams) {
+                                state.availableStreams = complete
+                                state.hiddenIncompatibleCount = 0
                             }
                         }
                     }
                 }
             } finally {
                 // NonCancellable: a replaced job must still clear the spinner.
-                withContext(Dispatchers.Main + NonCancellable) { streamsLoading = false }
+                withContext(Dispatchers.Main + NonCancellable) { state.streamsLoading = false }
             }
         }
     }
 
     /** Awaits late Live candidates instead of abandoning fallback after an empty first emission. */
     fun awaitMobileLiveFallbackCandidate() {
-        if (pendingLiveFallbackJob?.isActive == true) return
-        val requestAtStart = currentRequest
+        if (state.pendingLiveFallbackJob?.isActive == true) return
+        val requestAtStart = state.currentRequest
         val playerAtStart = player
         val generation = liveFallbackGeneration.incrementAndGet()
         val liveChannel = requestAtStart.liveChannel
@@ -2315,19 +2084,19 @@ fun PlayerScreen(
                     results.firstOrNull { result ->
                         selected = withContext(Dispatchers.Main) {
                             if (disposed.get() || liveFallbackGeneration.get() != generation ||
-                                currentRequest != requestAtStart || player !== playerAtStart) return@withContext null
+                                state.currentRequest != requestAtStart || player !== playerAtStart) return@withContext null
                             val incoming = result.streams.filter {
                                 com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url)
                             }
                             if (incoming.isEmpty()) return@withContext null
                             val merged = com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
-                                availableStreams, incoming, includeHeadersInIdentity = true
+                                state.availableStreams, incoming, includeHeadersInIdentity = true
                             )
-                            if (merged != availableStreams) availableStreams = merged
+                            if (merged != state.availableStreams) state.availableStreams = merged
                             com.pulsestream.app.data.LivePlaybackPolicy.nextUntriedCandidate(
-                                merged, current, attemptedLiveSourceIds
+                                merged, current, state.attemptedLiveSourceIds
                             )?.also { candidate ->
-                                attemptedLiveSourceIds = attemptedLiveSourceIds +
+                                state.attemptedLiveSourceIds = state.attemptedLiveSourceIds +
                                     com.pulsestream.app.data.LivePlaybackPolicy.candidateIdentity(candidate)
                             }
                         }
@@ -2341,25 +2110,25 @@ fun PlayerScreen(
             }
             withContext(Dispatchers.Main) {
                 if (disposed.get() || liveFallbackGeneration.get() != generation ||
-                    currentRequest != requestAtStart || player !== playerAtStart) return@withContext
+                    state.currentRequest != requestAtStart || player !== playerAtStart) return@withContext
                 if (selected != null) {
                     switchSource(selected!!)
                 } else {
-                    playerError = "No other sources available"
+                    state.playerError = "No other sources available"
                     pokeIndicator(PlayerIndicator.Message("No other sources available"))
                 }
-                pendingLiveFallbackJob = null
+                state.pendingLiveFallbackJob = null
             }
         }
-        pendingLiveFallbackJob = job
+        state.pendingLiveFallbackJob = job
     }
 
     /** Re-prepares the current stream after a fatal error (#4). */
     fun retryCurrentStream() {
         if (disposed.get()) return
-        playerError = null
+        state.playerError = null
         replaceStream(
-            currentRequest,
+            state.currentRequest,
             startAtMs = player.currentPosition.coerceAtLeast(0L),
             autoplay = true
         )
@@ -2370,21 +2139,21 @@ fun PlayerScreen(
      * nothing to advance to, says so and quietly refreshes the Sources list.
      */
     fun nextSource(automaticLiveFallback: Boolean = false) {
-        val streams = availableStreams.filter { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
-        val mobileLive = currentRequest.isLive && !isTv
+        val streams = state.availableStreams.filter { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
+        val mobileLive = state.currentRequest.isLive && !isTv
         val next = if (automaticLiveFallback && mobileLive) {
-            val current = StreamItem(url = currentRequest.streamUrl, headers = currentRequest.headers)
-            attemptedLiveSourceIds = attemptedLiveSourceIds +
+            val current = StreamItem(url = state.currentRequest.streamUrl, headers = state.currentRequest.headers)
+            state.attemptedLiveSourceIds = state.attemptedLiveSourceIds +
                 com.pulsestream.app.data.LivePlaybackPolicy.candidateIdentity(current)
             com.pulsestream.app.data.LivePlaybackPolicy.nextUntriedCandidate(
-                streams, current, attemptedLiveSourceIds
+                streams, current, state.attemptedLiveSourceIds
             )?.also { candidate ->
-                attemptedLiveSourceIds = attemptedLiveSourceIds +
+                state.attemptedLiveSourceIds = state.attemptedLiveSourceIds +
                     com.pulsestream.app.data.LivePlaybackPolicy.candidateIdentity(candidate)
             }
         } else {
             val cur = streams.indexOfFirst {
-                it.url == currentRequest.streamUrl && it.headers == currentRequest.headers
+                it.url == state.currentRequest.streamUrl && it.headers == state.currentRequest.headers
             }
             if (streams.size < 2) null else streams[(cur + 1).mod(streams.size)]
         }
@@ -2394,41 +2163,41 @@ fun PlayerScreen(
                 return
             }
             pokeIndicator(PlayerIndicator.Message("No other sources available"))
-            refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
+            refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId)
             return
         }
         switchSource(next)
     }
 
     // Wire the auto-failover path now that the helpers exist.
-    failoverToNextSource = { attempt ->
-        val maxAttempts = if (currentRequest.isLive && !isTv)
+    state.failoverToNextSource = { attempt ->
+        val maxAttempts = if (state.currentRequest.isLive && !isTv)
             com.pulsestream.app.data.LivePlaybackPolicy.MAX_MOBILE_LIVE_FAILOVERS else settings.fallbackMaxSources
         pokeIndicator(PlayerIndicator.Message("Trying next source… ($attempt/$maxAttempts)"))
-        nextSource(automaticLiveFallback = currentRequest.isLive && !isTv)
+        nextSource(automaticLiveFallback = state.currentRequest.isLive && !isTv)
     }
 
     // A mobile Live source can stall in BUFFERING forever without producing a
     // Media3 error. Bound only first-start recovery: a source that has played
     // once, VOD, TV, or an intentionally paused player is never interrupted.
-    LaunchedEffect(player, currentRequest, isTv) {
-        if (!currentRequest.isLive || isTv) return@LaunchedEffect
+    LaunchedEffect(player, state.currentRequest, isTv) {
+        if (!state.currentRequest.isLive || isTv) return@LaunchedEffect
         val watchedPlayer = player
         var waitingSinceMs: Long? = null
-        val attemptsAtStart = autoFailoverCount
+        val attemptsAtStart = state.autoFailoverCount
         val replacementAtStart = replaceGen.get()
         var hasEverPlayed = watchedPlayer.isPlaying
         while (true) {
-            if (disposed.get() || watchedPlayer !== latestPlayer.value || currentRequest != latestRequest.value) {
+            if (disposed.get() || watchedPlayer !== latestPlayer.value || state.currentRequest != latestRequest.value) {
                 return@LaunchedEffect
             }
-            if (autoFailoverCount != attemptsAtStart || replaceGen.get() != replacementAtStart) {
+            if (state.autoFailoverCount != attemptsAtStart || replaceGen.get() != replacementAtStart) {
                 return@LaunchedEffect
             }
             hasEverPlayed = hasEverPlayed || watchedPlayer.isPlaying
             if (hasEverPlayed) return@LaunchedEffect
-            val state = watchedPlayer.playbackState
-            val buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
+            val playbackState = watchedPlayer.playbackState
+            val buffering = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
             val nowMs = System.nanoTime() / 1_000_000L
             waitingSinceMs = liveStartupWaitingSince(
                 waitingSinceMs, nowMs, watchedPlayer.playWhenReady, buffering
@@ -2439,19 +2208,19 @@ fun PlayerScreen(
                     isTv = false,
                     playWhenReady = watchedPlayer.playWhenReady,
                     hasEverPlayed = hasEverPlayed,
-                    isBuffering = buffering,
+                    state.isBuffering = buffering,
                     elapsedMs = elapsedMs,
                     // Step 40: configurable startup timeout (default 15s).
                     timeoutMs = settings.fallbackStartupTimeoutSeconds * 1000L
                 )) {
                 val maxAttempts = com.pulsestream.app.data.LivePlaybackPolicy.MAX_MOBILE_LIVE_FAILOVERS
-                if (autoFailoverCount < maxAttempts) {
-                    autoFailoverCount++
+                if (state.autoFailoverCount < maxAttempts) {
+                    state.autoFailoverCount++
                     com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "startup_timeout", elapsedMs)
-                    failoverToNextSource?.invoke(autoFailoverCount)
+                    state.failoverToNextSource?.invoke(state.autoFailoverCount)
                 } else {
                     com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", 0)
-                    playerError = "Live source did not start"
+                    state.playerError = "Live source did not start"
                 }
                 return@LaunchedEffect
             }
@@ -2462,13 +2231,13 @@ fun PlayerScreen(
     // Recovery after first successful playback: the startup watchdog above deliberately
     // stops once a stream has played. A separate bounded watchdog handles streams that
     // subsequently stall without a Media3 error. It never acts while paused or seeking.
-    LaunchedEffect(player, currentRequest, isTv) {
-        if (!currentRequest.isLive || isTv) return@LaunchedEffect
+    LaunchedEffect(player, state.currentRequest, isTv) {
+        if (!state.currentRequest.isLive || isTv) return@LaunchedEffect
         val watchedPlayer = player
         var hasPlayed = watchedPlayer.isPlaying
         var rebufferSinceMs: Long? = null
         while (true) {
-            if (disposed.get() || watchedPlayer !== latestPlayer.value || currentRequest != latestRequest.value) {
+            if (disposed.get() || watchedPlayer !== latestPlayer.value || state.currentRequest != latestRequest.value) {
                 return@LaunchedEffect
             }
             hasPlayed = hasPlayed || watchedPlayer.isPlaying
@@ -2478,22 +2247,22 @@ fun PlayerScreen(
                 val nowMs = System.nanoTime() / 1_000_000L
                 rebufferSinceMs = rebufferSinceMs ?: nowMs
                 if (com.pulsestream.app.ui.screens.player.shouldFailoverStalledLiveRebuffer(
-                        isLive = currentRequest.isLive,
+                        isLive = state.currentRequest.isLive,
                         isTv = isTv,
                         playWhenReady = watchedPlayer.playWhenReady,
                         hasEverPlayed = hasPlayed,
-                        isBuffering = watchedPlayer.playbackState == Player.STATE_BUFFERING,
+                        state.isBuffering = watchedPlayer.playbackState == Player.STATE_BUFFERING,
                         elapsedMs = nowMs - rebufferSinceMs!!
                     )) {
                     val maxRecoveries = 2
-                    if (liveRebufferRecoveries < maxRecoveries) {
-                        liveRebufferRecoveries++
+                    if (state.liveRebufferRecoveries < maxRecoveries) {
+                        state.liveRebufferRecoveries++
                         com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "rebuffer_timeout", nowMs - rebufferSinceMs!!)
                         pokeIndicator(PlayerIndicator.Message("Live stream stalled — trying another source…"))
                         nextSource(automaticLiveFallback = true)
                     } else {
                         com.pulsestream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", nowMs - rebufferSinceMs!!)
-                        playerError = "Live stream stopped responding. Try Retry or choose another source."
+                        state.playerError = "Live stream stopped responding. Try Retry or choose another source."
                     }
                     return@LaunchedEffect
                 }
@@ -2509,8 +2278,8 @@ fun PlayerScreen(
     // Bounded by the generic failover cap (Settings > Playback > Source
     // failover); a mid-play stall first retries the same source once
     // (Step 40, Nuvio PlaybackStallResume).
-    LaunchedEffect(player, currentRequest, isTv) {
-        if (currentRequest.isLive) return@LaunchedEffect
+    LaunchedEffect(player, state.currentRequest, isTv) {
+        if (state.currentRequest.isLive) return@LaunchedEffect
         val watchedPlayer = player
         val replacementAtStart = replaceGen.get()
         var hasPlayed = watchedPlayer.isPlaying
@@ -2519,7 +2288,7 @@ fun PlayerScreen(
         var lastProgressAtMs = 0L
         while (true) {
             if (disposed.get() || watchedPlayer !== latestPlayer.value ||
-                currentRequest != latestRequest.value || replaceGen.get() != replacementAtStart
+                state.currentRequest != latestRequest.value || replaceGen.get() != replacementAtStart
             ) {
                 return@LaunchedEffect
             }
@@ -2541,28 +2310,28 @@ fun PlayerScreen(
                     isLive = false,
                     playWhenReady = watchedPlayer.playWhenReady,
                     hasEverPlayed = hasPlayed,
-                    isBuffering = buffering,
+                    state.isBuffering = buffering,
                     positionProgressed = progressed,
                     elapsedMs = elapsedMs,
                     // Step 40: configurable startup timeout (default 15s);
                     // the mid-play rebuffer timeout stays 30s.
                     startupTimeoutMs = settings.fallbackStartupTimeoutSeconds * 1000L
                 )) {
-                if (hasPlayed && vodStallResumeAttemptedFor != currentRequest.streamUrl) {
+                if (hasPlayed && state.vodStallResumeAttemptedFor != state.currentRequest.streamUrl) {
                     // Step 40 (Nuvio PlaybackStallResume): a source that
                     // played and then stalled gets one reopen at its current
                     // position before we switch to the next source.
-                    vodStallResumeAttemptedFor = currentRequest.streamUrl
+                    state.vodStallResumeAttemptedFor = state.currentRequest.streamUrl
                     com.pulsestream.app.data.SourceDiagnostics.record("VOD playback", "stall_resume", elapsedMs)
                     pokeIndicator(PlayerIndicator.Message("Stream stalled — retrying this source…"))
                     retryCurrentStream()
-                } else if (autoFailoverCount < settings.fallbackMaxSources) {
-                    autoFailoverCount++
+                } else if (state.autoFailoverCount < settings.fallbackMaxSources) {
+                    state.autoFailoverCount++
                     com.pulsestream.app.data.SourceDiagnostics.record("VOD playback", "stall_timeout", elapsedMs)
-                    failoverToNextSource?.invoke(autoFailoverCount)
+                    state.failoverToNextSource?.invoke(state.autoFailoverCount)
                 } else {
                     com.pulsestream.app.data.SourceDiagnostics.record("VOD playback", "fallback_exhausted", elapsedMs)
-                    playerError = "Stream stalled. Try Retry or choose another source."
+                    state.playerError = "Stream stalled. Try Retry or choose another source."
                 }
                 return@LaunchedEffect
             }
@@ -2579,19 +2348,19 @@ fun PlayerScreen(
     ) {
         // #9: never start episode work on disposed state (ghost audio).
         if (disposed.get()) return
-        episodesOpen = false
-        episodeStreamsVideo = null
-        switchingMedia = true
-        val showName = currentRequest.seriesName ?: currentRequest.title
-        availableStreams = playableStreams
-        hiddenIncompatibleCount = 0
+        state.episodesOpen = false
+        state.episodeStreamsVideo = null
+        state.switchingMedia = true
+        val showName = state.currentRequest.seriesName ?: state.currentRequest.title
+        state.availableStreams = playableStreams
+        state.hiddenIncompatibleCount = 0
         replaceStream(
-            currentRequest.copy(
+            state.currentRequest.copy(
                 streamUrl = stream.url,
                 headers = stream.headers,
                 mimeType = stream.mimeType,
                 title = "$showName S${video.season}E${video.episode}",
-                poster = video.thumbnail ?: currentRequest.poster,
+                poster = video.thumbnail ?: state.currentRequest.poster,
                 videoId = video.id,
                 subtitles = subtitles,
                 season = video.season,
@@ -2604,19 +2373,19 @@ fun PlayerScreen(
             startAtMs = 0L,
             autoplay = true
         )
-        switchingMedia = false
+        state.switchingMedia = false
     }
 
     fun playEpisode(video: Video) {
         // #9: never start episode work on disposed state (ghost audio).
         if (disposed.get()) return
-        episodesOpen = false
-        switchingMedia = true
+        state.episodesOpen = false
+        state.switchingMedia = true
         // Pre-resolved while the countdown card showed: skip the fetch.
-        val prefetched = prefetchedNextStreams?.takeIf { it.first == video.id }?.second
-        prefetchedNextStreams = null
+        val prefetched = state.prefetchedNextStreams?.takeIf { it.first == video.id }?.second
+        state.prefetchedNextStreams = null
         ioScope.launch {
-            val type = currentRequest.type
+            val type = state.currentRequest.type
             val result = prefetched ?: withTimeoutOrNull(20_000) {
                 repository.streamResultsFlow(type, video.id).firstOrNull { it.streams.any { stream -> com.pulsestream.app.data.isPlayableLiveStreamUrl(stream.url) } }
             }
@@ -2629,14 +2398,14 @@ fun PlayerScreen(
                 // filename built from the saved filename. Falls back to
                 // the first playable stream when nothing matches.
                 val preferredGroup = if (settings.autoplayPreferBingeGroup) {
-                    bingeGroupCache.get(currentRequest.metaId)
+                    bingeGroupCache.get(state.currentRequest.metaId)
                 } else null
                 val preferredFilename = preferredGroup?.let {
-                    bingeGroupCache.getFilename(currentRequest.metaId)?.let { saved ->
+                    bingeGroupCache.getFilename(state.currentRequest.metaId)?.let { saved ->
                         FilenameEpisodeMatcher.buildNextFilename(
                             saved,
-                            currentRequest.season.takeIf { it > 0 },
-                            currentRequest.episode,
+                            state.currentRequest.season.takeIf { it > 0 },
+                            state.currentRequest.episode,
                             video.season.takeIf { it > 0 },
                             video.episode
                         )
@@ -2658,8 +2427,8 @@ fun PlayerScreen(
     }
 
     // Auto-select a freshly added subtitle track once ExoPlayer exposes it.
-    LaunchedEffect(addedSubs.size) {
-        val sub = addedSubs.lastOrNull() ?: return@LaunchedEffect
+    LaunchedEffect(state.addedSubs.size) {
+        val sub = state.addedSubs.lastOrNull() ?: return@LaunchedEffect
         repeat(15) {
             val group = player.currentTracks.groups.firstOrNull { g ->
                 g.type == C.TRACK_TYPE_TEXT &&
@@ -2671,7 +2440,7 @@ fun PlayerScreen(
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                     .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(idx)))
                     .build()
-                trackTick++
+                state.trackTick++
                 return@LaunchedEffect
             }
             delay(300)
@@ -2703,11 +2472,11 @@ fun PlayerScreen(
      * that was playing before the hold. Disabled while locked (tap only
      * shows the locked hint, as before).
      */
-    fun Modifier.videoGestures(): Modifier = this.pointerInput(player, locked) {
-        if (locked) {
+    fun Modifier.videoGestures(): Modifier = this.pointerInput(player, state.locked) {
+        if (state.locked) {
             // Nuvio legacy: a tap while locked reveals the locked overlay
             // (which auto-hides again after 3.5s).
-            detectTapGestures(onTap = { lockedOverlayVisible = true })
+            detectTapGestures(onTap = { state.lockedOverlayVisible = true })
             return@pointerInput
         }
         var lastTapUpMs = 0L
@@ -2757,9 +2526,9 @@ fun PlayerScreen(
                     holdEngaged = true
                     prevSpeed = player.playbackParameters.speed
                     slideBaseX = accX
-                    holdSpeedStep = settings.holdSpeedValue
+                    state.holdSpeedStep = settings.holdSpeedValue
                     runCatching { player.setPlaybackSpeed(settings.holdSpeedValue) }
-                    holdSpeedActive = true
+                    state.holdSpeedActive = true
                     continue
                 }
                 val change = event.changes.firstOrNull { it.id == down.id } ?: continue
@@ -2773,16 +2542,16 @@ fun PlayerScreen(
                 if (event.changes.count { it.pressed } > 1) {
                     if (holdEngaged) {
                         holdEngaged = false
-                        holdSpeedActive = false
+                        state.holdSpeedActive = false
                         runCatching { player.setPlaybackSpeed(prevSpeed) }
                     }
                     pinchInterrupted = true
                     val zoom = event.calculateZoom()
                     if (zoom != 1f && zoom > 0f) {
-                        rawVideoZoom = (rawVideoZoom * zoom).coerceIn(0.8f, 2.0f)
-                        val next = if (abs(rawVideoZoom - 1f) < 0.04f) 1f else rawVideoZoom
-                        if (next != videoZoom) {
-                            videoZoom = next
+                        state.rawVideoZoom = (state.rawVideoZoom * zoom).coerceIn(0.8f, 2.0f)
+                        val next = if (abs(state.rawVideoZoom - 1f) < 0.04f) 1f else state.rawVideoZoom
+                        if (next != state.videoZoom) {
+                            state.videoZoom = next
                             pokeIndicator(PlayerIndicator.Message("${(next * 100f).roundToInt()}%"))
                         }
                     }
@@ -2810,8 +2579,8 @@ fun PlayerScreen(
                     val step = (settings.holdSpeedValue +
                         ((accX - slideBaseX) / stepPx).toInt().toFloat())
                         .coerceIn(settings.holdSpeedValue, 5f)
-                    if (step != holdSpeedStep) {
-                        holdSpeedStep = step
+                    if (step != state.holdSpeedStep) {
+                        state.holdSpeedStep = step
                         runCatching { player.setPlaybackSpeed(step) }
                     }
                 } else {
@@ -2876,9 +2645,9 @@ fun PlayerScreen(
                                     audioManager.setStreamVolume(
                                         AudioManager.STREAM_MUSIC, maxVolume, 0
                                     )
-                                    volumeBoost = (total - 100f) / 100f
+                                    state.volumeBoost = (total - 100f) / 100f
                                 } else {
-                                    volumeBoost = 0f
+                                    state.volumeBoost = 0f
                                     val v = (total / 100f * maxVolume)
                                         .roundToInt().coerceIn(0, maxVolume)
                                     audioManager.setStreamVolume(
@@ -2886,8 +2655,8 @@ fun PlayerScreen(
                                     )
                                 }
                                 applyVolumeBoost()
-                                volumePercent = displayVolumePercent()
-                                pokeIndicator(PlayerIndicator.Volume(volumePercent))
+                                state.volumePercent = displayVolumePercent()
+                                pokeIndicator(PlayerIndicator.Volume(state.volumePercent))
                             }
                             2 -> { // vertical swipe, left half: brightness
                                 val b = (brightBase - accY / size.height).coerceIn(0.01f, 1f)
@@ -2907,7 +2676,7 @@ fun PlayerScreen(
             // gesture settles nothing (Nuvio interruptedByPinch).
             if (!pinchInterrupted) when {
                 holdEngaged -> {
-                    holdSpeedActive = false
+                    state.holdSpeedActive = false
                     runCatching { player.setPlaybackSpeed(prevSpeed) }
                 }
                 dragMode == 0 -> {
@@ -2945,14 +2714,14 @@ fun PlayerScreen(
     }
 
     /** Tap-only gestures for the controls overlay (slider drags stay clean). */
-    fun Modifier.tapGestures(): Modifier = this.pointerInput(player, locked) {
+    fun Modifier.tapGestures(): Modifier = this.pointerInput(player, state.locked) {
         detectTapGestures(
             onTap = {
-                if (locked) pokeIndicator(PlayerIndicator.Message("Locked — tap the lock icon to unlock"))
+                if (state.locked) pokeIndicator(PlayerIndicator.Message("Locked — tap the lock icon to unlock"))
                 else toggleControls()
             },
             onDoubleTap = { offset ->
-                if (!locked && settings.touchGesturesEnabled) {
+                if (!state.locked && settings.touchGesturesEnabled) {
                     // Nuvio zones: <40% back, >60% forward, centre toggles.
                     when {
                         offset.x < size.width * 0.4f -> doubleTapSeek(-1)
@@ -2981,8 +2750,8 @@ fun PlayerScreen(
                 poster = req.poster,
                 videoId = req.videoId,
                 streamUrl = req.streamUrl,
-                positionMs = pos,
-                durationMs = if (dur == C.TIME_UNSET) 0L else dur,
+                state.positionMs = pos,
+                state.durationMs = if (dur == C.TIME_UNSET) 0L else dur,
                 imdbId = req.imdbId,
                 season = req.season,
                 episode = req.episode
@@ -2990,55 +2759,52 @@ fun PlayerScreen(
         }
     }
 
-    // Poll position / duration / playing / buffering / volume for the UI,
-    // and track the active skip-segment window.
-    var endedHandledFor by remember { mutableStateOf<String?>(null) }
 
     // Countdown driver: 10…1, one tick a second, then play the next
     // episode. Cancels when the card closes (dismiss, seek-back, new
     // episode). The advance marks the episode handled so the silent
     // end-of-playback block never fires for it too.
-    LaunchedEffect(nextEpisodeCard) {
-        val next = nextEpisodeCard ?: return@LaunchedEffect
+    LaunchedEffect(state.nextEpisodeCard) {
+        val next = state.nextEpisodeCard ?: return@LaunchedEffect
         for (sec in NEXT_EPISODE_COUNTDOWN_SECONDS downTo 1) {
-            nextEpisodeCountdown = sec
+            state.nextEpisodeCountdown = sec
             delay(1000)
         }
-        nextEpisodeCountdown = null
-        nextEpisodeCard = null
-        endedHandledFor = currentRequest.videoId
+        state.nextEpisodeCountdown = null
+        state.nextEpisodeCard = null
+        state.endedHandledFor = state.currentRequest.videoId
         playEpisode(next)
     }
 
     // Movie recommendations auto-hide 10s after appearing while the
     // controls are hidden; showing the controls brings them back.
-    LaunchedEffect(movieRecs, showControls) {
-        if (movieRecs.isNotEmpty() && !showControls) {
+    LaunchedEffect(state.movieRecs, state.showControls) {
+        if (state.movieRecs.isNotEmpty() && !state.showControls) {
             delay(10_000)
-            movieRecsAutoHidden = true
+            state.movieRecsAutoHidden = true
         } else {
-            movieRecsAutoHidden = false
+            state.movieRecsAutoHidden = false
         }
     }
 
     // Pinch zoom resets whenever a new title/episode starts.
-    LaunchedEffect(currentRequest.videoId) {
-        videoZoom = 1f
-        rawVideoZoom = 1f
+    LaunchedEffect(state.currentRequest.videoId) {
+        state.videoZoom = 1f
+        state.rawVideoZoom = 1f
     }
 
     // Skip-button auto-hide (Nuvio SkipIntroButton): the 10s countdown
     // runs only while the controls are hidden; showing them pauses it
     // and brings the button back. Dismissal and the countdown reset
     // whenever the active segment changes.
-    LaunchedEffect(activeSegment?.type, activeSegment?.startMs, activeSegment?.endMs) {
-        skipDismissed = false
-        skipAutoHidden = false
+    LaunchedEffect(state.activeSegment?.type, state.activeSegment?.startMs, state.activeSegment?.endMs) {
+        state.skipDismissed = false
+        state.skipAutoHidden = false
         skipProgress.snapTo(0f)
     }
-    LaunchedEffect(activeSegment?.type, activeSegment?.startMs, activeSegment?.endMs, showControls, skipDismissed) {
-        val seg = activeSegment
-        if (seg != null && !skipDismissed && !showControls && !skipAutoHidden) {
+    LaunchedEffect(state.activeSegment?.type, state.activeSegment?.startMs, state.activeSegment?.endMs, state.showControls, state.skipDismissed) {
+        val seg = state.activeSegment
+        if (seg != null && !state.skipDismissed && !state.showControls && !state.skipAutoHidden) {
             skipProgress.animateTo(
                 1f,
                 tween(
@@ -3046,7 +2812,7 @@ fun PlayerScreen(
                     easing = LinearEasing,
                 ),
             )
-            skipAutoHidden = true
+            state.skipAutoHidden = true
         }
     }
 
@@ -3057,60 +2823,60 @@ fun PlayerScreen(
         var lastPollPositionMs = -1L
         while (true) {
             val c = player
-            positionMs = c.currentPosition
-            durationMs = c.duration.takeIf { it > 0 } ?: 0L
-            bufferedMs = c.bufferedPosition.takeIf { it > 0 } ?: 0L
-            isPlaying = c.isPlaying
+            state.positionMs = c.currentPosition
+            state.durationMs = c.duration.takeIf { it > 0 } ?: 0L
+            state.bufferedMs = c.bufferedPosition.takeIf { it > 0 } ?: 0L
+            state.isPlaying = c.isPlaying
             if (c.isPlaying) hasStartedPlayback = true
-            isBuffering = c.playbackState == Player.STATE_BUFFERING ||
+            state.isBuffering = c.playbackState == Player.STATE_BUFFERING ||
                 c.playbackState == Player.STATE_IDLE
             // Step 59: the seek-preview prefetch pauses while buffering.
-            seekPreviewController?.playbackBuffering = isBuffering
-            loadingStep = when {
-                switchingMedia -> "Opening source…"
+            seekPreviewController?.playbackBuffering = state.isBuffering
+            state.loadingStep = when {
+                state.switchingMedia -> "Opening source…"
                 c.playbackState == Player.STATE_IDLE -> "Opening source…"
                 c.currentTracks.groups.isEmpty() -> "Reading tracks…"
                 else -> "Buffering…"
             }
-            volumePercent = displayVolumePercent()
+            state.volumePercent = displayVolumePercent()
             // A rebuilt player (source/episode switch) has a new audio
             // session — re-attach the boost enhancer to it.
-            if (volumeBoost > 0f) applyVolumeBoost()
+            if (state.volumeBoost > 0f) applyVolumeBoost()
             // A manual seek over a segment marks it auto-skipped, so
             // seeking back into it doesn't instantly re-skip.
-            if (lastPollPositionMs >= 0 && kotlin.math.abs(positionMs - lastPollPositionMs) > 3000) {
-                val from = minOf(lastPollPositionMs, positionMs)
-                val to = maxOf(lastPollPositionMs, positionMs)
+            if (lastPollPositionMs >= 0 && kotlin.math.abs(state.positionMs - lastPollPositionMs) > 3000) {
+                val from = minOf(lastPollPositionMs, state.positionMs)
+                val to = maxOf(lastPollPositionMs, state.positionMs)
                 val crossed = skipSegments.filter { seg -> seg.startMs < to && seg.endMs > from }
-                if (crossed.isNotEmpty()) autoSkippedSegments = autoSkippedSegments + crossed
+                if (crossed.isNotEmpty()) state.autoSkippedSegments = state.autoSkippedSegments + crossed
             }
-            lastPollPositionMs = positionMs
-            activeSegment = if (settings.showSkipButton) {
+            lastPollPositionMs = state.positionMs
+            state.activeSegment = if (settings.showSkipButton) {
                 val offset = settings.skipIntroOffsetSeconds
                 skipSegments.firstOrNull {
-                    positionMs >= it.buttonStartMs(offset) && positionMs <= it.endMs
+                    state.positionMs >= it.buttonStartMs(offset) && state.positionMs <= it.endMs
                 }
             } else null
             // Auto-skip (Nuvio PlayerScreenRuntimeEffects): when the
             // playhead enters an auto-skip segment, jump to its end.
             // Fires once per segment per title.
-            if (isPlaying && settings.showSkipButton) {
+            if (state.isPlaying && settings.showSkipButton) {
                 val autoTypes = settings.autoSkipSegmentTypes
                 if (autoTypes.isNotEmpty()) {
                     val offset = settings.skipIntroOffsetSeconds
                     val target = skipSegments.firstOrNull { seg ->
                         seg.type.autoSkipStoredValue() in autoTypes &&
-                            seg !in autoSkippedSegments &&
-                            positionMs >= seg.buttonStartMs(offset) && positionMs < seg.endMs
+                            seg !in state.autoSkippedSegments &&
+                            state.positionMs >= seg.buttonStartMs(offset) && state.positionMs < seg.endMs
                     }
                     if (target != null) {
-                        autoSkippedSegments = autoSkippedSegments + target
-                        val seekTo = if (durationMs > 0) {
-                            (target.endMs + 400).coerceAtMost(durationMs - 1)
+                        state.autoSkippedSegments = state.autoSkippedSegments + target
+                        val seekTo = if (state.durationMs > 0) {
+                            (target.endMs + 400).coerceAtMost(state.durationMs - 1)
                         } else {
                             target.endMs + 400
                         }
-                        if (seekTo > positionMs) {
+                        if (seekTo > state.positionMs) {
                             player.seekTo(seekTo)
                             val label = target.type.buttonLabel()
                                 .removePrefix("Skip ").replaceFirstChar { it.lowercase() }
@@ -3125,48 +2891,48 @@ fun PlayerScreen(
             // the threshold hides it again.
             val nextEp = if (
                 settings.autoPlayNext &&
-                !currentRequest.isMovie &&
-                !currentRequest.isTrailer &&
-                currentRequest.episodes.isNotEmpty()
+                !state.currentRequest.isMovie &&
+                !state.currentRequest.isTrailer &&
+                state.currentRequest.episodes.isNotEmpty()
             ) {
                 resolveNextEpisode(
-                    currentRequest.episodes,
-                    currentRequest.season,
-                    currentRequest.episode,
-                    currentRequest.videoId,
+                    state.currentRequest.episodes,
+                    state.currentRequest.season,
+                    state.currentRequest.episode,
+                    state.currentRequest.videoId,
                     settings.shuffleEpisodes
                 )
             } else null
-            if (nextEp != null && nextEpisodeCard == null &&
-                nextEpisodeDismissedFor != currentRequest.videoId &&
+            if (nextEp != null && state.nextEpisodeCard == null &&
+                state.nextEpisodeDismissedFor != state.currentRequest.videoId &&
                 shouldShowNextEpisodeCard(
-                    positionMs, durationMs, skipSegments,
+                    state.positionMs, state.durationMs, skipSegments,
                     settings.nextEpisodeThresholdMode,
                     settings.nextEpisodeThresholdPercent,
                     settings.nextEpisodeThresholdMinutes
                 )
             ) {
-                nextEpisodeCard = nextEp
+                state.nextEpisodeCard = nextEp
                 // Pre-resolve the next episode's sources while the 3s
                 // countdown runs (Nuvio preloadNextEpisodeSources), so
                 // Play now / auto-advance plays instantly instead of
                 // fetching after the countdown ends.
-                if (prefetchingNextId != nextEp.id && prefetchedNextStreams?.first != nextEp.id) {
-                    prefetchingNextId = nextEp.id
-                    val nextType = currentRequest.type
+                if (state.prefetchingNextId != nextEp.id && state.prefetchedNextStreams?.first != nextEp.id) {
+                    state.prefetchingNextId = nextEp.id
+                    val nextType = state.currentRequest.type
                     ioScope.launch {
                         val res = withTimeoutOrNull(20_000) {
                             repository.streamResultsFlow(nextType, nextEp.id)
                                 .firstOrNull { it.streams.any { s -> com.pulsestream.app.data.isPlayableLiveStreamUrl(s.url) } }
                         }
                         withContext(Dispatchers.Main) {
-                            prefetchingNextId = null
-                            if (res != null) prefetchedNextStreams = nextEp.id to res
+                            state.prefetchingNextId = null
+                            if (res != null) state.prefetchedNextStreams = nextEp.id to res
                         }
                     }
                 }
-            } else if (nextEpisodeCard != null && !shouldShowNextEpisodeCard(
-                    positionMs, durationMs, skipSegments,
+            } else if (state.nextEpisodeCard != null && !shouldShowNextEpisodeCard(
+                    state.positionMs, state.durationMs, skipSegments,
                     settings.nextEpisodeThresholdMode,
                     settings.nextEpisodeThresholdPercent,
                     settings.nextEpisodeThresholdMinutes
@@ -3174,22 +2940,22 @@ fun PlayerScreen(
             ) {
                 // Sought back below the threshold: hide the card; the
                 // countdown effect cancels with it.
-                nextEpisodeCard = null
-                nextEpisodeCountdown = null
-                prefetchedNextStreams = null
+                state.nextEpisodeCard = null
+                state.nextEpisodeCountdown = null
+                state.prefetchedNextStreams = null
             }
             // Auto-play next episode: when a series episode ends and the
             // setting is on, advance automatically — unless the countdown
             // card is showing (it advances itself) or was cancelled.
             if (c.playbackState == Player.STATE_ENDED &&
                 settings.autoPlayNext &&
-                !currentRequest.isMovie &&
-                !currentRequest.isTrailer &&
-                currentRequest.episodes.isNotEmpty() &&
-                nextEpisodeCard == null &&
-                endedHandledFor != currentRequest.videoId
+                !state.currentRequest.isMovie &&
+                !state.currentRequest.isTrailer &&
+                state.currentRequest.episodes.isNotEmpty() &&
+                state.nextEpisodeCard == null &&
+                state.endedHandledFor != state.currentRequest.videoId
             ) {
-                endedHandledFor = currentRequest.videoId
+                state.endedHandledFor = state.currentRequest.videoId
                 if (nextEp != null) {
                     pokeIndicator(PlayerIndicator.Message("Playing next episode…"))
                     playEpisode(nextEp)
@@ -3198,12 +2964,12 @@ fun PlayerScreen(
             // Movie recommendations (Nuvio MovieRecommendationCard):
             // once per movie, when it ends, load "More like this".
             if (c.playbackState == Player.STATE_ENDED &&
-                currentRequest.isMovie &&
-                !currentRequest.isTrailer &&
-                movieRecsLoadedFor != currentRequest.videoId
+                state.currentRequest.isMovie &&
+                !state.currentRequest.isTrailer &&
+                state.movieRecsLoadedFor != state.currentRequest.videoId
             ) {
-                movieRecsLoadedFor = currentRequest.videoId
-                val req = currentRequest
+                state.movieRecsLoadedFor = state.currentRequest.videoId
+                val req = state.currentRequest
                 ioScope.launch {
                     val sections = runCatching {
                         repository.getRelated(req.type, req.metaId.substringBefore(":"))
@@ -3213,19 +2979,19 @@ fun PlayerScreen(
                         repository.metaAddonsFor(req.type).firstOrNull()?.id
                     }.getOrNull()
                     withContext(Dispatchers.Main) {
-                        if (movieRecsLoadedFor == req.videoId) {
-                            movieRecs = recs
-                            movieRecsAddonId = addonId
+                        if (state.movieRecsLoadedFor == req.videoId) {
+                            state.movieRecs = recs
+                            state.movieRecsAddonId = addonId
                         }
                     }
                 }
             }
-            if (!currentRequest.isTrailer) {
+            if (!state.currentRequest.isTrailer) {
                 scrobbler.tick(
-                    currentRequest,
-                    positionMs,
-                    durationMs,
-                    isPlaying,
+                    state.currentRequest,
+                    state.positionMs,
+                    state.durationMs,
+                    state.isPlaying,
                     c.playbackState == Player.STATE_ENDED
                 )
             }
@@ -3234,19 +3000,19 @@ fun PlayerScreen(
     }
 
     // Auto-hide controls and indicators.
-    LaunchedEffect(showControls, controlsTick) {
-        if (showControls && !locked) {
+    LaunchedEffect(state.showControls, state.controlsTick) {
+        if (state.showControls && !state.locked) {
             delay(3500)
-            showControls = false
+            state.showControls = false
         }
     }
 
     // Nuvio legacy locked overlay auto-hides after 3.5s (reveal again by
     // tapping while locked).
-    LaunchedEffect(locked, lockedOverlayVisible) {
-        if (locked && lockedOverlayVisible) {
+    LaunchedEffect(state.locked, state.lockedOverlayVisible) {
+        if (state.locked && state.lockedOverlayVisible) {
             delay(3500)
-            lockedOverlayVisible = false
+            state.lockedOverlayVisible = false
         }
     }
     // (The indicator's hide lives with its show animation below —
@@ -3323,8 +3089,8 @@ fun PlayerScreen(
             val (playableFresh, hiddenFresh) = fresh?.streams?.let { ( it to 0 ) } ?: (emptyList<com.pulsestream.app.data.StreamItem>() to 0)
             val stream = playableFresh.firstOrNull { com.pulsestream.app.data.isPlayableLiveStreamUrl(it.url) }
             if (fresh != null && stream != null && !disposed.get()) {
-                availableStreams = playableFresh
-                hiddenIncompatibleCount = hiddenFresh
+                state.availableStreams = playableFresh
+                state.hiddenIncompatibleCount = hiddenFresh
                 req = req.copy(
                     streamUrl = stream.url,
                     headers = stream.headers,
@@ -3348,13 +3114,13 @@ fun PlayerScreen(
             // Rebuild the player around the refreshed request so the first
             // prepare already uses the fresh URL (#15; guarded by #9 above).
             val oldPlayer = player
-            playerView?.player = null
+            state.playerView?.player = null
             oldPlayer.release()
             val rebuilt = buildExo(req).also { it.addListener(guardedPlayerListener()) }
-            rebuilt.setPlaybackSpeed(speed)
+            rebuilt.setPlaybackSpeed(state.speed)
             player = rebuilt
-            mimeHealAttempted = false
-            currentRequest = req
+            state.mimeHealAttempted = false
+            state.currentRequest = req
             rebuiltForFreshResumeUrl = true
         }
         val p = player
@@ -3369,13 +3135,13 @@ fun PlayerScreen(
         if (rebuiltForFreshResumeUrl || !prepareEarly) p.prepare()
         if (offerResume) {
             p.playWhenReady = false
-            resumeOfferMs = saved
-            showControls = true
+            state.resumeOfferMs = saved
+            state.showControls = true
         } else if (settings.autoplay) {
             p.playWhenReady = true
         } else {
             p.playWhenReady = false
-            showControls = true
+            state.showControls = true
         }
         // The settled link is the last played link for this title.
         saveLinkForReuse(req)
@@ -3420,8 +3186,8 @@ fun PlayerScreen(
 
     // An early Play action may hand off only the first addon's results. Always finish
     // the same title's complete addon flow; a source switch alone does not restart it.
-    LaunchedEffect(currentRequest.type, currentRequest.videoId, currentRequest.liveChannel) {
-        val req = currentRequest
+    LaunchedEffect(state.currentRequest.type, state.currentRequest.videoId, state.currentRequest.liveChannel) {
+        val req = state.currentRequest
         val local = req.streamUrl.startsWith("file:", true) || req.streamUrl.startsWith("content:", true)
         val playlistChannel = req.isLive && req.liveChannel == null &&
             com.pulsestream.app.data.isPlayableLiveStreamUrl(req.videoId)
@@ -3430,7 +3196,7 @@ fun PlayerScreen(
 
     // Skip segments follow the title, not the source — fetch once per episode.
     LaunchedEffect(initialRequest.imdbId, initialRequest.season, initialRequest.episode) {
-        apiSkipSegments = if (!initialRequest.imdbId.isNullOrBlank()) {
+        state.apiSkipSegments = if (!initialRequest.imdbId.isNullOrBlank()) {
             runCatching {
                 IntroDbApi().fetchSegments(
                     initialRequest.imdbId!!,
@@ -3445,17 +3211,17 @@ fun PlayerScreen(
     // Chapters follow the source, not the title — read once per stream URL
     // from the file itself (ExoPlayer's Matroska extractor skips them).
     // Local files and HLS/DASH playlists are skipped by the loader/gate.
-    LaunchedEffect(currentRequest.streamUrl) {
-        chapters = emptyList()
-        chapterSkipSegments = emptyList()
-        val req = currentRequest
+    LaunchedEffect(state.currentRequest.streamUrl) {
+        state.chapters = emptyList()
+        state.chapterSkipSegments = emptyList()
+        val req = state.currentRequest
         if (!shouldReadChapters(req.mimeType, req.streamUrl)) return@LaunchedEffect
-        chapters = MatroskaChapterLoader.load(req.streamUrl, req.headers)
+        state.chapters = MatroskaChapterLoader.load(req.streamUrl, req.headers)
     }
 
     // Chapter-derived skip intervals: computed once the duration is known.
-    LaunchedEffect(chapters, durationMs) {
-        chapterSkipSegments = ChapterSkipIntervals.fromChapters(chapters, durationMs)
+    LaunchedEffect(state.chapters, state.durationMs) {
+        state.chapterSkipSegments = ChapterSkipIntervals.fromChapters(state.chapters, state.durationMs)
     }
 
     // Save on background so progress is never lost.
@@ -3471,7 +3237,7 @@ fun PlayerScreen(
                 // playing — the foreground service holds the notification
                 // + session. Otherwise #10: pause on background —
                 // release stays in onDispose.
-                if (settings.backgroundAudioEnabled && !currentRequest.isLive) return@LifecycleEventObserver
+                if (settings.backgroundAudioEnabled && !state.currentRequest.isLive) return@LifecycleEventObserver
                 latestPlayer.value.pause()
             }
         }
@@ -3553,14 +3319,14 @@ fun PlayerScreen(
     // showing the controls (or a swipe) brings the bar back, and nothing
     // re-hid it until now. Reads the setting live, so flipping it in
     // Playback applies on the next controls tap.
-    LaunchedEffect(showControls) {
+    LaunchedEffect(state.showControls) {
         if (settings.hideStatusBarInPlayer) {
             activity?.window?.let { WindowInsetsControllerCompat(it, it.decorView) }
                 ?.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 
-    val req = currentRequest
+    val req = state.currentRequest
     val headerTitle = req.seriesName ?: req.title
     // Nuvio legacy episode format: "S1 E2 · Title".
     val episodeLine = if (!req.isMovie) {
@@ -3571,15 +3337,15 @@ fun PlayerScreen(
     val streamLabelText = req.streamLabel
     val sourceNameText = req.sourceName
     // Nuvio legacy "Ends at HH:MM" label, speed-adjusted.
-    val endsAtText = remember(positionMs, durationMs, speed) {
-        endsAtLabel(positionMs, durationMs, speed)
+    val endsAtText = remember(state.positionMs, state.durationMs, state.speed) {
+        endsAtLabel(state.positionMs, state.durationMs, state.speed)
     }
 
     // Step 64: background audio — hand the player to the now-playing
     // controller while the setting is on (VOD only). Metadata follows
     // the current request; turning the setting off unregisters.
-    LaunchedEffect(player, currentRequest.videoId, currentRequest.title, settings.backgroundAudioEnabled) {
-        if (!settings.backgroundAudioEnabled || currentRequest.isLive) {
+    LaunchedEffect(player, state.currentRequest.videoId, state.currentRequest.title, settings.backgroundAudioEnabled) {
+        if (!settings.backgroundAudioEnabled || state.currentRequest.isLive) {
             com.pulsestream.app.data.BackgroundAudioController.unregister()
             return@LaunchedEffect
         }
@@ -3588,8 +3354,8 @@ fun PlayerScreen(
             player = player,
             metadata = com.pulsestream.app.data.BackgroundAudioMetadata(
                 title = headerTitle,
-                subtitle = episodeLine ?: currentRequest.sourceName,
-                artworkUrl = currentRequest.poster
+                subtitle = episodeLine ?: state.currentRequest.sourceName,
+                artworkUrl = state.currentRequest.poster
             )
         )
     }
@@ -3602,42 +3368,35 @@ fun PlayerScreen(
     val containerFocus = remember { FocusRequester() }
     // TV: land D-pad focus on the error overlay's Retry button when it shows.
     val errorRetryFocus = remember { FocusRequester() }
-    // Tracks whether any transport button currently holds focus. The D-pad
-    // key handler uses this: if controls are visible but nothing grabbed
-    // focus (e.g. requestFocus failed), Center/Up/Down re-request focus on
-    // the play/pause button instead of being swallowed with no effect.
-    var transportFocused by remember { mutableStateOf(false) }
-    /** True while the TV seekbar holds D-pad focus (arrows then seek). */
-    var seekbarFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(playerError, isTv) {
+    LaunchedEffect(state.playerError, isTv) {
         // A dead HTTP status on the playing link means the cached URL is
         // gone (signed link expired): drop it so the next replay re-resolves
         // instead of retrying the same dead link.
-        if (playerError != null && settings.reuseLastLinkEnabled &&
-            (lastPlayerErrorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                lastPlayerErrorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
+        if (state.playerError != null && settings.reuseLastLinkEnabled &&
+            (state.lastPlayerErrorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                state.lastPlayerErrorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
         ) {
             linkCache.remove(
                 streamLinkContentKey(
-                    type = currentRequest.type,
-                    videoId = currentRequest.videoId,
-                    parentMetaId = currentRequest.metaId.takeIf { it.isNotBlank() },
-                    season = currentRequest.season.takeIf { it > 0 },
-                    episode = currentRequest.episode.takeIf { it > 0 },
+                    type = state.currentRequest.type,
+                    videoId = state.currentRequest.videoId,
+                    parentMetaId = state.currentRequest.metaId.takeIf { it.isNotBlank() },
+                    season = state.currentRequest.season.takeIf { it > 0 },
+                    episode = state.currentRequest.episode.takeIf { it > 0 },
                 )
             )
         }
-        if (isTv && playerError != null) {
+        if (isTv && state.playerError != null) {
             delay(300)
             runCatching { errorRetryFocus.requestFocus() }
         }
     }
-    LaunchedEffect(showControls, isTv, locked) {
+    LaunchedEffect(state.showControls, isTv, state.locked) {
         if (!isTv) return@LaunchedEffect
-        if (showControls && !locked) {
+        if (state.showControls && !state.locked) {
             delay(350) // let the controls fade in first
             runCatching { playPauseFocus.requestFocus() }
-        } else if (!showControls && playerError == null) {
+        } else if (!state.showControls && state.playerError == null) {
             // Controls hidden: park focus on the container so D-pad events
             // always have a target (container's onPreviewKeyEvent toggles
             // controls back on). Without this the remote goes dead.
@@ -3647,7 +3406,7 @@ fun PlayerScreen(
     // TV: initial focus on the container so the remote works immediately,
     // before the user ever opens the controls.
     LaunchedEffect(isTv) {
-        if (isTv && playerError == null) {
+        if (isTv && state.playerError == null) {
             delay(300)
             runCatching { containerFocus.requestFocus() }
         }
@@ -3655,24 +3414,22 @@ fun PlayerScreen(
     // Focus bookkeeping: overlay flag resets when controls are hidden, and the
     // currently focused transport button registers its action so OK always
     // fires it (even if the button's own click handling misses the key).
-    LaunchedEffect(showControls) { if (!showControls) transportFocused = false }
-    var focusedKey by remember { mutableStateOf<String?>(null) }
-    var focusedAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    LaunchedEffect(state.showControls) { if (!state.showControls) state.transportFocused = false }
     fun act(key: String, action: () -> Unit): Modifier =
         Modifier.onFocusChanged {
-            if (it.isFocused || it.hasFocus) { focusedKey = key; focusedAction = action }
-            else if (focusedKey == key) { focusedKey = null; focusedAction = null }
+            if (it.isFocused || it.hasFocus) { state.focusedKey = key; state.focusedAction = action }
+            else if (state.focusedKey == key) { state.focusedKey = null; state.focusedAction = null }
         }
     val tvKeys = if (isTv) {
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = isDialogOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen, resumeOfferMs, playerError)
+        val dialogOpen = isDialogOpen(state.tracksOpen, state.subSearchOpen, state.sourcesOpen, state.episodesOpen, state.qualityOpen, state.infoOpen, state.chaptersOpen, state.speedMenuOpen, state.resumeOfferMs, state.playerError)
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             // Any remote activity keeps the controls on screen (they used to
             // auto-hide after 3.5s MID-navigation, so focus "vanished").
-            if (showControls) controlsTick++
+            if (state.showControls) state.controlsTick++
             // Remote channel rocker zaps while watching live TV.
             when (event.nativeKeyEvent.keyCode) {
                 android.view.KeyEvent.KEYCODE_CHANNEL_UP -> {
@@ -3694,30 +3451,30 @@ fun PlayerScreen(
                 // buttons (this is what makes every control reachable).
                 // With controls hidden, arrows seek directly.
                 Key.DirectionLeft -> when {
-                    dialogOpen || seekbarFocused || showControls -> false
+                    dialogOpen || state.seekbarFocused || state.showControls -> false
                     else -> { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L); true }
                 }
                 Key.DirectionRight -> when {
-                    dialogOpen || seekbarFocused || showControls -> false
+                    dialogOpen || state.seekbarFocused || state.showControls -> false
                     else -> { seekByWithFeedback(settings.skipForwardSeconds * 1000L); true }
                 }
                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
                     if (dialogOpen) false
-                    else if (showControls && focusedAction != null) {
-                        if (event.nativeKeyEvent.repeatCount == 0) focusedAction?.invoke()
+                    else if (state.showControls && state.focusedAction != null) {
+                        if (event.nativeKeyEvent.repeatCount == 0) state.focusedAction?.invoke()
                         true
                     }
-                    else if (showControls && !transportFocused) {
+                    else if (state.showControls && !state.transportFocused) {
                         runCatching { playPauseFocus.requestFocus() }; true
-                    } else if (showControls) false else { toggleControls(); true }
+                    } else if (state.showControls) false else { toggleControls(); true }
                 // D-pad Up/Down: dialogs handle their own; visible controls
                 // get 2D focus navigation between rows; hidden controls are
                 // summoned (Down brings them up per the TV spec).
                 Key.DirectionUp, Key.DirectionDown ->
                     if (dialogOpen) false
-                    else if (showControls && !transportFocused) {
+                    else if (state.showControls && !state.transportFocused) {
                         runCatching { playPauseFocus.requestFocus() }; true
-                    } else if (showControls) false else { toggleControls(); true }
+                    } else if (state.showControls) false else { toggleControls(); true }
                 else -> false
                 }
             }
@@ -3732,21 +3489,16 @@ fun PlayerScreen(
             .focusRequester(containerFocus)
             .focusable()
     } else Modifier
-    // TV watchdog: if D-pad focus is lost for any reason (a focused button was
-    // removed, a sheet closed, an overlay faded out) park it back on the player
-    // container, so the remote can never stay dead. Skipped while a sheet or
-    // dialog (separate window) legitimately owns focus.
-    var rootHasFocus by remember { mutableStateOf(true) }
-    val sheetUp = isSheetUp(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen, resumeOfferMs, downloadStream)
-    LaunchedEffect(rootHasFocus, isTv, sheetUp, showControls, playerError) {
-        if (isTv && !rootHasFocus && !sheetUp && playerError == null) {
+    val sheetUp = isSheetUp(state.tracksOpen, state.subSearchOpen, state.sourcesOpen, state.episodesOpen, state.qualityOpen, state.infoOpen, state.chaptersOpen, state.speedMenuOpen, state.resumeOfferMs, state.downloadStream)
+    LaunchedEffect(state.rootHasFocus, isTv, sheetUp, state.showControls, state.playerError) {
+        if (isTv && !state.rootHasFocus && !sheetUp && state.playerError == null) {
             delay(400)
-            runCatching { if (showControls && !locked) playPauseFocus.requestFocus() else containerFocus.requestFocus() }
+            runCatching { if (state.showControls && !state.locked) playPauseFocus.requestFocus() else containerFocus.requestFocus() }
                 .onFailure { runCatching { containerFocus.requestFocus() } }
         }
     }
     Box(tvKeys.fillMaxSize().background(Color.Black)
-        .then(if (isTv) Modifier.onFocusChanged { rootHasFocus = it.hasFocus } else Modifier)
+        .then(if (isTv) Modifier.onFocusChanged { state.rootHasFocus = it.hasFocus } else Modifier)
         .then(tvContainerModifier)) {
         // Video surface with the full gesture set (gestures off while floating —
         // taps on the PiP window belong to the system's PiP controls).
@@ -3766,13 +3518,13 @@ fun PlayerScreen(
                         pv.isFocusableInTouchMode = false
                         pv.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         pv.keepScreenOn = settings.keepScreenOn
-                        pv.resizeMode = aspectMode
+                        pv.resizeMode = state.aspectMode
                         pv.layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
                         applySubtitleStyle(pv)
-                        playerView = pv
+                        state.playerView = pv
                     }
                 },
                 update = { pv ->
@@ -3785,8 +3537,8 @@ fun PlayerScreen(
                 // Pinch zoom (Nuvio setVideoZoom): scales the whole
                 // PlayerView surface 0.8–2.0x.
                 modifier = Modifier.fillMaxSize().graphicsLayer {
-                    scaleX = videoZoom
-                    scaleY = videoZoom
+                    scaleX = state.videoZoom
+                    scaleY = state.videoZoom
                 }
             )
         }
@@ -3798,11 +3550,11 @@ fun PlayerScreen(
 
         // Step 68: parental guide overlay (top-left, below the header).
         // Shows itself for ~5s once playback starts, then fades out.
-        if (parentalGuideVisible && parentalWarnings.isNotEmpty()) {
+        if (state.parentalGuideVisible && state.parentalWarnings.isNotEmpty()) {
             ParentalGuideOverlay(
-                warnings = parentalWarnings,
-                isVisible = parentalGuideVisible,
-                onAnimationComplete = { parentalGuideVisible = false }
+                warnings = state.parentalWarnings,
+                isVisible = state.parentalGuideVisible,
+                onAnimationComplete = { state.parentalGuideVisible = false }
             )
         }
 
@@ -3814,10 +3566,10 @@ fun PlayerScreen(
         // Buffering…" instead of a bare spinner). Once playback has begun,
         // a rebuffer shows just the orbit + "Buffering…" over the video.
         // Suppressed on a fatal error — the error overlay takes its place (#4).
-        if ((isBuffering || switchingMedia) && playerError == null) {
+        if ((state.isBuffering || state.switchingMedia) && state.playerError == null) {
             if (!hasStartedPlayback) {
                 Box(Modifier.fillMaxSize()) {
-                    val art = currentRequest.poster
+                    val art = state.currentRequest.poster
                     if (!art.isNullOrBlank()) {
                         SafePosterImage(
                             model = art,
@@ -3834,7 +3586,7 @@ fun PlayerScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            currentRequest.title,
+                            state.currentRequest.title,
                             color = TextPrimary,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
@@ -3846,7 +3598,7 @@ fun PlayerScreen(
                         OrbitDots(Modifier.size(54.dp))
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            loadingStep,
+                            state.loadingStep,
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center
@@ -3872,7 +3624,7 @@ fun PlayerScreen(
         // Fatal stream error (#4): Retry re-prepares this stream, Next source
         // advances to the next available stream, and the floating Sources
         // switcher stays openable underneath via "Browse all sources".
-        playerError?.let { err ->
+        state.playerError?.let { err ->
             Box(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.78f)),
                 contentAlignment = Alignment.Center
@@ -3915,8 +3667,8 @@ fun PlayerScreen(
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = {
                         // Fresh fetch when opening Sources — ensures full list
-                        refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                        sourcesOpen = true
+                        refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId)
+                        state.sourcesOpen = true
                     }) {
                         Text(
                             "Browse all sources",
@@ -3944,8 +3696,8 @@ fun PlayerScreen(
         // brings the pill straight back with no pop.
         val indScale = remember { Animatable(1f) }
         val indAlpha = remember { Animatable(0f) }
-        LaunchedEffect(indicatorTick) {
-            if (indicator == null) return@LaunchedEffect
+        LaunchedEffect(state.indicatorTick) {
+            if (state.indicator == null) return@LaunchedEffect
             if (indAlpha.value <= 0f) {
                 indScale.snapTo(0.82f)
                 launch { indScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f)) }
@@ -3956,9 +3708,9 @@ fun PlayerScreen(
             }
             delay(1000)
             indAlpha.animateTo(0f, tween(200))
-            indicator = null
+            state.indicator = null
         }
-        indicator?.let { ind ->
+        state.indicator?.let { ind ->
             // Nuvio legacy GestureFeedbackPill: top-center, 24dp radius
             // liquid glass, 28dp icon circle + message. No level bar (the
             // side bars are the new layout's feedback, not legacy's).
@@ -4068,7 +3820,7 @@ fun PlayerScreen(
         // Hold-for-speed pill: pinned top-center only while the hold boost
         // is active, showing the current step (2x..5x); never consumes touches.
         // Nuvio legacy feedback sits top-center at 40dp in a glass pill.
-        if (holdSpeedActive) {
+        if (state.holdSpeedActive) {
             Box(
                 Modifier.fillMaxSize().padding(top = 40.dp),
                 contentAlignment = Alignment.TopCenter
@@ -4088,7 +3840,7 @@ fun PlayerScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            speedLabel(holdSpeedStep),
+                            speedLabel(state.holdSpeedStep),
                             color = TextPrimary,
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
@@ -4101,15 +3853,15 @@ fun PlayerScreen(
         // An end card (next-episode countdown / movie recommendations)
         // owns the bottom-end slot while it shows — the skip button
         // hides under it (Play now does the same job).
-        val endCardVisible = nextEpisodeCard != null ||
-            (movieRecs.isNotEmpty() && !movieRecsDismissed && !movieRecsAutoHidden)
+        val endCardVisible = state.nextEpisodeCard != null ||
+            (state.movieRecs.isNotEmpty() && !state.movieRecsDismissed && !state.movieRecsAutoHidden)
         // Skip intro / recap / outro button (Nuvio SkipIntroButton):
         // glass 16dp, SkipNext 20dp + label, 3dp progress bar for the
         // 10s auto-hide, dismissible with the X. Hidden while an end
         // card owns the slot (Play now does the same job).
         if (!endCardVisible) {
-            activeSegment?.let { seg ->
-                if (!skipDismissed && (!skipAutoHidden || showControls)) {
+            state.activeSegment?.let { seg ->
+                if (!state.skipDismissed && (!state.skipAutoHidden || state.showControls)) {
                     Box(
                         Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
                         contentAlignment = Alignment.BottomEnd
@@ -4120,9 +3872,9 @@ fun PlayerScreen(
                                 .clip(RoundedCornerShape(16.dp))
                                 .liquidGlass(RoundedCornerShape(16.dp), frost = 0.12f, darken = 0.03f)
                                 .clickable {
-                                    autoSkippedSegments = autoSkippedSegments + seg
+                                    state.autoSkippedSegments = state.autoSkippedSegments + seg
                                     player.seekTo(seg.endMs + 400)
-                                    activeSegment = null
+                                    state.activeSegment = null
                                 }
                         ) {
                             Row(
@@ -4142,13 +3894,13 @@ fun PlayerScreen(
                                     modifier = Modifier.padding(start = 8.dp)
                                 )
                                 IconButton(
-                                    onClick = { skipDismissed = true },
+                                    onClick = { state.skipDismissed = true },
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(Icons.Filled.Close, "Dismiss", tint = TextSecondary, modifier = Modifier.size(16.dp))
                                 }
                             }
-                            if (!showControls) {
+                            if (!state.showControls) {
                                 Box(
                                     Modifier.fillMaxWidth().height(3.dp)
                                         .background(Color.White.copy(alpha = 0.15f))
@@ -4168,7 +3920,7 @@ fun PlayerScreen(
         // Next-episode countdown card (Nuvio NextEpisodeCard): bottom-end,
         // above the controls. Counts 10…1, then plays the next episode;
         // Cancel stops the auto-advance for this episode.
-        nextEpisodeCard?.let { next ->
+        state.nextEpisodeCard?.let { next ->
             Box(
                 Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
                 contentAlignment = Alignment.BottomEnd
@@ -4191,11 +3943,11 @@ fun PlayerScreen(
                         Spacer(Modifier.weight(1f))
                         IconButton(
                             onClick = {
-                                nextEpisodeDismissedFor = currentRequest.videoId
-                                endedHandledFor = currentRequest.videoId
-                                nextEpisodeCard = null
-                                nextEpisodeCountdown = null
-                                prefetchedNextStreams = null
+                                state.nextEpisodeDismissedFor = state.currentRequest.videoId
+                                state.endedHandledFor = state.currentRequest.videoId
+                                state.nextEpisodeCard = null
+                                state.nextEpisodeCountdown = null
+                                state.prefetchedNextStreams = null
                             },
                             modifier = Modifier.size(28.dp)
                         ) {
@@ -4214,9 +3966,9 @@ fun PlayerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Button(
                             onClick = {
-                                endedHandledFor = currentRequest.videoId
-                                nextEpisodeCard = null
-                                nextEpisodeCountdown = null
+                                state.endedHandledFor = state.currentRequest.videoId
+                                state.nextEpisodeCard = null
+                                state.nextEpisodeCountdown = null
                                 playEpisode(next)
                             }
                         ) {
@@ -4224,7 +3976,7 @@ fun PlayerScreen(
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "Playing in ${nextEpisodeCountdown ?: NEXT_EPISODE_COUNTDOWN_SECONDS}s",
+                            "Playing in ${state.nextEpisodeCountdown ?: NEXT_EPISODE_COUNTDOWN_SECONDS}s",
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -4237,7 +3989,7 @@ fun PlayerScreen(
         // "More like this" posters after a movie ends. Auto-hides 10s
         // after appearing while the controls are hidden; showing the
         // controls brings it back.
-        if (movieRecs.isNotEmpty() && !movieRecsDismissed && !movieRecsAutoHidden) {
+        if (state.movieRecs.isNotEmpty() && !state.movieRecsDismissed && !state.movieRecsAutoHidden) {
             Box(
                 Modifier.fillMaxSize().padding(bottom = 170.dp),
                 contentAlignment = Alignment.BottomCenter
@@ -4260,7 +4012,7 @@ fun PlayerScreen(
                         )
                         Spacer(Modifier.weight(1f))
                         IconButton(
-                            onClick = { movieRecsDismissed = true },
+                            onClick = { state.movieRecsDismissed = true },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(Icons.Filled.Close, "Dismiss", tint = TextSecondary, modifier = Modifier.size(18.dp))
@@ -4268,11 +4020,11 @@ fun PlayerScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(movieRecs, key = { it.id }) { meta ->
+                        items(state.movieRecs, key = { it.id }) { meta ->
                             PosterCard(
                                 meta = meta,
                                 onClick = {
-                                    val addonId = movieRecsAddonId ?: return@PosterCard
+                                    val addonId = state.movieRecsAddonId ?: return@PosterCard
                                     onOpenDetail(addonId, meta.type, meta.id)
                                 },
                                 surface = CustomPosterScreen.DETAILS
@@ -4286,7 +4038,7 @@ fun PlayerScreen(
         // Locked overlay — Nuvio legacy: full-screen, bottom scrim 220dp,
         // center glass lock circle (72dp, icon 34dp) + "Tap to unlock",
         // disabled slider + time pills below. Tap the circle to unlock.
-        if (locked && lockedOverlayVisible) {
+        if (state.locked && state.lockedOverlayVisible) {
             Box(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
@@ -4305,9 +4057,9 @@ fun PlayerScreen(
                         .padding(horizontal = 24.dp)
                         .clip(RoundedCornerShape(24.dp))
                         .clickable {
-                            locked = false
-                            showControls = true
-                            controlsTick++
+                            state.locked = false
+                            state.showControls = true
+                            state.controlsTick++
                             pokeIndicator(PlayerIndicator.Message("Controls unlocked"))
                         }
                         .padding(16.dp),
@@ -4342,10 +4094,10 @@ fun PlayerScreen(
                         .padding(bottom = 16.dp)
                 ) {
                     LegacySeekBar(
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        bufferedMs = bufferedMs,
-                        chapterFractions = chapters.chapterMarkFractions(durationMs),
+                        state.positionMs = state.positionMs,
+                        state.durationMs = state.durationMs,
+                        state.bufferedMs = state.bufferedMs,
+                        chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                         onSeek = {},
                         enabled = false,
                         isTv = isTv
@@ -4355,8 +4107,8 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TimeChip(formatMs(positionMs))
-                        TimeChip(formatMs(durationMs))
+                        TimeChip(formatMs(state.positionMs))
+                        TimeChip(formatMs(state.durationMs))
                     }
                 }
             }
@@ -4366,7 +4118,7 @@ fun PlayerScreen(
         // paused, the title/episode/provider show big over a gradient,
         // under the transport controls so they stay usable. Hidden until
         // playback has actually started, on error, and in PiP.
-        if (!isPlaying && hasStartedPlayback && playerError == null && !inPip) {
+        if (!state.isPlaying && hasStartedPlayback && state.playerError == null && !inPip) {
             PauseMetadataOverlay(
                 title = headerTitle,
                 episodeLine = episodeLine,
@@ -4376,12 +4128,12 @@ fun PlayerScreen(
 
         // Controls overlay.
         AnimatedVisibility(
-            visible = showControls && !locked,
+            visible = state.showControls && !state.locked,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
             Box(Modifier.fillMaxSize().tapGestures()
-                .then(if (isTv) Modifier.onFocusChanged { transportFocused = it.hasFocus } else Modifier)) {
+                .then(if (isTv) Modifier.onFocusChanged { state.transportFocused = it.hasFocus } else Modifier)) {
                 // Scrims (Nuvio legacy: top 160dp, bottom 220dp, black 0.35
                 // with glass controls) — behind the controls, fading with them.
                 Box(
@@ -4488,7 +4240,7 @@ fun PlayerScreen(
                                     PlayerHeaderButton(
                                         icon = Icons.Filled.Info,
                                         label = "Playback info",
-                                        onClick = { infoOpen = true }
+                                        onClick = { state.infoOpen = true }
                                     )
                                 }
                                 com.pulsestream.app.data.PlayerTopButton.EXTERNAL_PLAYER -> {
@@ -4501,8 +4253,8 @@ fun PlayerScreen(
                                             // 2026-10-26) instead of the old hard block;
                                             // normal links open at once.
                                             if (ExternalPlayer.needsWarning(ctx, req)) {
-                                                externalWarningHide = false
-                                                externalWarningReq = req
+                                                state.externalWarningHide = false
+                                                state.externalWarningReq = req
                                             } else {
                                                 launchExternalPlayer(ctx, req)
                                             }
@@ -4511,12 +4263,12 @@ fun PlayerScreen(
                                 }
                                 com.pulsestream.app.data.PlayerTopButton.ROTATE -> {
                                     PlayerHeaderButton(
-                                        icon = if (isPortrait) Icons.Filled.StayCurrentLandscape
+                                        icon = if (state.isPortrait) Icons.Filled.StayCurrentLandscape
                                         else Icons.Filled.StayCurrentPortrait,
                                         label = "Rotate",
                                         onClick = {
-                                            isPortrait = !isPortrait
-                                            activity?.requestedOrientation = if (isPortrait)
+                                            state.isPortrait = !state.isPortrait
+                                            activity?.requestedOrientation = if (state.isPortrait)
                                                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                                             else
                                                 ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -4528,9 +4280,9 @@ fun PlayerScreen(
                                         icon = Icons.Filled.LockOpen,
                                         label = "Lock controls",
                                         onClick = {
-                                            locked = true
-                                            showControls = false
-                                            lockedOverlayVisible = true
+                                            state.locked = true
+                                            state.showControls = false
+                                            state.lockedOverlayVisible = true
                                             pokeIndicator(PlayerIndicator.Message("Controls locked"))
                                         }
                                     )
@@ -4580,10 +4332,10 @@ fun PlayerScreen(
                     if (canZap()) {
                         CenterControlButton(
                             Icons.Filled.SkipPrevious, "Previous channel",
-                            onClick = { zapDelta(-1) }, enabled = !zapping
+                            onClick = { zapDelta(-1) }, enabled = !state.zapping
                         )
                     }
-                    if (!currentRequest.isLive) {
+                    if (!state.currentRequest.isLive) {
                         CenterControlButton(
                             label = "Back ${settings.skipBackwardSeconds} seconds",
                             onClick = { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L) },
@@ -4605,17 +4357,17 @@ fun PlayerScreen(
                     ) {
                         // Nuvio legacy: a loading spinner replaces the icon
                         // while buffering.
-                        if (isBuffering) {
+                        if (state.isBuffering) {
                             OrbitDots(Modifier.size(34.dp))
                         } else {
                             Icon(
-                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                if (isPlaying) "Pause" else "Play",
+                                if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                if (state.isPlaying) "Pause" else "Play",
                                 tint = Color.White, modifier = Modifier.size(34.dp)
                             )
                         }
                     }
-                    if (!currentRequest.isLive) {
+                    if (!state.currentRequest.isLive) {
                         CenterControlButton(
                             label = "Forward ${settings.skipForwardSeconds} seconds",
                             onClick = { seekByWithFeedback(settings.skipForwardSeconds * 1000L) },
@@ -4627,7 +4379,7 @@ fun PlayerScreen(
                     if (canZap()) {
                         CenterControlButton(
                             Icons.Filled.SkipNext, "Next channel",
-                            onClick = { zapDelta(1) }, enabled = !zapping
+                            onClick = { zapDelta(1) }, enabled = !state.zapping
                         )
                     }
                 }
@@ -4640,14 +4392,14 @@ fun PlayerScreen(
                 // episode exists (independent of autoplay-next — same as
                 // Nuvio's nextEpisodeButtonEnabled gate with it on).
                 val pillNextEpisode = if (
-                    !req.isMovie && !currentRequest.isTrailer &&
-                    currentRequest.episodes.isNotEmpty()
+                    !req.isMovie && !state.currentRequest.isTrailer &&
+                    state.currentRequest.episodes.isNotEmpty()
                 ) {
                     resolveNextEpisode(
-                        currentRequest.episodes,
-                        currentRequest.season,
-                        currentRequest.episode,
-                        currentRequest.videoId,
+                        state.currentRequest.episodes,
+                        state.currentRequest.season,
+                        state.currentRequest.episode,
+                        state.currentRequest.videoId,
                         settings.shuffleEpisodes
                     )
                 } else null
@@ -4679,8 +4431,8 @@ fun PlayerScreen(
                                             label = streamLabelText ?: "Quality",
                                             onClick = {
                                                 // Fresh fetch when opening Quality — ensures full list, not stale partial
-                                                refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                                                qualityOpen = true
+                                                refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId)
+                                                state.qualityOpen = true
                                             }
                                         )
                                     }
@@ -4689,9 +4441,9 @@ fun PlayerScreen(
                                             icon = Icons.Filled.ClosedCaption,
                                             label = "Subs",
                                             onClick = {
-                                                trackTick++
-                                                tracksMode = "subs"
-                                                tracksOpen = true
+                                                state.trackTick++
+                                                state.tracksMode = "subs"
+                                                state.tracksOpen = true
                                             }
                                         )
                                     }
@@ -4699,15 +4451,15 @@ fun PlayerScreen(
                                         PillBarButton(
                                             icon = Icons.Filled.Audiotrack,
                                             label = "Audio",
-                                            onClick = { trackTick++; tracksMode = "audio"; tracksOpen = true }
+                                            onClick = { state.trackTick++; state.tracksMode = "audio"; state.tracksOpen = true }
                                         )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.CHAPTERS -> {
-                                        if (chapters.isNotEmpty()) {
+                                        if (state.chapters.isNotEmpty()) {
                                             PillBarButton(
                                                 icon = Icons.Filled.List,
                                                 label = "Chapters",
-                                                onClick = { chaptersOpen = true }
+                                                onClick = { state.chaptersOpen = true }
                                             )
                                         }
                                     }
@@ -4721,8 +4473,8 @@ fun PlayerScreen(
                                                     // Cancel the auto-advance countdown so it
                                                     // doesn't re-play the same episode after
                                                     // the manual tap.
-                                                    nextEpisodeCard = null
-                                                    nextEpisodeCountdown = null
+                                                    state.nextEpisodeCard = null
+                                                    state.nextEpisodeCountdown = null
                                                     playEpisode(next)
                                                 }
                                             )
@@ -4737,14 +4489,14 @@ fun PlayerScreen(
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.SPEED -> {
                                         SpeedMenuButton(
-                                            speed = speed,
-                                            menuOpen = speedMenuOpen,
-                                            onOpenMenu = { speedMenuOpen = true },
-                                            onDismissMenu = { speedMenuOpen = false },
+                                            state.speed = state.speed,
+                                            menuOpen = state.speedMenuOpen,
+                                            onOpenMenu = { state.speedMenuOpen = true },
+                                            onDismissMenu = { state.speedMenuOpen = false },
                                             onSpeedSelected = { s ->
-                                                speed = s
+                                                state.speed = s
                                                 player.setPlaybackSpeed(s)
-                                                speedMenuOpen = false
+                                                state.speedMenuOpen = false
                                                 pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
                                             }
                                         )
@@ -4755,8 +4507,8 @@ fun PlayerScreen(
                                             label = "Sources",
                                             onClick = {
                                                 // Fresh fetch when opening Sources — ensures full list, not stale partial
-                                                refreshStreamsBackground(currentRequest.type, currentRequest.videoId)
-                                                sourcesOpen = true
+                                                refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId)
+                                                state.sourcesOpen = true
                                             }
                                         )
                                     }
@@ -4765,16 +4517,16 @@ fun PlayerScreen(
                                             PillBarButton(
                                                 icon = Icons.Filled.VideoLibrary,
                                                 label = "Episodes",
-                                                onClick = { episodesOpen = true }
+                                                onClick = { state.episodesOpen = true }
                                             )
                                         }
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.LIVE_CHANNELS -> {
-                                        if (currentRequest.isLive && canZap()) {
+                                        if (state.currentRequest.isLive && canZap()) {
                                             PillBarButton(
                                                 icon = Icons.Filled.Tv,
                                                 label = "Channels",
-                                                onClick = { channelsOpen = true }
+                                                onClick = { state.channelsOpen = true }
                                             )
                                         }
                                     }
@@ -4793,7 +4545,7 @@ fun PlayerScreen(
                         .padding(horizontal = 20.dp)
                         .padding(bottom = 16.dp)
                 ) {
-                    if (currentRequest.isLive) {
+                    if (state.currentRequest.isLive) {
                         Row(
                             Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -4812,7 +4564,7 @@ fun PlayerScreen(
                                 )
                             }
                             Text(
-                                currentRequest.title,
+                                state.currentRequest.title,
                                 color = Color.White,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
@@ -4821,7 +4573,7 @@ fun PlayerScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                when { switchingMedia -> "Switching…"; isBuffering -> "Buffering…"; else -> "On air" },
+                                when { state.switchingMedia -> "Switching…"; state.isBuffering -> "Buffering…"; else -> "On air" },
                                 color = Color.White.copy(alpha = 0.7f),
                                 style = MaterialTheme.typography.labelSmall
                             )
@@ -4838,8 +4590,8 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            val chapterIndex = chapters.currentChapterIndex(positionMs)
-                            val chapterTitle = chapters.getOrNull(chapterIndex)?.title?.takeIf { it.isNotBlank() }
+                            val chapterIndex = state.chapters.currentChapterIndex(state.positionMs)
+                            val chapterTitle = state.chapters.getOrNull(chapterIndex)?.title?.takeIf { it.isNotBlank() }
                                 ?: if (chapterIndex >= 0) "Chapter ${chapterIndex + 1}" else null
                             if (chapterTitle != null) {
                                 Text(
@@ -4853,7 +4605,7 @@ fun PlayerScreen(
                                     modifier = Modifier
                                         .weight(1f, fill = false)
                                         .padding(horizontal = 2.dp, vertical = 2.dp)
-                                        .clickable { chaptersOpen = true }
+                                        .clickable { state.chaptersOpen = true }
                                 )
                             } else {
                                 Spacer(Modifier.weight(1f))
@@ -4875,35 +4627,35 @@ fun PlayerScreen(
                         Box(Modifier.fillMaxWidth()) {
                             SeekPreviewOverlay(
                                 controller = seekPreviewController,
-                                active = scrubPositionMs != null,
-                                positionMs = scrubPositionMs ?: positionMs,
-                                durationMs = durationMs,
+                                active = state.scrubPositionMs != null,
+                                state.positionMs = state.scrubPositionMs ?: state.positionMs,
+                                state.durationMs = state.durationMs,
                                 modifier = Modifier.fillMaxWidth().height(22.dp)
                             )
                             LegacySeekBar(
-                                positionMs = positionMs,
-                                durationMs = durationMs,
-                                bufferedMs = bufferedMs,
-                                chapterFractions = chapters.chapterMarkFractions(durationMs),
+                                state.positionMs = state.positionMs,
+                                state.durationMs = state.durationMs,
+                                state.bufferedMs = state.bufferedMs,
+                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                                 onSeek = { player.seekTo(it) },
                                 modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
                                 isTv = isTv,
                                 onSeekDelta = { seekByWithFeedback(it) },
-                                onFocusChanged = { seekbarFocused = it },
-                                onScrub = { scrubPositionMs = it }
+                                onFocusChanged = { state.seekbarFocused = it },
+                                onScrub = { state.scrubPositionMs = it }
                             )
                         }
                         // Time pills on the outer edges (lined up with the
                         // seek bar's ends), action pill in the middle.
                         Box(Modifier.fillMaxWidth()) {
                             TimeChip(
-                                formatMs(positionMs),
+                                formatMs(state.positionMs),
                                 modifier = Modifier.align(Alignment.TopStart).offset(y = (-17).dp)
                             )
                             TimeChip(
-                                if (showRemainingTime) formatRemainingMs(positionMs, durationMs)
-                                else formatMs(durationMs),
-                                onClick = { showRemainingTime = !showRemainingTime },
+                                if (state.showRemainingTime) formatRemainingMs(state.positionMs, state.durationMs)
+                                else formatMs(state.durationMs),
+                                onClick = { state.showRemainingTime = !state.showRemainingTime },
                                 modifier = Modifier.align(Alignment.TopEnd).offset(y = (-17).dp)
                             )
                             Box(Modifier.align(Alignment.TopCenter)) {
@@ -4919,10 +4671,10 @@ fun PlayerScreen(
         // 2026-10-26 — replaces the old hard block): the link leaves
         // the app without its protected headers, so the outside player
         // may not be able to play it. "Don't show again" persists.
-        externalWarningReq?.let { warnReq ->
+        state.externalWarningReq?.let { warnReq ->
             val warnCtx = activity
             AlertDialog(
-                onDismissRequest = { externalWarningReq = null },
+                onDismissRequest = { state.externalWarningReq = null },
                 title = { Text("Protected link") },
                 text = {
                     Column {
@@ -4935,11 +4687,11 @@ fun PlayerScreen(
                         Spacer(Modifier.height(8.dp))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { externalWarningHide = !externalWarningHide }
+                            modifier = Modifier.clickable { state.externalWarningHide = !state.externalWarningHide }
                         ) {
                             Checkbox(
-                                checked = externalWarningHide,
-                                onCheckedChange = { externalWarningHide = it }
+                                checked = state.externalWarningHide,
+                                onCheckedChange = { state.externalWarningHide = it }
                             )
                             Text(
                                 "Don't show again",
@@ -4951,17 +4703,17 @@ fun PlayerScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        if (externalWarningHide && warnCtx != null) {
+                        if (state.externalWarningHide && warnCtx != null) {
                             ExternalPlayer.setWarningSuppressed(warnCtx, true)
                         }
-                        externalWarningReq = null
+                        state.externalWarningReq = null
                         if (warnCtx != null) launchExternalPlayer(warnCtx, warnReq)
                     }) {
                         Text("Open anyway", color = LocalPalette.current.accent)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { externalWarningReq = null }) {
+                    TextButton(onClick = { state.externalWarningReq = null }) {
                         Text("Cancel", color = TextSecondary)
                     }
                 }
@@ -4969,18 +4721,18 @@ fun PlayerScreen(
         }
 
         // Resume prompt.
-        resumeOfferMs?.let { saved ->
+        state.resumeOfferMs?.let { saved ->
             ResumePromptDialog(
                 savedMs = saved,
                 title = headerTitle,
                 onResume = {
                     // Tapping outside keeps their place and resumes.
-                    resumeOfferMs = null
+                    state.resumeOfferMs = null
                     player.playWhenReady = true
                 },
                 onStartOver = {
-                    resumeOfferMs = null
-                    ioScope.launch { repository.deleteSavedPosition(currentRequest.streamUrl) }
+                    state.resumeOfferMs = null
+                    ioScope.launch { repository.deleteSavedPosition(state.currentRequest.streamUrl) }
                     player.seekTo(0)
                     player.playWhenReady = true
                 }
@@ -4990,9 +4742,9 @@ fun PlayerScreen(
         // Chapters panel (Nuvio PlayerChaptersPanel, bottom-sheet shape
         // like the Audio sheet): time + title rows, current highlighted,
         // tap seeks to the chapter and closes.
-        if (chaptersOpen) {
+        if (state.chaptersOpen) {
             ModalBottomSheet(
-                onDismissRequest = { chaptersOpen = false },
+                onDismissRequest = { state.chaptersOpen = false },
                 sheetState = rememberModalBottomSheetState(),
                 containerColor = Color(0xFF14141F)
             ) {
@@ -5009,8 +4761,8 @@ fun PlayerScreen(
                             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                         )
                     }
-                    val currentIndex = chapters.currentChapterIndex(positionMs)
-                    itemsIndexed(chapters, key = { index, chapter -> "chap_${index}_${chapter.startMs}" }) { index, chapter ->
+                    val currentIndex = state.chapters.currentChapterIndex(state.positionMs)
+                    itemsIndexed(state.chapters, key = { index, chapter -> "chap_${index}_${chapter.startMs}" }) { index, chapter ->
                         val isCurrent = index == currentIndex
                         Row(
                             modifier = Modifier
@@ -5018,7 +4770,7 @@ fun PlayerScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isCurrent) LocalPalette.current.accent.copy(alpha = 0.15f) else Color.Transparent)
                                 .clickable {
-                                    chaptersOpen = false
+                                    state.chaptersOpen = false
                                     player.seekTo(chapter.startMs)
                                     pokeIndicator(PlayerIndicator.Message(chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}"))
                                 }
@@ -5061,15 +4813,15 @@ fun PlayerScreen(
         // Audio button keeps its bottom sheet. Neither is an
         // AlertDialog, so the root media/channel-key handler keeps
         // working while they're open (#28).
-        if (tracksOpen) {
-            val isAudio = tracksMode == "audio"
+        if (state.tracksOpen) {
+            val isAudio = state.tracksMode == "audio"
             // TV: land D-pad focus on the first row when the picker opens.
             val firstRowFocus = remember { FocusRequester() }
-            LaunchedEffect(isTv, tracksMode) {
-                if (tracksMode == "subs") {
+            LaunchedEffect(isTv, state.tracksMode) {
+                if (state.tracksMode == "subs") {
                     // Seed the Style rail's visibility from the track
                     // that is already playing when the overlay opens.
-                    panelPickedUrl = textOpts.firstOrNull { it.selected }
+                    state.panelPickedUrl = textOpts.firstOrNull { it.selected }
                         ?.let { panelTrackId(it) }
                 }
                 if (isTv) {
@@ -5079,7 +4831,7 @@ fun PlayerScreen(
             }
             if (isAudio) {
                 ModalBottomSheet(
-                    onDismissRequest = { tracksOpen = false },
+                    onDismissRequest = { state.tracksOpen = false },
                     sheetState = rememberModalBottomSheetState(),
                     containerColor = Color(0xFF14141F)
                 ) {
@@ -5113,7 +4865,7 @@ fun PlayerScreen(
                                 color = TextPrimary,
                                 modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
                             )
-                            val boostDb = (volumeBoost * 10).roundToInt().coerceIn(0, 10)
+                            val boostDb = (state.volumeBoost * 10).roundToInt().coerceIn(0, 10)
                             StyleStepper(
                                 value = if (boostDb > 0) "+$boostDb dB" else "0 dB",
                                 onMinus = { setAudioBoostDb(boostDb - 1) },
@@ -5143,14 +4895,14 @@ fun PlayerScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Slider(
-                                    value = audioDelayMs.toFloat(),
+                                    value = state.audioDelayMs.toFloat(),
                                     onValueChange = { setAudioDelayMs(it.roundToInt()) },
                                     valueRange = AUDIO_DELAY_MIN_MS.toFloat()..AUDIO_DELAY_MAX_MS.toFloat(),
                                     steps = (AUDIO_DELAY_MAX_MS - AUDIO_DELAY_MIN_MS) / AUDIO_DELAY_STEP_MS - 1,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    formatAudioDelay(audioDelayMs),
+                                    formatAudioDelay(state.audioDelayMs),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary,
@@ -5159,7 +4911,7 @@ fun PlayerScreen(
                                 )
                                 TextButton(
                                     onClick = { setAudioDelayMs(0) },
-                                    enabled = audioDelayMs != 0
+                                    enabled = state.audioDelayMs != 0
                                 ) {
                                     Text("Reset")
                                 }
@@ -5195,22 +4947,22 @@ fun PlayerScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Switch(
-                                    checked = downmixOn,
+                                    checked = state.downmixOn,
                                     onCheckedChange = { setDownmixEnabled(it) }
                                 )
                             }
-                            if (downmixOn) {
+                            if (state.downmixOn) {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
                                 ) {
                                     FilterChip(
-                                        selected = downmixTarget == 2,
+                                        selected = state.downmixTarget == 2,
                                         onClick = { setDownmixTarget(2) },
                                         label = { Text("Stereo") }
                                     )
                                     FilterChip(
-                                        selected = downmixTarget == 1,
+                                        selected = state.downmixTarget == 1,
                                         onClick = { setDownmixTarget(1) },
                                         label = { Text("Mono") }
                                     )
@@ -5226,13 +4978,13 @@ fun PlayerScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     StyleStepper(
-                                        value = if (centerMixDb > 0) "+$centerMixDb dB" else "$centerMixDb dB",
-                                        onMinus = { setCenterMixDb(centerMixDb - 1) },
-                                        onPlus = { setCenterMixDb(centerMixDb + 1) }
+                                        value = if (state.centerMixDb > 0) "+${state.centerMixDb} dB" else "${state.centerMixDb} dB",
+                                        onMinus = { setCenterMixDb(state.centerMixDb - 1) },
+                                        onPlus = { setCenterMixDb(state.centerMixDb + 1) }
                                     )
                                     TextButton(
                                         onClick = { setCenterMixDb(0) },
-                                        enabled = centerMixDb != 0
+                                        enabled = state.centerMixDb != 0
                                     ) {
                                         Text("Reset")
                                     }
@@ -5249,7 +5001,7 @@ fun PlayerScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     Switch(
-                                        checked = keepOriginalLevels,
+                                        checked = state.keepOriginalLevels,
                                         onCheckedChange = { setKeepOriginalLevels(it) }
                                     )
                                 }
@@ -5293,7 +5045,7 @@ fun PlayerScreen(
                 val sortedLangs = langs.sortedBy { (name, _) ->
                     prefLangNames.indexOf(name).let { if (it < 0) Int.MAX_VALUE else it }
                 }
-                val activeLang = panelLang?.takeIf { ln -> sortedLangs.any { it.first == ln } }
+                val activeLang = state.panelLang?.takeIf { ln -> sortedLangs.any { it.first == ln } }
                     ?: textOpts.firstOrNull { it.selected }?.let {
                         panelLangName(
                             runCatching { it.group.getFormat(it.trackIndex).language }
@@ -5312,7 +5064,7 @@ fun PlayerScreen(
                     ?.let { panelTrackId(it) }
                 val selectedIsAddon = selectedSubUrl != null &&
                     panelSubs().any { it.url == selectedSubUrl }
-                val styleVisible = !subtitlesOff || panelPickedUrl != null
+                val styleVisible = !subtitlesOff || state.panelPickedUrl != null
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val railHeight = if (maxHeight < 400.dp) 236.dp else 300.dp
                     // Scrim: dims the video; a tap outside the rails
@@ -5324,7 +5076,7 @@ fun PlayerScreen(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
-                            ) { tracksOpen = false }
+                            ) { state.tracksOpen = false }
                     )
                     Column(
                         Modifier
@@ -5363,10 +5115,10 @@ fun PlayerScreen(
                                         RailLanguageRow(
                                             name = "None",
                                             count = null,
-                                            selected = subtitlesOff && panelPickedUrl == null,
+                                            selected = subtitlesOff && state.panelPickedUrl == null,
                                             modifier = Modifier.focusRequester(firstRowFocus),
                                             onClick = {
-                                                panelPickedUrl = null
+                                                state.panelPickedUrl = null
                                                 applySubtitleSelection(null)
                                             }
                                         )
@@ -5376,7 +5128,7 @@ fun PlayerScreen(
                                             name = name,
                                             count = count,
                                             selected = name == activeLang,
-                                            onClick = { panelLang = name }
+                                            onClick = { state.panelLang = name }
                                         )
                                     }
                                 }
@@ -5397,7 +5149,7 @@ fun PlayerScreen(
                                 LazyColumn(
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    if (activeLang == null && !subSearchLoading) {
+                                    if (activeLang == null && !state.subSearchLoading) {
                                         item {
                                             Text(
                                                 "No subtitles for this title.",
@@ -5409,7 +5161,7 @@ fun PlayerScreen(
                                     }
                                     items(langSubs) { sub ->
                                         val resolvedSub =
-                                            rawResolvedSubs.firstOrNull { it.sub.url == sub.url }
+                                            state.rawResolvedSubs.firstOrNull { it.sub.url == sub.url }
                                         PanelSubCard(
                                             chip = panelHostLabel(sub.url),
                                             title = panelFileLabel(sub),
@@ -5424,7 +5176,7 @@ fun PlayerScreen(
                                             ).joinToString(" \u00b7 "),
                                             selected = selectedSubUrl == sub.url,
                                             onClick = {
-                                                panelPickedUrl = sub.url
+                                                state.panelPickedUrl = sub.url
                                                 activatePanelSubtitle(sub)
                                             }
                                         )
@@ -5443,12 +5195,12 @@ fun PlayerScreen(
                                             ).joinToString(" \u00b7 "),
                                             selected = opt.selected,
                                             onClick = {
-                                                panelPickedUrl = "built-in"
+                                                state.panelPickedUrl = "built-in"
                                                 applySubtitleSelection(opt)
                                             }
                                         )
                                     }
-                                    if (subSearchLoading) {
+                                    if (state.subSearchLoading) {
                                         item {
                                             Text(
                                                 "Searching online\u2026",
@@ -5459,7 +5211,7 @@ fun PlayerScreen(
                                         }
                                     }
                                     if (langSubs.isEmpty() && langEmbedded.isEmpty() &&
-                                        !subSearchLoading
+                                        !state.subSearchLoading
                                     ) {
                                         item {
                                             Row(
@@ -5487,7 +5239,7 @@ fun PlayerScreen(
                                             }
                                         }
                                     }
-                                    if (subLoadError && panelSubs().isEmpty()) {
+                                    if (state.subLoadError && panelSubs().isEmpty()) {
                                         item {
                                             Text(
                                                 "Couldn't load subtitles \u2014 check your connection and try again.",
@@ -5497,7 +5249,7 @@ fun PlayerScreen(
                                             )
                                         }
                                     }
-                                    subSearchError?.let { err ->
+                                    state.subSearchError?.let { err ->
                                         item {
                                             Text(
                                                 err,
@@ -5544,8 +5296,8 @@ fun PlayerScreen(
                                     Spacer(Modifier.height(6.dp))
                                     StyleStepper(
                                         value = panelDelayLabel(effectiveSubOffsetMs()),
-                                        onMinus = { setSubtitleDelay(subOffsetOverrideMs - 100L) },
-                                        onPlus = { setSubtitleDelay(subOffsetOverrideMs + 100L) }
+                                        onMinus = { setSubtitleDelay(state.subOffsetOverrideMs - 100L) },
+                                        onPlus = { setSubtitleDelay(state.subOffsetOverrideMs + 100L) }
                                     )
                                     TextButton(
                                         onClick = { setSubtitleDelay(0L) },
@@ -5578,26 +5330,26 @@ fun PlayerScreen(
                                             modifier = Modifier.weight(1f),
                                             icon = Icons.Filled.Hearing,
                                             label = "Heard",
-                                            captured = syncByEarHeardMs != null,
+                                            captured = state.syncByEarHeardMs != null,
                                             onClick = { captureSyncByEarHeard() }
                                         )
                                         SyncByEarButton(
                                             modifier = Modifier.weight(1f),
                                             icon = Icons.Filled.Visibility,
                                             label = "Saw",
-                                            captured = syncByEarSawMs != null,
+                                            captured = state.syncByEarSawMs != null,
                                             onClick = { captureSyncByEarSaw() }
                                         )
                                     }
                                     Spacer(Modifier.height(6.dp))
                                     Text(
                                         text = when {
-                                            syncByEarHeardMs != null -> "Heard captured. Tap Saw when its subtitle shows."
-                                            syncByEarSawMs != null -> "Saw captured. Tap Heard when you hear the line."
-                                            subOffsetOverrideMs == 0L -> "Now: In sync"
+                                            state.syncByEarHeardMs != null -> "Heard captured. Tap Saw when its subtitle shows."
+                                            state.syncByEarSawMs != null -> "Saw captured. Tap Heard when you hear the line."
+                                            state.subOffsetOverrideMs == 0L -> "Now: In sync"
                                             else -> "Now: ${panelDelayLabel(effectiveSubOffsetMs())}"
                                         },
-                                        color = if (syncByEarHeardMs != null || syncByEarSawMs != null) LocalPalette.current.accent else TextSecondary,
+                                        color = if (state.syncByEarHeardMs != null || state.syncByEarSawMs != null) LocalPalette.current.accent else TextSecondary,
                                         style = MaterialTheme.typography.labelMedium
                                     )
                                     Spacer(Modifier.height(10.dp))
@@ -5605,18 +5357,18 @@ fun PlayerScreen(
                                     StyleSectionLabel("Font Size")
                                     Spacer(Modifier.height(6.dp))
                                     StyleStepper(
-                                        value = "${subFontSpUi}sp",
+                                        value = "${state.subFontSpUi}sp",
                                         onMinus = {
-                                            val v = (subFontSpUi - 2).coerceIn(12, 40)
-                                            subFontSpUi = v
+                                            val v = (state.subFontSpUi - 2).coerceIn(12, 40)
+                                            state.subFontSpUi = v
                                             settings.subtitleFontSizeSp = v
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         },
                                         onPlus = {
-                                            val v = (subFontSpUi + 2).coerceIn(12, 40)
-                                            subFontSpUi = v
+                                            val v = (state.subFontSpUi + 2).coerceIn(12, 40)
+                                            state.subFontSpUi = v
                                             settings.subtitleFontSizeSp = v
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -5624,13 +5376,13 @@ fun PlayerScreen(
                                     StyleSectionLabel("Bold")
                                     Spacer(Modifier.height(6.dp))
                                     StyleChip(
-                                        label = if (subBoldUi) "On" else "Off",
-                                        on = subBoldUi,
+                                        label = if (state.subBoldUi) "On" else "Off",
+                                        on = state.subBoldUi,
                                         onClick = {
-                                            val on = !subBoldUi
-                                            subBoldUi = on
+                                            val on = !state.subBoldUi
+                                            state.subBoldUi = on
                                             settings.subtitleBold = on
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -5650,15 +5402,15 @@ fun PlayerScreen(
                                             val rgb = c.toInt()
                                             StyleSwatch(
                                                 color = Color(rgb),
-                                                selected = (subColorUi and 0x00FFFFFF) ==
+                                                selected = (state.subColorUi and 0x00FFFFFF) ==
                                                     (rgb and 0x00FFFFFF),
                                                 onClick = {
                                                     val merged =
-                                                        (subColorUi and 0xFF000000.toInt()) or
+                                                        (state.subColorUi and 0xFF000000.toInt()) or
                                                             (rgb and 0x00FFFFFF)
-                                                    subColorUi = merged
+                                                    state.subColorUi = merged
                                                     settings.subtitleTextColor = merged
-                                                    playerView?.let { applySubtitleStyle(it) }
+                                                    state.playerView?.let { applySubtitleStyle(it) }
                                                 }
                                             )
                                         }
@@ -5668,24 +5420,24 @@ fun PlayerScreen(
                                     StyleSectionLabel("Text Opacity")
                                     Spacer(Modifier.height(6.dp))
                                     val opacityPct =
-                                        (android.graphics.Color.alpha(subColorUi) * 100 + 127) / 255
+                                        (android.graphics.Color.alpha(state.subColorUi) * 100 + 127) / 255
                                     StyleStepper(
                                         value = "$opacityPct%",
                                         onMinus = {
                                             val p = (opacityPct - 10).coerceIn(0, 100)
                                             val a = (p * 255 + 50) / 100
-                                            val merged = (a shl 24) or (subColorUi and 0x00FFFFFF)
-                                            subColorUi = merged
+                                            val merged = (a shl 24) or (state.subColorUi and 0x00FFFFFF)
+                                            state.subColorUi = merged
                                             settings.subtitleTextColor = merged
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         },
                                         onPlus = {
                                             val p = (opacityPct + 10).coerceIn(0, 100)
                                             val a = (p * 255 + 50) / 100
-                                            val merged = (a shl 24) or (subColorUi and 0x00FFFFFF)
-                                            subColorUi = merged
+                                            val merged = (a shl 24) or (state.subColorUi and 0x00FFFFFF)
+                                            state.subColorUi = merged
                                             settings.subtitleTextColor = merged
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -5693,13 +5445,13 @@ fun PlayerScreen(
                                     StyleSectionLabel("Outline")
                                     Spacer(Modifier.height(6.dp))
                                     StyleChip(
-                                        label = if (subEdgeUi != 0) "On" else "Off",
-                                        on = subEdgeUi != 0,
+                                        label = if (state.subEdgeUi != 0) "On" else "Off",
+                                        on = state.subEdgeUi != 0,
                                         onClick = {
-                                            val t = if (subEdgeUi == 0) 1 else 0
-                                            subEdgeUi = t
+                                            val t = if (state.subEdgeUi == 0) 1 else 0
+                                            state.subEdgeUi = t
                                             settings.subtitleEdgeType = t
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         }
                                     )
                                     Spacer(Modifier.height(8.dp))
@@ -5707,23 +5459,23 @@ fun PlayerScreen(
                                     Spacer(Modifier.height(6.dp))
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.alpha(if (subEdgeUi == 0) 0.42f else 1f)
+                                        modifier = Modifier.alpha(if (state.subEdgeUi == 0) 0.42f else 1f)
                                     ) {
                                         listOf(0xFF000000, 0xFFFFFFFF, 0xFF00E5FF, 0xFFFF5C5C)
                                             .forEach { c ->
                                                 val rgb = c.toInt()
                                                 StyleSwatch(
                                                     color = Color(rgb),
-                                                    selected = (subEdgeColorUi and 0x00FFFFFF) ==
+                                                    selected = (state.subEdgeColorUi and 0x00FFFFFF) ==
                                                         (rgb and 0x00FFFFFF),
                                                     onClick = {
-                                                        subEdgeColorUi = rgb
+                                                        state.subEdgeColorUi = rgb
                                                         settings.subtitleEdgeColor = rgb
-                                                        if (subEdgeUi == 0) {
-                                                            subEdgeUi = 1
+                                                        if (state.subEdgeUi == 0) {
+                                                            state.subEdgeUi = 1
                                                             settings.subtitleEdgeType = 1
                                                         }
-                                                        playerView?.let { applySubtitleStyle(it) }
+                                                        state.playerView?.let { applySubtitleStyle(it) }
                                                     }
                                                 )
                                             }
@@ -5733,18 +5485,18 @@ fun PlayerScreen(
                                     StyleSectionLabel("Bottom Offset")
                                     Spacer(Modifier.height(6.dp))
                                     StyleStepper(
-                                        value = "$subBottomUi",
+                                        value = "${state.subBottomUi}",
                                         onMinus = {
-                                            val v = (subBottomUi - 5).coerceIn(0, 200)
-                                            subBottomUi = v
+                                            val v = (state.subBottomUi - 5).coerceIn(0, 200)
+                                            state.subBottomUi = v
                                             settings.subtitleBottomOffset = v
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         },
                                         onPlus = {
-                                            val v = (subBottomUi + 5).coerceIn(0, 200)
-                                            subBottomUi = v
+                                            val v = (state.subBottomUi + 5).coerceIn(0, 200)
+                                            state.subBottomUi = v
                                             settings.subtitleBottomOffset = v
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -5775,12 +5527,12 @@ fun PlayerScreen(
                                                 modifier = Modifier.weight(1f)
                                             ) {
                                                 Text(
-                                                    if (captureLoading) "Loading\u2026" else "Capture",
+                                                    if (state.captureLoading) "Loading\u2026" else "Capture",
                                                     style = MaterialTheme.typography.bodySmall
                                                 )
                                             }
                                         }
-                                        captureCues?.let { cues ->
+                                        state.captureCues?.let { cues ->
                                             Spacer(Modifier.height(10.dp))
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Text(
@@ -5790,7 +5542,7 @@ fun PlayerScreen(
                                                     color = TextPrimary,
                                                     modifier = Modifier.weight(1f)
                                                 )
-                                                TextButton(onClick = { captureCues = null }) {
+                                                TextButton(onClick = { state.captureCues = null }) {
                                                     Text(
                                                         "Cancel",
                                                         color = TextSecondary,
@@ -5810,7 +5562,7 @@ fun PlayerScreen(
                                                             // start, with the 300ms
                                                             // reaction-time compensation.
                                                             setSubtitleDelay(
-                                                                capturePositionMs - startMs - 300L -
+                                                                state.capturePositionMs - startMs - 300L -
                                                                     settings.subtitleOffsetMs
                                                             )
                                                             pokeIndicator(
@@ -5851,21 +5603,21 @@ fun PlayerScreen(
                                     TextButton(
                                         onClick = {
                                             setSubtitleDelay(0L)
-                                            subFontSpUi = 18
+                                            state.subFontSpUi = 18
                                             settings.subtitleFontSizeSp = 18
-                                            subBoldUi = false
+                                            state.subBoldUi = false
                                             settings.subtitleBold = false
-                                            subColorUi = 0xFFFFFFFF.toInt()
+                                            state.subColorUi = 0xFFFFFFFF.toInt()
                                             settings.subtitleTextColor = 0xFFFFFFFF.toInt()
                                             settings.subtitleBackgroundColor =
                                                 android.graphics.Color.TRANSPARENT
-                                            subEdgeUi = 1
+                                            state.subEdgeUi = 1
                                             settings.subtitleEdgeType = 1
-                                            subEdgeColorUi = 0xFF000000.toInt()
+                                            state.subEdgeColorUi = 0xFF000000.toInt()
                                             settings.subtitleEdgeColor = 0xFF000000.toInt()
-                                            subBottomUi = 20
+                                            state.subBottomUi = 20
                                             settings.subtitleBottomOffset = 20
-                                            playerView?.let { applySubtitleStyle(it) }
+                                            state.playerView?.let { applySubtitleStyle(it) }
                                         }
                                     ) {
                                         Text(
@@ -5885,17 +5637,17 @@ fun PlayerScreen(
         // In-player subtitle search results.
         // Bottom sheet (not AlertDialog) so the root media/channel-key handler
         // keeps working while it's open (#28).
-        if (subSearchOpen) {
+        if (state.subSearchOpen) {
             // TV: land D-pad focus on the first result row when results land.
             val firstResultFocus = remember { FocusRequester() }
-            LaunchedEffect(isTv, subSearchResults) {
-                if (isTv && subSearchResults.isNotEmpty()) {
+            LaunchedEffect(isTv, state.subSearchResults) {
+                if (isTv && state.subSearchResults.isNotEmpty()) {
                     delay(300)
                     runCatching { firstResultFocus.requestFocus() }
                 }
             }
             ModalBottomSheet(
-                onDismissRequest = { subSearchOpen = false },
+                onDismissRequest = { state.subSearchOpen = false },
                 sheetState = rememberModalBottomSheetState(),
                 containerColor = Color(0xFF14141F)
             ) {
@@ -5913,21 +5665,21 @@ fun PlayerScreen(
                         )
                     }
                     when {
-                        subSearchLoading -> item {
+                        state.subSearchLoading -> item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OrbitDots(modifier = Modifier.size(30.dp))
                                 Spacer(Modifier.width(12.dp))
                                 Text("Searching subtitle addons…", color = TextSecondary)
                             }
                         }
-                        subSearchError != null -> item {
+                        state.subSearchError != null -> item {
                             Text(
-                                subSearchError!!,
+                                state.subSearchError!!,
                                 color = TextSecondary,
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
-                        else -> itemsIndexed(subSearchResults) { index, sub ->
+                        else -> itemsIndexed(state.subSearchResults) { index, sub ->
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -5962,26 +5714,26 @@ fun PlayerScreen(
         }
 
         // In-player Sources (Design I): full-width banner + tabs + cards.
-        if (sourcesOpen) {
+        if (state.sourcesOpen) {
             ModalBottomSheet(
-                onDismissRequest = { sourcesOpen = false },
+                onDismissRequest = { state.sourcesOpen = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 dragHandle = null,
                 containerColor = Color(0xFF14141F)
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
-                    title = currentRequest.title,
-                    streams = availableStreams,
-                    selectedUrl = currentRequest.streamUrl,
-                    loading = streamsLoading,
+                    title = state.currentRequest.title,
+                    streams = state.availableStreams,
+                    selectedUrl = state.currentRequest.streamUrl,
+                    loading = state.streamsLoading,
                     onPick = { switchSource(it) },
-                    onDownload = { downloadStream = it },
-                    onRetry = { refreshStreamsBackground(currentRequest.type, currentRequest.videoId) },
-                    onClose = { sourcesOpen = false },
+                    onDownload = { state.downloadStream = it },
+                    onRetry = { refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId) },
+                    onClose = { state.sourcesOpen = false },
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
                     settings = repository.settings,
-                    poster = currentRequest.poster,
-                    isEpisode = currentRequest.type != "movie"
+                    poster = state.currentRequest.poster,
+                    isEpisode = state.currentRequest.type != "movie"
                 )
             }
         }
@@ -5990,9 +5742,9 @@ fun PlayerScreen(
         // Avio's bottom-sheet panel shape): Auto first, then one row per
         // distinct quality, best first. Picking one switches to a stream
         // of that quality at the current position.
-        if (qualityOpen) {
+        if (state.qualityOpen) {
             ModalBottomSheet(
-                onDismissRequest = { qualityOpen = false },
+                onDismissRequest = { state.qualityOpen = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 dragHandle = null,
                 containerColor = Color(0xFF14141F)
@@ -6039,7 +5791,7 @@ fun PlayerScreen(
                                 onClick = { switchHlsVariant(variant) }
                             )
                         }
-                    } else if (streamsLoading && qualityOptions.isEmpty()) {
+                    } else if (state.streamsLoading && qualityOptions.isEmpty()) {
                         item {
                             Box(
                                 Modifier.fillMaxWidth().padding(vertical = 32.dp),
@@ -6089,53 +5841,53 @@ fun PlayerScreen(
         // bottom-sheet panel shape): codec, resolution, fps, bitrate and
         // live network speed. Formats re-read every second while open, so
         // an adaptive switch updates the rows live.
-        if (infoOpen) {
+        if (state.infoOpen) {
             PlaybackInfoSheet(
                 player = player,
                 selectedQualityLabel = qualitySelection ?: qualityOptions.firstOrNull()?.first,
                 isAuto = qualitySelection == null,
-                onDismiss = { infoOpen = false }
+                onDismiss = { state.infoOpen = false }
             )
         }
 
         // Download confirmation dialog
-        downloadStream?.let { stream ->
+        state.downloadStream?.let { stream ->
             com.pulsestream.app.ui.components.DownloadConfirmDialog(
                 stream = stream,
-                title = currentRequest.title,
-                onDismiss = { downloadStream = null },
+                title = state.currentRequest.title,
+                onDismiss = { state.downloadStream = null },
                 // Step 36: series episodes group under the show; movies stay flat.
-                metaId = if (!currentRequest.isMovie) currentRequest.metaId else "",
-                seriesName = currentRequest.seriesName,
-                season = currentRequest.season,
-                episode = currentRequest.episode,
+                metaId = if (!state.currentRequest.isMovie) state.currentRequest.metaId else "",
+                seriesName = state.currentRequest.seriesName,
+                season = state.currentRequest.season,
+                episode = state.currentRequest.episode,
                 // Step 46: subtitles + offline poster.
-                subtitles = currentRequest.subtitles,
-                posterUrl = currentRequest.poster
+                subtitles = state.currentRequest.subtitles,
+                posterUrl = state.currentRequest.poster
             )
         }
 
         // TEST: YouTube quality picker dialog.
         // Step 63: in-player live-channels panel (search + catalog groups).
-        if (channelsOpen) {
+        if (state.channelsOpen) {
             LiveChannelsPanel(
                 channels = zapChannels,
-                currentVideoId = currentRequest.videoId,
+                currentVideoId = state.currentRequest.videoId,
                 onChannelSelected = { index ->
-                    channelsOpen = false
+                    state.channelsOpen = false
                     zapTo(index)
                 },
-                onDismiss = { channelsOpen = false }
+                onDismiss = { state.channelsOpen = false }
             )
         }
         // Episodes picker for series.
-        if (episodesOpen) {
-            val episodes = currentRequest.episodes
+        if (state.episodesOpen) {
+            val episodes = state.currentRequest.episodes
             val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
-            var selSeason by remember(episodes) { mutableStateOf(currentRequest.season) }
+            var selSeason by remember(episodes) { mutableStateOf(state.currentRequest.season) }
             val panelWatchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
             ModalBottomSheet(
-                onDismissRequest = { episodesOpen = false },
+                onDismissRequest = { state.episodesOpen = false },
                 sheetState = rememberModalBottomSheetState(),
                 containerColor = Color(0xFF14141F)
             ) {
@@ -6155,8 +5907,8 @@ fun PlayerScreen(
                         // Step 41: shuffle sheet for this series.
                         IconButton(
                             onClick = {
-                                episodesOpen = false
-                                shuffleOpen = true
+                                state.episodesOpen = false
+                                state.shuffleOpen = true
                             },
                             modifier = Modifier.size(40.dp),
                         ) {
@@ -6198,8 +5950,8 @@ fun PlayerScreen(
                     )
                 ) {
                     items(eps, key = { it.id }) { video ->
-                        val selected = video.id == currentRequest.videoId
-                        val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(currentRequest.metaId, video.season, video.episode) in panelWatchedKeys
+                        val selected = video.id == state.currentRequest.videoId
+                        val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(state.currentRequest.metaId, video.season, video.episode) in panelWatchedKeys
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -6271,7 +6023,7 @@ fun PlayerScreen(
                             // PlayerEpisodesPanel): opens this episode's
                             // streams; picking one plays it.
                             IconButton(
-                                onClick = { episodeStreamsVideo = video },
+                                onClick = { state.episodeStreamsVideo = video },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
@@ -6295,46 +6047,46 @@ fun PlayerScreen(
         // Per-episode stream choice (Nuvio PlayerEpisodesPanel): the ⋮
         // button on an episode row opens this episode's streams; picking
         // one plays that episode with that stream.
-        episodeStreamsVideo?.let { video ->
+        state.episodeStreamsVideo?.let { video ->
             ModalBottomSheet(
-                onDismissRequest = { episodeStreamsVideo = null },
+                onDismissRequest = { state.episodeStreamsVideo = null },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 dragHandle = null,
                 containerColor = Color(0xFF14141F)
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = "S${video.season}E${video.episode} · ${video.title}",
-                    streams = episodeStreams,
+                    streams = state.episodeStreams,
                     selectedUrl = "",
-                    loading = episodeStreamsLoading,
+                    loading = state.episodeStreamsLoading,
                     onPick = { stream ->
-                        playEpisodeWithStream(video, stream, episodeStreams, episodeStreamsSubtitles)
+                        playEpisodeWithStream(video, stream, state.episodeStreams, state.episodeStreamsSubtitles)
                     },
-                    onDownload = { downloadStream = it },
-                    onRetry = { episodeStreamsTick++ },
-                    onClose = { episodeStreamsVideo = null },
+                    onDownload = { state.downloadStream = it },
+                    onRetry = { state.episodeStreamsTick++ },
+                    onClose = { state.episodeStreamsVideo = null },
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
                     settings = repository.settings,
-                    poster = video.thumbnail ?: currentRequest.poster,
+                    poster = video.thumbnail ?: state.currentRequest.poster,
                     isEpisode = true
                 )
             }
         }
 
         // Shuffle sheet (Step 41): random episode for this series.
-        if (shuffleOpen && !currentRequest.isMovie) {
+        if (state.shuffleOpen && !state.currentRequest.isMovie) {
             EpisodeShuffleSheet(
-                showName = currentRequest.seriesName ?: currentRequest.title,
+                showName = state.currentRequest.seriesName ?: state.currentRequest.title,
                 picker = playerShufflePicker,
                 includeWatched = settings.shuffleIncludeWatched,
                 onIncludeWatchedChange = { settings.shuffleIncludeWatched = it },
                 shuffleFollowing = settings.shuffleEpisodes,
                 onShuffleFollowingChange = { settings.shuffleEpisodes = it },
                 onPlay = { video ->
-                    shuffleOpen = false
+                    state.shuffleOpen = false
                     playEpisode(video)
                 },
-                onDismiss = { shuffleOpen = false },
+                onDismiss = { state.shuffleOpen = false },
             )
         }
     }
