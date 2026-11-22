@@ -16,7 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
 
 /**
- * "Plavio Pick": background-probes stream URLs to find the best working one.
+ * "Avio Pick": background-probes stream URLs to find the best working one.
  *
  * Each http(s) candidate gets a HEAD request (falling back to a 1KB ranged GET
  * when HEAD is rejected); a 2xx/206 response counts as working and the

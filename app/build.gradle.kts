@@ -39,31 +39,31 @@ android {
         )
         // Locked-addon gate key — addon.plavio.site refuses every request
         // without it, so the house addon works only inside this app.
-        // Passed at build time via -PPLAVIO_GATE_KEY=...; never committed.
+        // Passed at build time via -PAVIO_GATE_KEY=...; never committed.
         buildConfigField(
             "String",
-            "PLAVIO_GATE_KEY",
-            "\"${providers.gradleProperty("PLAVIO_GATE_KEY").orNull ?: ""}\""
+            "AVIO_GATE_KEY",
+            "\"${providers.gradleProperty("AVIO_GATE_KEY").orNull ?: ""}\""
         )
-        // Plavio account backend (Supabase). The anon key is a public
+        // Avio account backend (Supabase). The anon key is a public
         // client key by design; row-level security guards the data.
-        // Passed at build time via -PPLAVIO_SUPABASE_URL=... like the DSN.
+        // Passed at build time via -PAVIO_SUPABASE_URL=... like the DSN.
         buildConfigField(
             "String",
-            "PLAVIO_SUPABASE_URL",
-            "\"${providers.gradleProperty("PLAVIO_SUPABASE_URL").orNull ?: ""}\""
+            "AVIO_SUPABASE_URL",
+            "\"${providers.gradleProperty("AVIO_SUPABASE_URL").orNull ?: ""}\""
         )
         buildConfigField(
             "String",
-            "PLAVIO_SUPABASE_ANON_KEY",
-            "\"${providers.gradleProperty("PLAVIO_SUPABASE_ANON_KEY").orNull ?: ""}\""
+            "AVIO_SUPABASE_ANON_KEY",
+            "\"${providers.gradleProperty("AVIO_SUPABASE_ANON_KEY").orNull ?: ""}\""
         )
     }
 
     // Publishing is explicit and must never silently use an unsigned/debug artifact.
-    if (providers.gradleProperty("plavioPublish").orNull == "true") {
-        listOf("PLAVIO_SIGNING_STORE", "PLAVIO_SIGNING_STORE_PASSWORD",
-            "PLAVIO_SIGNING_KEY_ALIAS", "PLAVIO_SIGNING_KEY_PASSWORD").forEach { key ->
+    if (providers.gradleProperty("avioPublish").orNull == "true") {
+        listOf("AVIO_SIGNING_STORE", "AVIO_SIGNING_STORE_PASSWORD",
+            "AVIO_SIGNING_KEY_ALIAS", "AVIO_SIGNING_KEY_PASSWORD").forEach { key ->
             require(!providers.gradleProperty(key).orNull.isNullOrBlank()) { "Publishing requires $key" }
         }
     }
@@ -83,23 +83,23 @@ android {
     }
     signingConfigs {
         // Optional owner signing; no machine-specific keystore is required to build.
-        val signingStore = providers.gradleProperty("PLAVIO_SIGNING_STORE").orNull
+        val signingStore = providers.gradleProperty("AVIO_SIGNING_STORE").orNull
         if (!signingStore.isNullOrBlank()) {
-            create("plavioOwner") {
+            create("avioOwner") {
                 storeFile = file(signingStore)
-                storePassword = providers.gradleProperty("PLAVIO_SIGNING_STORE_PASSWORD").orNull
-                keyAlias = providers.gradleProperty("PLAVIO_SIGNING_KEY_ALIAS").orNull
-                keyPassword = providers.gradleProperty("PLAVIO_SIGNING_KEY_PASSWORD").orNull
+                storePassword = providers.gradleProperty("AVIO_SIGNING_STORE_PASSWORD").orNull
+                keyAlias = providers.gradleProperty("AVIO_SIGNING_KEY_ALIAS").orNull
+                keyPassword = providers.gradleProperty("AVIO_SIGNING_KEY_PASSWORD").orNull
             }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.findByName("plavioOwner") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("avioOwner") ?: signingConfigs.getByName("debug")
         }
         release {
-            signingConfig = signingConfigs.findByName("plavioOwner")
+            signingConfig = signingConfigs.findByName("avioOwner")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

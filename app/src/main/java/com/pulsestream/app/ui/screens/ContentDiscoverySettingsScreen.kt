@@ -44,7 +44,7 @@ import com.pulsestream.app.ui.theme.TextSecondary
  * Nuvio v1.17 Content & Discovery hub, grouped like the source
  * page: Search (Recent Searches toggle) then Sources (Addons,
  * Media Servers, CloudStream, in Nuvio order), then the
- * Plavio-only Discovery destinations (Continue Watching, Live TV,
+ * Avio-only Discovery destinations (Continue Watching, Live TV,
  * Streams, Subtitles, Downloads, Collections). Destinations and
  * behaviour unchanged.
  */

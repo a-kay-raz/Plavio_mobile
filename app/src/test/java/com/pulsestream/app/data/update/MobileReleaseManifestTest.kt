@@ -11,7 +11,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28], application = android.app.Application::class)
 class MobileReleaseManifestTest {
     private fun release(version: String = "0.11.3", urlVersion: String = version) = JSONObject()
-        .put("version", version).put("apkUrl", "https://gitlab.com/api/v4/projects/87396069/packages/generic/plavio/$urlVersion/Plavio-v$urlVersion.apk")
+        .put("version", version).put("apkUrl", "https://gitlab.com/api/v4/projects/87396069/packages/generic/avio/$urlVersion/Avio-v$urlVersion.apk")
 
     @Test fun acceptsPublishedMobileStable() {
         assertEquals("0.11.3", MobileReleaseManifest.parse(release()).version)

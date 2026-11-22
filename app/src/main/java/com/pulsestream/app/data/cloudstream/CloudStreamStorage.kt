@@ -7,11 +7,11 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * On-disk state for CloudStream on Plavio: the persisted registry (repositories + plugins)
+ * On-disk state for CloudStream on Avio: the persisted registry (repositories + plugins)
  * in SharedPreferences, and downloaded .cs3 packages under filesDir.
  *
  * Ported from Enhanced-2's `CloudStreamPlatformStorage.android.kt`. Differences:
- * no per-profile scoping (Plavio keeps one CloudStream registry for all profiles;
+ * no per-profile scoping (Avio keeps one CloudStream registry for all profiles;
  * the profile parameter is kept so per-profile state can be added without changing
  * callers), and `android.util.Log` instead of kermit.
  *

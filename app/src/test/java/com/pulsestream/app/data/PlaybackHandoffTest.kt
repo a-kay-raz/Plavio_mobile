@@ -112,7 +112,7 @@ class PlaybackHandoffTest {
         "X-Provider-Key" to "fixture-key",
         "Referer" to "https://provider.example/watch",
         "Origin" to "https://provider.example",
-        "User-Agent" to "PlavioHandoffFixture/1.0",
+        "User-Agent" to "AvioHandoffFixture/1.0",
         "Range" to "bytes=99-"
     )
 

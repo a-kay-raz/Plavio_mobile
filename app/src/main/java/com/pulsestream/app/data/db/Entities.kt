@@ -526,7 +526,7 @@ interface CollectionDao {
  * "" = none, "photo" = the profile's own photo file,
  * "preset:<id>" = one of the 12 built-in presets. pinHash/pinSalt are
  * a local salted SHA-256 of the 4-digit PIN (Nuvio verifies server-side;
- * Plavio has no profile backend, so the check is local).
+ * Avio has no profile backend, so the check is local).
  */
 @Entity(tableName = "profiles")
 data class Profile(

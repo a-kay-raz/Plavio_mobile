@@ -9,7 +9,7 @@ import org.json.JSONObject
 /**
  * Step 58: favorite people (Nuvio details/FavoritePeopleRepository.kt,
  * scoped port). Nuvio's repo is per-profile disk storage with a pinned
- * list; Plavio stores one org.json blob in SettingsStore — which is
+ * list; Avio stores one org.json blob in SettingsStore — which is
  * already per-profile since Step 56, so favorites follow the active
  * profile with no extra plumbing. No serialization plugin is applied
  * in this app, so the blob is parsed with org.json like

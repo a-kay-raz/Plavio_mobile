@@ -9,11 +9,11 @@ package com.pulsestream.app.data
  * Nuvio's full model is far larger (preferred/required/excluded lists for
  * resolutions, qualities, visual tags, audio tags, channels, encodes,
  * languages, release groups, plus a `{path::filter[...]}` template engine).
- * Plavio ports the user-visible core on top of the Step 42 Smart pipeline:
+ * Avio ports the user-visible core on top of the Step 42 Smart pipeline:
  * min quality, DV/HDR/codec filters, preferred/required/excluded tag
  * substrings, and a small `{key}` / `{key||fallback}` template engine.
  *
- * Filters apply to the whole stream list (Plavio has one shared list;
+ * Filters apply to the whole stream list (Avio has one shared list;
  * Nuvio scopes them to managed debrid streams). Templates rename only
  * debrid-resolved rows (sourceName starts with the "⚡" tag the resolver
  * adds); other rows keep their addon name.

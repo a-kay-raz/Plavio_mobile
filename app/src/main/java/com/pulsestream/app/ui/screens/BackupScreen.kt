@@ -46,7 +46,7 @@ fun BackupScreen(repository: StreamRepository, onBack: () -> Unit) {
     fun showPreview(payload: String) {
         repository.previewBackupJson(payload).fold(
             onSuccess = { queuedImport = payload; preview = it },
-            onFailure = { fail(it.message ?: "That file is not a valid Plavio backup.") }
+            onFailure = { fail(it.message ?: "That file is not a valid Avio backup.") }
         )
     }
 
@@ -114,7 +114,7 @@ fun BackupScreen(repository: StreamRepository, onBack: () -> Unit) {
             title = { Text(if (purpose == "export") "Set backup password" else "Unlock backup") },
             text = {
                 Column {
-                    Text(if (purpose == "export") "Choose a password of at least 10 characters. The file is encrypted with AES-256-GCM and PBKDF2. Keep this password safe; Plavio cannot recover it." else "Enter the password used to encrypt this backup.")
+                    Text(if (purpose == "export") "Choose a password of at least 10 characters. The file is encrypted with AES-256-GCM and PBKDF2. Keep this password safe; Avio cannot recover it." else "Enter the password used to encrypt this backup.")
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(value = password, onValueChange = { password = it }, singleLine = true,
                         visualTransformation = PasswordVisualTransformation(), label = { Text("Password") })

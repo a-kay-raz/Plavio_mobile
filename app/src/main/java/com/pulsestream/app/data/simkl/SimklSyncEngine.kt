@@ -22,9 +22,9 @@ import org.json.JSONObject
  * `SimklSyncRepository.kt` + `SimklMutationRepository.kt` +
  * `SimklScrobbleReconciliation.kt` + `SimklPlaybackMerge.kt` +
  * `SimklWatchDiagnostics.kt` (1,396 lines, tied to Nuvio's profiles /
- * tracking registry / snapshot model stack, none of which exists in Plavio).
+ * tracking registry / snapshot model stack, none of which exists in Avio).
  *
- * Plavio-native shape:
+ * Avio-native shape:
  * - Snapshot persisted as raw JSON in SettingsStore (entries + playback
  *   rows + activities watermark + timestamps) — no profile scaffolding.
  * - `synchronize()`: activities watermark check (skip the fetch when the
@@ -44,10 +44,10 @@ import org.json.JSONObject
  *   (last synced / entries / pending / last error), plus the same Log lines
  *   Nuvio's WatchDiagnostics writes.
  *
- * What is NOT ported: profile-scoped snapshots (Plavio has one profile),
+ * What is NOT ported: profile-scoped snapshots (Avio has one profile),
  * the tracking registry's placeholder entries, and applying Simkl playback
  * rows to Continue Watching — a Simkl playback row carries no stream URL,
- * so it cannot resume in Plavio's player; the rows live in the snapshot and
+ * so it cannot resume in Avio's player; the rows live in the snapshot and
  * the diagnostics, not in the resume list.
  */
 object SimklSyncEngine {

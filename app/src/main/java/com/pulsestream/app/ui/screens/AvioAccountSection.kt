@@ -48,7 +48,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.StreamRepository
-import com.pulsestream.app.data.cloud.PlavioAccountManager
+import com.pulsestream.app.data.cloud.AvioAccountManager
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.ui.components.ProfileAvatarImage
@@ -59,25 +59,25 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Plavio account section (owner's order + approved samples 2026-10-25):
+ * Avio account section (owner's order + approved samples 2026-10-25):
  * email + password sign-in, or a 6-digit email code (passwordless —
- * the Nuvio device-link equivalent on Plavio's Supabase backend);
+ * the Nuvio device-link equivalent on Avio's Supabase backend);
  * the email code is also used for password resets.
  * Syncs the same full backup as Google Drive (which stays as a second
  * door below). Renders nothing until the backend is configured.
  */
 @Composable
-fun PlavioAccountSection(
+fun AvioAccountSection(
     repository: StreamRepository,
     onChangePicture: () -> Unit = {},
     googleExpanded: Boolean = false,
     onToggleGoogle: () -> Unit = {},
     onAccountChanged: () -> Unit = {}
 ) {
-    if (!PlavioAccountManager.isConfigured()) return
+    if (!AvioAccountManager.isConfigured()) return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val manager = remember { PlavioAccountManager(context, repository) }
+    val manager = remember { AvioAccountManager(context, repository) }
     val palette = LocalPalette.current
 
     var mode by remember {
@@ -123,7 +123,7 @@ fun PlavioAccountSection(
     }
 
     if (mode == Mode.SignedIn) {
-        PlavioSignedInC(
+        AvioSignedInC(
             repository = repository,
             busy = busy,
             signedEmail = signedEmail,
@@ -175,7 +175,7 @@ fun PlavioAccountSection(
             when (mode) {
                 Mode.SignIn, Mode.Create -> {
                     Text(
-                        if (mode == Mode.SignIn) "Welcome to Plavio" else "Create your account",
+                        if (mode == Mode.SignIn) "Welcome to Avio" else "Create your account",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -562,7 +562,7 @@ fun PlavioAccountSection(
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text(
-                                "Plavio account",
+                                "Avio account",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
@@ -797,7 +797,7 @@ private fun ChangePasswordBlock(
  * collapsed behind the "Sync with Google" row while signed in here.
  */
 @Composable
-private fun PlavioSignedInC(
+private fun AvioSignedInC(
     repository: StreamRepository,
     busy: Boolean,
     signedEmail: String,
@@ -837,7 +837,7 @@ private fun PlavioSignedInC(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                profileName.ifBlank { "Plavio account" },
+                profileName.ifBlank { "Avio account" },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -891,8 +891,8 @@ private fun PlavioSignedInC(
             )
         }
 
-        // ---- Plavio account group ----
-        SettingsSectionHeader("Plavio account")
+        // ---- Avio account group ----
+        SettingsSectionHeader("Avio account")
         SettingsGroup(
             {
                 SettingsNavRow(

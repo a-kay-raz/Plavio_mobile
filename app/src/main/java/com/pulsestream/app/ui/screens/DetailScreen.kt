@@ -247,7 +247,7 @@ sealed interface StreamsUiState {
 /** Fired when the user pressed Play: play this stream immediately. */
 data class AutoPlay(val stream: StreamItem, val subtitles: List<Subtitle>, val fromStart: Boolean = false)
 
-/** State of the "Plavio Pick" background stream check. */
+/** State of the "Avio Pick" background stream check. */
 sealed interface PickState {
     data object Idle : PickState
     data object Probing : PickState
@@ -271,10 +271,10 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         private set
     var autoPlayEvent by mutableStateOf<AutoPlay?>(null)
         private set
-    /** "Plavio Pick": best verified stream, probed in the background. */
+    /** "Avio Pick": best verified stream, probed in the background. */
     var pickState by mutableStateOf<PickState>(PickState.Idle)
         private set
-    /** "More like this" + "More from <actor>" rows from PlavioMeta. */
+    /** "More like this" + "More from <actor>" rows from AvioMeta. */
     var relatedState by mutableStateOf<List<RelatedSection>>(emptyList())
         private set
 
@@ -282,7 +282,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     private var pendingAutoPlay = false
     /** In-flight stream collection — cancelled when a new one starts. */
     private var streamsJob: Job? = null
-    /** In-flight Plavio Pick probe — cancelled when streams reload. */
+    /** In-flight Avio Pick probe — cancelled when streams reload. */
     private var probeJob: Job? = null
     /** Base URL of the addon the title was opened from — tried first for metadata. */
     private var hintBaseUrl: String? = null
@@ -417,7 +417,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     }
 
     /**
-     * Starts (or restarts, when the merged list grew) the background Plavio Pick
+     * Starts (or restarts, when the merged list grew) the background Avio Pick
      * probe. Keeps an already-found winner — no churn while sources stream in.
      */
     private fun maybeProbePick(streams: List<StreamItem>) {
@@ -524,7 +524,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
 
     /**
      * "More like this" + "More from <actor>" rows. Needs an IMDb tt id
-     * (Cinemeta/PlavioMeta ids); quietly empty for anything else.
+     * (Cinemeta/AvioMeta ids); quietly empty for anything else.
      */
     fun loadRelated(type: String, metaId: String) {
         viewModelScope.launch {
@@ -997,7 +997,7 @@ private fun DetailContent(
     var userStars by remember(meta.id) { mutableStateOf(userRatings.getRating(meta.id)) }
     var ratingsSheetOpen by remember { mutableStateOf(false) }
     // Hero trailer autoplay (Nuvio D2): the first trailer autoplays muted in
-    // the hero once resolved, fading in over the backdrop. Plavio's
+    // the hero once resolved, fading in over the backdrop. Avio's
     // TrailerStream carries only title + ytId, so there is no official/type
     // metadata to rank by — the first trailer is the candidate.
     // TMDB trailers fill in when the addon serves none (effectiveTrailers).
@@ -1536,8 +1536,8 @@ private fun DetailContent(
 
     val productionBlock: LazyListScope.() -> Unit = {
         // Production (Nuvio DetailProductionSection): what the meta
-        // actually carries — Director (PlavioMeta + Cinemeta), Writer
-        // (Cinemeta only; PlavioMeta serves none), Network (series).
+        // actually carries — Director (AvioMeta + Cinemeta), Writer
+        // (Cinemeta only; AvioMeta serves none), Network (series).
         // Nuvio's version is TMDB production-company logo chips; the
         // meta addons carry no companies, so no logos here.
             item(key = "production") {
@@ -2108,7 +2108,7 @@ private fun DetailContent(
     }
 
     val relatedBlock: LazyListScope.() -> Unit = {
-        // "More like this" + "More from <actor>" rows from PlavioMeta.
+        // "More like this" + "More from <actor>" rows from AvioMeta.
         // Quietly absent when the endpoint has nothing (e.g. keyless mode).
         vm.relatedState.forEach { section ->
             item(key = "related_${section.id}") {
@@ -2456,7 +2456,7 @@ private fun DetailContent(
             }
         }
         // ("You May Like" rail removed, owner's pick 2026-10-24:
-        // PlavioMeta's "More like this" rows below replace it —
+        // AvioMeta's "More like this" rows below replace it —
         // they work for every user, not only TMDB-key holders.)
         // (Available Streams button removed — long-press Play opens the source picker.)
         item {
@@ -4338,7 +4338,7 @@ private fun Modifier.heroStretchZoom(stretchPx: () -> Float): Modifier =
 
 // Floating glass header (Nuvio DetailFloatingHeader): a 56dp bar that
 // fades in once the hero collapses — back button, centred logo (or
-// title) and a save toggle. Plavio's liquidGlass tints rather than
+// title) and a save toggle. Avio's liquidGlass tints rather than
 // blurring the backdrop, so the bar reads as frosted glass over the
 // scrolling list (no live backdrop-blur pass exists in this codebase).
 @Composable

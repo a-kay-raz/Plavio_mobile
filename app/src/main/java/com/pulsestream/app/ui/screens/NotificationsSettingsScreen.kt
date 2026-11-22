@@ -80,7 +80,7 @@ fun NotificationsSettingsScreen(
                         SettingsToggleRow(
                             icon = Icons.Filled.Notifications,
                             title = "New episode alerts",
-                            subtitle = "On by default. A few times a day Plavio quietly checks the series in your watchlist and notifies you when a new episode is out.",
+                            subtitle = "On by default. A few times a day Avio quietly checks the series in your watchlist and notifies you when a new episode is out.",
                             checked = episodeNotifs,
                             onCheckedChange = { enabled ->
                                 settings.episodeNotifications = enabled

@@ -375,7 +375,7 @@ private fun channelKey(row: CatalogRow, meta: MetaPreview) = "${row.addonId}|${m
 
 /**
  * Live tab sections (Nuvio LiveTvScreen has Channels / Guide / Sports /
- * OnDemand; Plavio has no guide grid, so Channels / Sports / On Demand).
+ * OnDemand; Avio has no guide grid, so Channels / Sports / On Demand).
  */
 private enum class LiveTvSection { Channels, Sports, OnDemand }
 
@@ -829,7 +829,7 @@ fun LiveScreen(
             is LiveUiState.Error -> ErrorState(state.message, onRetry = { vm.load() })
             is LiveUiState.Empty -> EmptyState(
                 title = "No live TV yet",
-                message = "Plavio doesn't bundle any channels. Install a live TV addon " +
+                message = "Avio doesn't bundle any channels. Install a live TV addon " +
                     "with its manifest URL — or import an M3U playlist from the top-right " +
                     "button — and its channels will appear here. IPTV providers (Xtream / " +
                     "Stalker) are added from the gear icon at the top.",
@@ -1373,7 +1373,7 @@ private fun M3uImportDialog(
                 } else {
                     Text(
                         "Paste an M3U / IPTV playlist URL — its channels appear grouped " +
-                            "in the Live tab and play in the Plavio player.",
+                            "in the Live tab and play in the Avio player.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -1479,7 +1479,7 @@ private fun M3uImportDialog(
     )
 }
 
-/** FilterChip colors matching the Plavio dark aesthetic. */
+/** FilterChip colors matching the Avio dark aesthetic. */
 @Composable
 private fun chipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),

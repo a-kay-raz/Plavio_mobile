@@ -13,7 +13,7 @@ import org.json.JSONObject
  * it beats the "none" votes — a title nobody flagged stays silent.
  *
  * Parsed with org.json (the kotlinx-serialization plugin is not
- * applied in Plavio). Results are cached in memory for the session.
+ * applied in Avio). Results are cached in memory for the session.
  */
 data class ParentalGuideResult(
     val nudity: String? = null,

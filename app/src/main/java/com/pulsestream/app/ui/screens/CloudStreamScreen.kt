@@ -231,7 +231,7 @@ fun CloudStreamScreen(
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "A CloudStream plugin is third-party code that runs inside Plavio " +
+                                "A CloudStream plugin is third-party code that runs inside Avio " +
                                     "with the app's permissions. Only add repositories you trust, " +
                                     "and only install plugins from authors you trust.",
                                 style = MaterialTheme.typography.bodyMedium,

@@ -78,7 +78,7 @@ fun UpdatePrompt(
     }
 }
 
-/** Popup shown when a newer Plavio release is available. */
+/** Popup shown when a newer Avio release is available. */
 @Composable
 fun UpdateDialog(
     info: UpdateInfo,

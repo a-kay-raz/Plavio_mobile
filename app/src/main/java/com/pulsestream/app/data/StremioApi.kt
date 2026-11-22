@@ -46,13 +46,13 @@ class StremioApi {
         val host = url.toHttpUrlOrNull()?.host ?: "unknown"
         SourceDiagnostics.record(host, "loading", 0)
         val headers = buildMap {
-            put("User-Agent", "Plavio/${BuildConfig.VERSION_NAME}")
+            put("User-Agent", "Avio/${BuildConfig.VERSION_NAME}")
             put("Accept", "application/json")
             // Locked house addon (owner's order 2026-10-24): addon.plavio.site
             // serves ONLY this app, so every request to that host carries the
             // gate key. No other host ever sees it.
             if (host == LOCKED_ADDON_HOST) {
-                put(GATE_HEADER, BuildConfig.PLAVIO_GATE_KEY)
+                put(GATE_HEADER, BuildConfig.AVIO_GATE_KEY)
             }
         }
         return try {
@@ -165,7 +165,7 @@ class StremioApi {
 
     /**
      * Related sections, e.g. {base}/related/movie/tt1234567.json — a
-     * PlavioMeta extension other metadata addons may also serve. The
+     * AvioMeta extension other metadata addons may also serve. The
      * repository tries every meta addon in preference order, so the
      * rows follow whichever addon serves them (metadata flexibility,
      * owner's order 2026-10-26). Keyless mode returns no sections.
@@ -179,7 +179,7 @@ class StremioApi {
 
     /**
      * Person search by name, e.g. {base}/person-search/salman%20khan.json
-     * (same extension family as [fetchPerson]; PlavioMeta serves it since
+     * (same extension family as [fetchPerson]; AvioMeta serves it since
      * v2.5.7). Returns null when the addon doesn't serve the route —
      * the request failed or the payload has no people array — so the
      * repository can try the next addon. An empty list is a real answer:

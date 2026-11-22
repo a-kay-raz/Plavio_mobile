@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * channels. Stalker has no VOD API in Nuvio's port, so On Demand is
  * Xtream-only.
  *
- * Plavio note: Nuvio reads the active Xtream settings from its own
+ * Avio note: Nuvio reads the active Xtream settings from its own
  * LiveTvRepository state; here the caller passes the app's SettingsStore
  * (the repository is a singleton object with no settings of its own).
  */

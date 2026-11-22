@@ -1497,7 +1497,7 @@ fun DiskCacheDialog(
 }
 
 /**
- * Preferred-player picker (Settings > Playback): built-in Plavio player,
+ * Preferred-player picker (Settings > Playback): built-in Avio player,
  * an external app via the system chooser, or ask every time.
  */
 @Composable

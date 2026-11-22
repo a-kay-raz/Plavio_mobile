@@ -16,7 +16,7 @@ import java.io.File
  */
 
 /** Cache sub-directory for timing-shifted subtitle files. */
-private const val SHIFT_CACHE_DIR = "plavio_subs_shifted"
+private const val SHIFT_CACHE_DIR = "avio_subs_shifted"
 
 /** Matches an SRT timestamp: 00:01:23,456 */
 private val SRT_TS = Regex("""(\d{2}):(\d{2}):(\d{2}),(\d{3})""")

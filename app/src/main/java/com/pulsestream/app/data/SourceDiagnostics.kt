@@ -28,7 +28,7 @@ object SourceDiagnostics {
     @Synchronized fun clear() { mutableEntries.value = emptyList() }
 
     fun export(): String = buildString {
-        appendLine("Plavio ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) mobile source diagnostics")
+        appendLine("Avio ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) mobile source diagnostics")
         appendLine("Android API ${android.os.Build.VERSION.SDK_INT}; no URLs, tokens, titles or account IDs included.")
         entries.value.forEach { appendLine("${it.provider}: ${it.outcome}, ${it.durationMs}ms") }
     }

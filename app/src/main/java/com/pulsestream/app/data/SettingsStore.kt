@@ -366,7 +366,7 @@ fun diskCacheName(mb: Int): String =
 enum class PlayerChoice(val label: String, val blurb: String) {
     BUILT_IN(
         "Built-in player",
-        "Plavio's own player — gestures, subtitles, PiP, skip intro"
+        "Avio's own player — gestures, subtitles, PiP, skip intro"
     ),
     EXTERNAL(
         "External player",
@@ -444,7 +444,7 @@ class SettingsStore(
     // Type-tolerant numeric reads. A backup restore (org.json turns 1.0 into
     // an Int) or an older version can store a number under a key in the wrong
     // numeric type, and the strict SharedPreferences getters then throw
-    // ClassCastException (Sentry PLAVIO-1). These coerce any stored Number;
+    // ClassCastException (Sentry AVIO-1). These coerce any stored Number;
     // a missing or non-numeric value falls back to the default, exactly like
     // the typed getters did for absent keys.
     private fun prefFloat(key: String, default: Float): Float =
@@ -500,7 +500,7 @@ class SettingsStore(
         set(value) = prefs.edit().putBoolean(KEY_EPISODE_NOTIFICATIONS, value).apply()
 
     /**
-     * Which player opens streams: the built-in Plavio player, an external
+     * Which player opens streams: the built-in Avio player, an external
      * app chosen by the system chooser, or ask every time.
      * Stored as [PlayerChoice.name]; defaults to built-in.
      */
@@ -1242,7 +1242,7 @@ class SettingsStore(
     /**
      * Instant-preparation limit (Step 43, Nuvio instantPlaybackPreparationLimit):
      * max infoHash streams resolved per title, 0 = no cap (current behaviour —
-     * resolve all). Nuvio's 0 means "preparation off"; Plavio's resolve is
+     * resolve all). Nuvio's 0 means "preparation off"; Avio's resolve is
      * the core path, not a background extra, so 0 here means uncapped.
      */
     var debridInstantPrepareLimit: Int
@@ -1261,7 +1261,7 @@ class SettingsStore(
 
     /**
      * TMDB Enrichment master switch (Nuvio TmdbSettings.enabled).
-     * Nuvio defaults this OFF because it ships a bundled key; Plavio
+     * Nuvio defaults this OFF because it ships a bundled key; Avio
      * has no bundled key, so the default here is ON — existing key
      * holders must not silently lose enrichment. OFF stops every
      * TmdbClient enrichment call. tmdb:→IMDb id conversion

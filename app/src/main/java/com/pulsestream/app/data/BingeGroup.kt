@@ -10,8 +10,8 @@ import org.json.JSONObject
  * instead of re-ranking from scratch.
  *
  * Nuvio takes the group only from the addon's behaviorHints.bingeGroup.
- * Plavio does the same first — and falls back to the release group
- * derived from the filename, because the debrid addons Plavio plays
+ * Avio does the same first — and falls back to the release group
+ * derived from the filename, because the debrid addons Avio plays
  * from essentially never send bingeGroup, so without the fallback the
  * feature would almost never fire.
  */

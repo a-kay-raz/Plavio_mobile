@@ -55,7 +55,7 @@ class NoHardwareDolbySelector : MediaCodecSelector {
  * Custom renderers factory that forces FFmpeg software decoding for Dolby/DTS
  * audio codecs by excluding them from MediaCodec selection.
  *
- * Unlike the previous PlavioRenderersFactory (which added a duplicate FFmpeg
+ * Unlike the previous AvioRenderersFactory (which added a duplicate FFmpeg
  * renderer and broke audio on some devices), this approach uses a custom
  * MediaCodecSelector to prevent MediaCodec from claiming these formats.
  * The standard FFmpeg extension renderer (added via EXTENSION_RENDERER_MODE_PREFER)
@@ -66,7 +66,7 @@ class NoHardwareDolbySelector : MediaCodecSelector {
  * The sink is otherwise the stock DefaultAudioSink (float output on).
  */
 @UnstableApi
-class PlavioAudioRenderersFactory(
+class AvioAudioRenderersFactory(
     context: Context,
     private val downmixConfig: DownmixConfig? = null,
 ) : DefaultRenderersFactory(context) {

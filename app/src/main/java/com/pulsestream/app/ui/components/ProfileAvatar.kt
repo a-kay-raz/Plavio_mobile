@@ -29,7 +29,7 @@ import java.io.File
 /** One built-in preset avatar (owner-approved set, 2026-10-24). */
 data class PresetAvatar(val id: String, val label: String, @DrawableRes val resId: Int)
 
-/** The 12 presets: 4 men, 4 women, 4 kids — one flat style, Plavio colors. */
+/** The 12 presets: 4 men, 4 women, 4 kids — one flat style, Avio colors. */
 val PRESET_AVATARS: List<PresetAvatar> = listOf(
     PresetAvatar("man_beard", "Man with beard", R.drawable.avatar_man_beard),
     PresetAvatar("man_glasses", "Man with glasses", R.drawable.avatar_man_glasses),

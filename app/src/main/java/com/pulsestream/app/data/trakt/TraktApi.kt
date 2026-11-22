@@ -30,7 +30,7 @@ class TraktApi {
         private val JSON = "application/json; charset=utf-8".toMediaType()
     }
 
-    private val userAgent = "Plavio/${BuildConfig.VERSION_NAME}"
+    private val userAgent = "Avio/${BuildConfig.VERSION_NAME}"
 
     data class Pkce(val verifier: String, val challenge: String, val state: String)
 
@@ -60,7 +60,7 @@ class TraktApi {
         return Pkce(verifier, challenge, state)
     }
 
-    /** The URL the user opens in a browser to approve Plavio. */
+    /** The URL the user opens in a browser to approve Avio. */
     fun authorizeUrl(pkce: Pkce): String {
         val params = listOf(
             "response_type" to "code",

@@ -156,7 +156,7 @@ private fun readNetworkType(context: Context): PlayerDeviceNetworkType {
     }
 }
 
-/** Top-center pill: network + clock + battery (Nuvio PlayerDeviceStatusOverlay, minus the finish-clock — Plavio already has an "Ends at" row). */
+/** Top-center pill: network + clock + battery (Nuvio PlayerDeviceStatusOverlay, minus the finish-clock — Avio already has an "Ends at" row). */
 @Composable
 fun PlayerDeviceStatusStrip(
     status: PlayerDeviceStatus,

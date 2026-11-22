@@ -667,7 +667,7 @@ fun LayoutSettingsScreen(
                 SettingsSectionHeader("Navigation bar style")
             }
             // Step 70: navigation dock style (Nuvio's NavBarStyle,
-            // Plavio scope: Adaptive = the current shrink-on-scroll dock,
+            // Avio scope: Adaptive = the current shrink-on-scroll dock,
             // Compact = icons only, always shrunk. Position stays bottom —
             // the dock's blur anchoring and the tabs' bottom padding are
             // built around the bottom seat.)

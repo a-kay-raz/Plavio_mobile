@@ -11,11 +11,11 @@ import org.json.JSONObject
  * Rows are derived from enabled addons; the user never creates one —
  * they only hide / reorder / rename / pin each derived row, and pick
  * which rows feed the hero. Nuvio stores the same blob per profile;
- * Plavio is single-profile, so one blob is enough.
+ * Avio is single-profile, so one blob is enough.
  *
  * Deliberately NOT ported from Nuvio: PINNED_POSITION (write-dead there),
- * collections / server rows (no such backends in Plavio),
- * hero style + trailer playback (Plavio's hero has one design, no
+ * collections / server rows (no such backends in Avio),
+ * hero style + trailer playback (Avio's hero has one design, no
  * trailer), Concierge / Smart Shelves (Enhanced-only derived sections).
  * CloudStream rows ARE ported (Phase 2, 2026-11-22): addonId "cs3:<pluginId>".
  * Pin does not sync anywhere — there is nothing to sync to.
