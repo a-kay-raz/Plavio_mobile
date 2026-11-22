@@ -35,6 +35,7 @@ object Routes {
     const val STREAM_BADGES = "stream_badges"
     const val PLAYER_TOOLBAR = "player_toolbar"
     const val INTEGRATIONS = "integrations"
+    const val TMDB_ENRICHMENT = "tmdb_enrichment"
     const val CLOUDSTREAM = "cloudstream"
     const val ABOUT = "about"
     const val WHATS_NEW = "whats_new"
