@@ -118,7 +118,7 @@ class PulseApp : Application(), ImageLoaderFactory {
         // the app from opening (v0.12.23 lesson: the build where Sentry
         // first went live crashed on open before it could report anything).
         appScope.launch { com.pulsestream.app.data.CrashReports.initIfEnabled(this@PulseApp, settings) }
-        // Quietly install the pre-installed addons (PlavioMeta + Cinemeta + subtitles) on first launch.
+        // Quietly install the pre-installed addons (Cinemeta + subtitles) on first launch.
         appScope.launch { repository.ensurePreinstalledAddons() }
         // CloudStream (CS3): cheap restore of the persisted registry
         // (repositories + installed plugins) so the stream leg and the
@@ -213,7 +213,7 @@ class PulseApp : Application(), ImageLoaderFactory {
             }
             // The fresh DB is empty but the preinstall_done_* flags survived
             // in SharedPreferences — without clearing them the bundled
-            // addons (PlavioMeta/Cinemeta/…) would never be reinstalled and
+            // addons (Cinemeta/…) would never be reinstalled and
             // the app would look broken with no explanation.
             runCatching { SettingsStore(this).clearPreinstallFlags() }
             buildDatabase()

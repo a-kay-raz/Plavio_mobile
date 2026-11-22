@@ -20,8 +20,10 @@ internal fun normalizeDetailType(type: String): String =
     if (type.equals("tv", ignoreCase = true)) "series" else type.lowercase()
 
 /**
- * TMDB-native IDs route to PlavioMeta, which resolves them server-side (the app carries no
- * TMDB key since v0.14.0). Shared by search, actor filmography, related titles, and future
+ * TMDB-native IDs resolve to Cinemeta (the default meta source): the id
+ * is converted to its IMDb id via the user's TMDB key inside
+ * [StreamRepository.getMetaFromAny], and Cinemeta serves the meta from
+ * there. Shared by search, actor filmography, related titles, and future
  * entry points.
  */
 suspend fun resolveDetailTarget(
@@ -33,5 +35,5 @@ suspend fun resolveDetailTarget(
     val reference = parseTmdbReference(metaId, type)
         ?: return DetailTarget(addonId, normalizeDetailType(type), metaId)
     val resolvedType = if (reference.mediaType == "movie") "movie" else "series"
-    return DetailTarget("com.plavio.catalogs", resolvedType, metaId)
+    return DetailTarget("com.linvo.cinemeta", resolvedType, metaId)
 }

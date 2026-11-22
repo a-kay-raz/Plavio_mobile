@@ -437,11 +437,11 @@ fun HomeScreen(
         onResumePlayback()
     }
 
-    /** Details for a resume card: PlavioMeta is the preferred meta addon. */
+    /** Details for a resume card: Cinemeta is the preferred meta addon. */
     fun openItemDetails(item: PlaybackState) {
         val isMovie = item.season == 0 && item.episode == 0
         onOpenDetail(
-            "com.plavio.catalogs",
+            "com.linvo.cinemeta",
             if (isMovie) "movie" else "series",
             item.videoId.substringBefore(":")
         )
