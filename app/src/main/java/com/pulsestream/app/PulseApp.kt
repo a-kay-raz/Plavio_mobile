@@ -108,10 +108,6 @@ class PulseApp : Application(), ImageLoaderFactory {
         profileDatabase = ProfileStore.openProfileDatabase(this, activeProfileId)
         settings = SettingsStore(this, ProfileStore.profilePrefsName(activeProfileId))
         repository = StreamRepository(db, profileDatabase, StremioApi(), settings)
-        // Anonymous install/session counting on the owner's own
-        // stats server (open-source backend, no Google — his order
-        // 2026-10-22). Fire-and-forget; never blocks startup.
-        appScope.launch { com.pulsestream.app.data.AppStats.trackLaunch(this@PulseApp) }
         // Sentry crash reports (his order 2026-10-23): ON by default with a
         // Settings opt-out. Initialized on a background thread, off the
         // launch path, and fully guarded — a Sentry failure can never stop
