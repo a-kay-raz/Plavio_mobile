@@ -292,7 +292,7 @@ fun AddonsScreen(
     val addons by repository.addons.collectAsState(initial = emptyList())
     var showDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    // Pre-fill for the import dialog when an avio-addons:// deep link opened
+    // Pre-fill for the import dialog when an plavio-addons:// deep link opened
     // the app (MainActivity stashed the link on the repository).
     var importPrefill by remember { mutableStateOf<String?>(null) }
     // Pre-fill for the single-addon dialog when a stremio:// deep link opened
@@ -1333,7 +1333,7 @@ private fun ImportBundleDialog(
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        placeholder = { Text("avio-addons://…", color = V117Muted) },
+                        placeholder = { Text("plavio-addons://…", color = V117Muted) },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(

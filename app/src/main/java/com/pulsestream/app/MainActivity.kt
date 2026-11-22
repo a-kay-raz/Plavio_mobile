@@ -569,7 +569,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * avio-addons:// deep link (manifest VIEW intent-filter): stash the
+     * plavio-addons:// deep link (manifest VIEW intent-filter): stash the
      * bundle link on the repository. PulseNav navigates to the Addons tab and
      * AddonsScreen opens its import dialog pre-filled — both cold start and
      * while the app is already running funnel through here.
@@ -794,7 +794,7 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Deep link: an avio-addons:// link opened the app (cold start or while
+    // Deep link: an plavio-addons:// link opened the app (cold start or while
     // running — MainActivity stashed it via handleAddonDeepLink). Jump to the
     // Addons tab; AddonsScreen picks up the pending bundle and opens its
     // import dialog pre-filled. Skipped on splash/onboarding so the startup
