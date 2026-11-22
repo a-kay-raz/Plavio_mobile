@@ -173,7 +173,7 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
         private set
 
     /** Applies a pill choice and reloads Home rows for it. */
-    fun setCloudStreamSelection(selection: String) {
+    fun updateCloudStreamSelection(selection: String) {
         repo.setCloudStreamHomeSelection(selection)
         cloudStreamSelection = selection
         refresh()
@@ -735,7 +735,7 @@ fun HomeScreen(
                                     CloudStreamProviderSelectorHeader(
                                         providers = vm.cloudStreamProviders,
                                         selectedProviderId = vm.cloudStreamSelection,
-                                        onSelect = { vm.setCloudStreamSelection(it) },
+                                        onSelect = { vm.updateCloudStreamSelection(it) },
                                     )
                                 }
                             }
@@ -799,7 +799,7 @@ fun HomeScreen(
                                 CloudStreamProviderSelectorHeader(
                                     providers = vm.cloudStreamProviders,
                                     selectedProviderId = vm.cloudStreamSelection,
-                                    onSelect = { vm.setCloudStreamSelection(it) },
+                                    onSelect = { vm.updateCloudStreamSelection(it) },
                                 )
                             }
                         }
