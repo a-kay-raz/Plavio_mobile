@@ -148,6 +148,15 @@ dependencies {
     // only the declared artifact, not the resolved one.
     constraints {
         implementation("com.squareup.okhttp3:okhttp") { version { strictly(libs.versions.okhttpRuntime.get()) } }
+        // CloudStream (CS3): same treatment for kotlinx-coroutines. The
+        // vendored runtime AAR was compiled against coroutines 1.11.0 and
+        // calls BuildersKt.runBlockingK, which exists only in 1.11.0+ — a
+        // silent NoSuchMethodError at runtime if resolution ever drops below
+        // it. Strictly pins the floor so a conflict fails the build instead
+        // of dying on the phone. Verified 2026-11-22: 5 AAR classes reference
+        // runBlockingK, and 1.11.0 renamed runBlocking to that JVM name.
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core") { version { strictly(libs.versions.coroutines.get()) } }
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android") { version { strictly(libs.versions.coroutines.get()) } }
     }
     // CloudStream (CS3) runtime: vendored AAR + the libraries plugins link
     // against (same set as the TV port; versions match Infuse/TV exactly).
