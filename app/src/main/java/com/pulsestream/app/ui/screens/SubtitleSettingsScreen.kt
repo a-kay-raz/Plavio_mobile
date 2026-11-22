@@ -57,7 +57,6 @@ import com.pulsestream.app.data.subtitleLanguageName
 import com.pulsestream.app.data.subtitleSizeName
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 
 /**
  * Settings > Subtitles: preferred subtitle languages (auto-selected in the
@@ -112,8 +111,8 @@ fun SubtitleSettingsScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Which subtitles turn on automatically, and how they look.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
                         modifier = Modifier.padding(start = 56.dp, end = 8.dp)
                     )
                 }
@@ -130,7 +129,7 @@ fun SubtitleSettingsScreen(
                 }
                 SettingsGroup(
                     {
-                        SettingsNavRow(
+                        V117NavRow(
                             icon = Icons.Filled.Translate,
                             title = "Preferred subtitle languages",
                             subtitle = if (subLangs.isEmpty()) {
@@ -138,29 +137,32 @@ fun SubtitleSettingsScreen(
                             } else {
                                 subLangs.joinToString(", ") { subtitleLanguageName(it) }
                             },
-                            onClick = { subLangPickerOpen = true }
+                            onClick = { subLangPickerOpen = true },
+                            trailing = { V117Chevron() }
                         )
                     },
                     {
-                        SettingsNavRow(
+                        V117NavRow(
                             icon = Icons.Filled.ClosedCaption,
                             title = "Subtitle appearance",
                             subtitle = styleSummary,
-                            onClick = { subStyleOpen = true }
+                            onClick = { subStyleOpen = true },
+                            trailing = { V117Chevron() }
                         )
                     },
                     {
                         // Step 38: custom subtitle font (built-ins + imported ttf/otf).
-                        SettingsNavRow(
+                        V117NavRow(
                             icon = Icons.Filled.TextFields,
                             title = "Subtitle font",
                             subtitle = subtitleFontLabel(subFontId, installedFonts),
-                            onClick = { subFontPickerOpen = true }
+                            onClick = { subFontPickerOpen = true },
+                            trailing = { V117Chevron() }
                         )
                     },
                     {
                         // Step 38: strip "[sound]" / "(sound)" / "NAME:" SDH cues.
-                        SettingsToggleRow(
+                        V117ToggleRow(
                             icon = Icons.Filled.VisibilityOff,
                             title = "Filter SDH captions",
                             subtitle = "Hide [sounds], (sounds) and speaker labels in subtitles",
@@ -183,12 +185,8 @@ fun SubtitleSettingsScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.Schedule,
-                            contentDescription = null,
-                            tint = TextSecondary,
-                            modifier = Modifier.padding(end = 12.dp)
-                        )
+                        SettingsIconTile(Icons.Filled.Schedule, "Subtitle timing")
+                        Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
                                 "Subtitle timing",
@@ -198,8 +196,8 @@ fun SubtitleSettingsScreen(
                             )
                             Text(
                                 "Shift all subtitles earlier or later",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = V117Muted
                             )
                         }
                     }
@@ -244,7 +242,7 @@ fun SubtitleSettingsScreen(
                         ) {
                             Text(
                                 "Reset timing",
-                                color = TextSecondary,
+                                color = V117Muted,
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }

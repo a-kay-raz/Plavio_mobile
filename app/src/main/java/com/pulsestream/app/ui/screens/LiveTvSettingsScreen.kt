@@ -157,7 +157,7 @@ fun LiveTvSettingsScreen(
                         password = true
                     )
                     Spacer(Modifier.height(8.dp))
-                    SettingsToggleRow(
+                    V117ToggleRow(
                         icon = Icons.Filled.Tv,
                         title = "Xtream enabled",
                         subtitle = "Load channels from this provider",
@@ -250,7 +250,7 @@ fun LiveTvSettingsScreen(
                         password = true
                     )
                     Spacer(Modifier.height(8.dp))
-                    SettingsToggleRow(
+                    V117ToggleRow(
                         icon = Icons.Filled.Dns,
                         title = "Stalker enabled",
                         subtitle = "Load channels from this portal",
@@ -320,7 +320,7 @@ fun LiveTvSettingsScreen(
                         color = TextPrimary
                     )
                     Spacer(Modifier.height(8.dp))
-                    SettingsToggleRow(
+                    V117ToggleRow(
                         icon = Icons.Filled.Schedule,
                         title = "Auto-detect guides",
                         subtitle = "Use M3U x-tvg-url headers and the Xtream xmltv.php feed",
