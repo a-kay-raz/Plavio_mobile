@@ -282,7 +282,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                         val seasons = meta.videos.map { it.season }.distinct().sorted()
                         selectSeason(seasons.first(), meta)
                     } else {
-                        loadStreams(meta.type, meta.id, meta.name)
+                        loadStreams(meta.type, meta.id, meta.name, parseReleaseYear(meta.releaseInfo))
                     }
                 }
             } catch (e: Exception) {
@@ -318,7 +318,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     fun selectEpisode(video: Video) {
         selectedVideo = video
         val meta = (metaState as? MetaUiState.Content)?.meta ?: return
-        loadStreams(meta.type, video.id, meta.name)
+        loadStreams(meta.type, video.id, meta.name, parseReleaseYear(meta.releaseInfo))
     }
 
     fun retryLoad(repo: StreamRepository, addonId: String, type: String, metaId: String) {
@@ -334,7 +334,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
      * fires) as soon as the first addon answers instead of waiting for
      * every addon — the fix for slow stream loading.
      */
-    fun loadStreams(type: String, videoId: String, title: String? = null) {
+    fun loadStreams(type: String, videoId: String, title: String? = null, year: Int? = null) {
         streamsJob?.cancel()
         probeJob?.cancel()
         pickState = PickState.Idle
@@ -342,7 +342,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
             streamsState = StreamsUiState.Loading
             var gotAny = false
             try {
-                repo.streamResultsFlow(type, videoId, title = title).collect { result ->
+                repo.streamResultsFlow(type, videoId, title = title, year = year).collect { result ->
                     if (result.streams.isNotEmpty()) {
                         gotAny = true
                         streamsState = StreamsUiState.Content(result.streams, result.subtitles, loadingMore = true)
@@ -362,7 +362,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                 while (!gotAny && attempt < 3) {
                     attempt++
                     kotlinx.coroutines.delay(1500L * attempt)
-                    repo.streamResultsFlow(type, videoId, title = title).collect { result ->
+                    repo.streamResultsFlow(type, videoId, title = title, year = year).collect { result ->
                         if (result.streams.isNotEmpty()) {
                             gotAny = true
                             streamsState = StreamsUiState.Content(result.streams, result.subtitles, loadingMore = true)
@@ -2256,6 +2256,10 @@ private fun DetailContent(
 private fun rememberSeasonList(meta: MetaDetail): List<Int> {
     return meta.videos.map { it.season }.distinct().sorted()
 }
+
+/** First 4-digit year in a releaseInfo string ("2016", "2016-03-04") — ranks the CS3 title fallback. */
+private fun parseReleaseYear(releaseInfo: String?): Int? =
+    releaseInfo?.let { Regex("(19|20)\\d{2}").find(it)?.value?.toIntOrNull() }
 
 /** One row of the episode watched action sheet: icon + label, full-width tap. */
 @Composable

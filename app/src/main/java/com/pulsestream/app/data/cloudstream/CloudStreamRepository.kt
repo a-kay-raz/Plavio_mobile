@@ -615,6 +615,27 @@ object CloudStreamRepository {
         }
     }
 
+    /**
+     * Phase 2: load a `plavio-cs-api:` route when the owning provider is
+     * unknown — Home/search poster clicks carry the route, not the
+     * provider id. Tries every runnable plugin in registry order; only
+     * the owner can decode the route, and [CloudStreamDexRuntime.load]
+     * throws before any network for non-owners, so the scan is cheap.
+     * Returns the first success, or failure when no owner resolved it.
+     */
+    suspend fun loadByRoute(data: String): Result<CloudStreamLoadItem> {
+        initialize()
+        var lastError: Throwable? = null
+        for (providerId in runnableProviderIds()) {
+            val result = load(providerId, data)
+            if (result.isSuccess) return result
+            lastError = result.exceptionOrNull()
+        }
+        return Result.failure(
+            lastError ?: IllegalStateException("CloudStream route could not be resolved")
+        )
+    }
+
     suspend fun loadLinks(providerId: String, data: String): Result<List<CloudStreamPlaybackSource>> {
         initialize()
         val requestKey = "$providerId\u0000$data"

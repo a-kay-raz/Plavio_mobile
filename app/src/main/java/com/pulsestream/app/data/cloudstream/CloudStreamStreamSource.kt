@@ -15,8 +15,9 @@ import kotlinx.coroutines.coroutineScope
  * fails the others.
  *
  * The search fallback needs a title, which [StreamRepository.streamResultsFlow]
- * does not carry — the call site passes it through [title] when it has meta.
- * Without a title there is no fallback, only the direct IMDb load.
+ * does not carry — the call site passes it through [title] when it has meta,
+ * plus the title's year through [year] when known (releaseInfo). Without a
+ * title there is no fallback, only the direct IMDb load.
  *
  * Plavio retarget of the TV port's CloudStreamStreamSource: Hilt dropped
  * (Plavio has no DI framework) and the TV AddonStreams return type replaced
@@ -34,6 +35,8 @@ object CloudStreamStreamSource {
         episode: Int?,
         title: String?,
         type: String,
+        /** Release year of the wanted title, when known — ranks fallback candidates. */
+        year: Int? = null,
     ): StreamResult = coroutineScope {
         val runnablePlugins = CloudStreamRepository.runnablePlugins()
         if (runnablePlugins.isEmpty()) return@coroutineScope StreamResult(emptyList(), emptyList())
@@ -59,7 +62,7 @@ object CloudStreamStreamSource {
                         } else {
                             null
                         }
-                        val resolvedItem = loadItem ?: searchFallback(providerId, title, type)
+                        val resolvedItem = loadItem ?: searchFallback(providerId, title, year, type)
                         val targetData = if (resolvedItem == null) {
                             null
                         } else {
@@ -90,31 +93,80 @@ object CloudStreamStreamSource {
         StreamResult(streams = streams, subtitles = subtitles)
     }
 
+    /**
+     * Phase 2 fallback — richer than the TV port's exact-or-contains pick.
+     * Candidates are RANKED (exact title + matching year beats exact title,
+     * which beats a year-matching contains, which beats a bare contains;
+     * a year mismatch drags a candidate down) and each of the top 3 is
+     * loaded and VERIFIED against the wanted title/year before use, so a
+     * provider returning the wrong remake never yields its streams.
+     * Per-provider: called inside the caller's runCatching, so one bad
+     * provider never breaks the others.
+     */
     private suspend fun searchFallback(
         providerId: String,
         title: String?,
+        year: Int?,
         type: String,
     ): CloudStreamLoadItem? {
         val query = title?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val results = CloudStreamRepository.search(query, providerId)
             .firstOrNull()?.getOrNull().orEmpty()
-        val match = bestSearchMatch(results, query, type) ?: return null
-        return CloudStreamRepository.load(providerId, match.data).getOrNull()
+        for (candidate in rankSearchMatches(results, query, year, type).take(3)) {
+            val loaded = CloudStreamRepository.load(providerId, candidate.data).getOrNull()
+                ?: continue
+            if (matchesWantedTitle(loaded, query, year)) return loaded
+        }
+        return null
     }
 
-    private fun bestSearchMatch(
+    private fun rankSearchMatches(
         items: List<CloudStreamSearchItem>,
         title: String,
+        year: Int?,
         type: String,
-    ): CloudStreamSearchItem? {
+    ): List<CloudStreamSearchItem> {
         val wanted = normalizedTitle(title)
-        if (wanted.isEmpty()) return null
+        if (wanted.isEmpty()) return emptyList()
         val typed = items.filter { it.type.tvTypeString == type }.ifEmpty { items }
-        return typed.firstOrNull { normalizedTitle(it.name) == wanted }
-            ?: typed.firstOrNull {
-                val itemTitle = normalizedTitle(it.name)
-                itemTitle.contains(wanted) || wanted.contains(itemTitle)
+        fun titleScore(item: CloudStreamSearchItem): Int {
+            val itemTitle = normalizedTitle(item.name)
+            return when {
+                itemTitle == wanted -> 100
+                itemTitle.startsWith(wanted) || wanted.startsWith(itemTitle) -> 60
+                itemTitle.contains(wanted) || wanted.contains(itemTitle) -> 40
+                else -> 0
             }
+        }
+        fun yearScore(item: CloudStreamSearchItem): Int = when {
+            year == null || item.year == null -> 0
+            item.year == year -> 50
+            kotlin.math.abs(item.year - year) == 1 -> 25
+            else -> -100
+        }
+        // A title relation is mandatory — a matching year alone is not a match.
+        return typed.filter { titleScore(it) > 0 }
+            .sortedByDescending { titleScore(it) + yearScore(it) }
+    }
+
+    private fun matchesWantedTitle(
+        loaded: CloudStreamLoadItem,
+        title: String,
+        year: Int?,
+    ): Boolean {
+        val wanted = normalizedTitle(title)
+        if (wanted.isEmpty()) return false
+        val loadedTitle = normalizedTitle(loaded.name)
+        val titleOk = loadedTitle == wanted ||
+            loadedTitle.contains(wanted) || wanted.contains(loadedTitle)
+        if (!titleOk) return false
+        // Year: only a hard mismatch rejects — an unknown year on either
+        // side, or an off-by-one in the metadata, still matches.
+        val loadedYear = loaded.year
+        if (year != null && loadedYear != null &&
+            kotlin.math.abs(loadedYear - year) > 1
+        ) return false
+        return true
     }
 
     private fun normalizedTitle(value: String): String =

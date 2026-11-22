@@ -3,6 +3,8 @@ package com.pulsestream.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,6 +39,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -109,6 +115,8 @@ import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.LocalPosterStyle
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.data.CustomListsRepository
+import com.pulsestream.app.data.cloudstream.CloudStreamPluginItem
+import com.pulsestream.app.data.cloudstream.CloudStreamRepository
 import com.pulsestream.app.ui.components.AddToListSheet
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.components.SafePosterImage
@@ -156,6 +164,27 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
     var homePrefs by mutableStateOf(StoredHomeRowPrefs())
         private set
 
+    /** CS3 provider selection for the Home pill ("all" | "off" | plugin id | ""). */
+    var cloudStreamSelection by mutableStateOf("")
+        private set
+
+    /** Runnable CS3 providers, for the Home selector pill. */
+    var cloudStreamProviders by mutableStateOf<List<CloudStreamPluginItem>>(emptyList())
+        private set
+
+    /** Applies a pill choice and reloads Home rows for it. */
+    fun setCloudStreamSelection(selection: String) {
+        repo.setCloudStreamHomeSelection(selection)
+        cloudStreamSelection = selection
+        refresh()
+    }
+
+    /** Re-reads the CS3 selection + runnable providers after a row load. */
+    private fun syncCloudStreamSelection() {
+        cloudStreamSelection = repo.resolveCloudStreamHomeSelection()
+        cloudStreamProviders = CloudStreamRepository.runnablePlugins()
+    }
+
     /**
      * Cache-first loading: show cached catalogs instantly, then quietly
      * refresh in the background — but only when the cache is stale (the
@@ -169,6 +198,7 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
                 // Prefs are read after the row load — the load normalizes
                 // them (new rows get records), so this is never stale.
                 homePrefs = repo.homeRowPrefs()
+                syncCloudStreamSelection()
                 if (cached.isNotEmpty()) {
                     val stale = !repo.isCatalogCacheFresh()
                     uiState = HomeUiState.Content(cached, refreshing = stale)
@@ -186,6 +216,7 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
                 // (hero or cards).
                 val rows = repo.refreshCatalogRows().filter { it.type != "tv" }
                 homePrefs = repo.homeRowPrefs()
+                syncCloudStreamSelection()
                 uiState = if (rows.isEmpty()) HomeUiState.Empty else HomeUiState.Content(rows)
             } catch (e: Exception) {
                 uiState = HomeUiState.Error(e.message ?: "Couldn't load catalogs")
@@ -208,7 +239,10 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
         viewModelScope.launch {
             uiState = HomeUiState.Content(current, refreshing = true)
             runCatching { repo.refreshCatalogRows().filter { it.type != "tv" } }
-                .onSuccess { uiState = HomeUiState.Content(it) }
+                .onSuccess {
+                    syncCloudStreamSelection()
+                    uiState = HomeUiState.Content(it)
+                }
                 .onFailure { uiState = HomeUiState.Content(current) }
         }
     }
@@ -329,6 +363,23 @@ fun HomeScreen(
             resumePromptItem = item
             resumePromptOpen = true
         }
+    }
+    // CS3 (Phase 2): when the plugin registry changes (install/enable/
+    // disable/remove) or the runnable-provider count changes, Home rows
+    // must re-fetch — mirror of Infuse's MainAppContent refresh key
+    // ("${registryRevision}:${runnableCount}"). The first emission is
+    // skipped: the initial load already fetches. Guarded to Content so a
+    // registry change during the first load never restarts it.
+    val cs3State by CloudStreamRepository.uiState.collectAsState()
+    val cs3RefreshKey = "${cs3State.registryRevision}:${cs3State.plugins.count { it.isRunnable }}"
+    var seenCs3RefreshKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(cs3RefreshKey) {
+        if (seenCs3RefreshKey == null) {
+            seenCs3RefreshKey = cs3RefreshKey
+            return@LaunchedEffect
+        }
+        seenCs3RefreshKey = cs3RefreshKey
+        if (vm.uiState is HomeUiState.Content) vm.refresh()
     }
     val scope = rememberCoroutineScope()
 
@@ -674,7 +725,20 @@ fun HomeScreen(
                         }
                         // Watchlist intentionally NOT shown here (v0.8.21):
                         // bookmarked titles live only in the Watchlist tab.
+                        // CS3 (Phase 2): the provider selector pill sits
+                        // directly above the first CS3 row (Infuse's
+                        // CloudStreamProviderSelectorHeader placement).
+                        val firstCs3RowIndex = state.rows.indexOfFirst { it.addonId.startsWith("cs3:") }
                         state.rows.forEachIndexed { rowIndex, row ->
+                            if (rowIndex == firstCs3RowIndex && vm.cloudStreamProviders.isNotEmpty()) {
+                                item(key = "cloudstream_provider_selector") {
+                                    CloudStreamProviderSelectorHeader(
+                                        providers = vm.cloudStreamProviders,
+                                        selectedProviderId = vm.cloudStreamSelection,
+                                        onSelect = { vm.setCloudStreamSelection(it) },
+                                    )
+                                }
+                            }
                             // THE v0.3.0 scroll-crash fix: the key MUST include the
                             // catalog TYPE. Cinemeta declares the same catalog ids
                             // ("top", "year", "imdbRating") for both movie and
@@ -698,7 +762,8 @@ fun HomeScreen(
                                         prefs.showCatalogType &&
                                             !row.catalogName.startsWith(it, ignoreCase = true)
                                     },
-                                    onMoreClick = { onOpenCatalog(row) }
+                                    onMoreClick = if (row.addonId.startsWith("cs3:")) null
+                                        else { onOpenCatalog(row) }
                                 )
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -718,6 +783,19 @@ fun HomeScreen(
                                 }
                                 Spacer(Modifier.height(4.dp))
                               }
+                            }
+                        }
+                        // No CS3 rows on Home (selection "off", or the
+                        // fetch failed) but providers exist: the pill still
+                        // shows, at the end of the catalog rows, so the
+                        // user can always switch back from "off".
+                        if (firstCs3RowIndex == -1 && vm.cloudStreamProviders.isNotEmpty()) {
+                            item(key = "cloudstream_provider_selector") {
+                                CloudStreamProviderSelectorHeader(
+                                    providers = vm.cloudStreamProviders,
+                                    selectedProviderId = vm.cloudStreamSelection,
+                                    onSelect = { vm.setCloudStreamSelection(it) },
+                                )
                             }
                         }
                         // Step 51: collection sections (Nuvio
@@ -1725,5 +1803,153 @@ private fun CollectionFolderCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/**
+ * Phase 2: CS3 provider selector (Infuse's CloudStreamProviderSelectorHeader,
+ * Plavio palette — flat panel + accent border, no glass). "All CS3" shows
+ * every runnable provider's sections, one provider shows only its sections,
+ * "Off" hides CS3 sections. The pill stays visible with no CS3 rows so
+ * "Off" can always be undone.
+ */
+@Composable
+private fun CloudStreamProviderSelectorHeader(
+    providers: List<CloudStreamPluginItem>,
+    selectedProviderId: String,
+    onSelect: (String) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val palette = LocalPalette.current
+    val selectedName = when (selectedProviderId) {
+        "all" -> "All CS3"
+        "off" -> "Off"
+        "" -> providers.firstOrNull()?.metadata?.name ?: "CloudStream"
+        else -> providers.firstOrNull { it.metadata.id.value == selectedProviderId }
+            ?.metadata?.name ?: "CloudStream"
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(palette.background)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "CloudStream",
+                color = TextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(palette.panel.copy(alpha = 0.92f))
+                    .border(1.2.dp, palette.accent, RoundedCornerShape(20.dp))
+                    .clickable { menuExpanded = !menuExpanded }
+                    .padding(horizontal = 11.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Layers,
+                    contentDescription = null,
+                    tint = palette.accent,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = selectedName,
+                    color = TextPrimary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Icon(
+                    imageVector = if (menuExpanded) Icons.Filled.KeyboardArrowUp
+                        else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+        }
+        if (menuExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(palette.panel.copy(alpha = 0.95f))
+                    .border(1.dp, palette.accent.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                    .padding(8.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CloudStreamProviderMenuRow(
+                        label = "All providers",
+                        selected = selectedProviderId == "all",
+                        onClick = { onSelect("all"); menuExpanded = false },
+                    )
+                    providers.forEach { plugin ->
+                        CloudStreamProviderMenuRow(
+                            label = plugin.metadata.name,
+                            selected = selectedProviderId == plugin.metadata.id.value,
+                            onClick = { onSelect(plugin.metadata.id.value); menuExpanded = false },
+                        )
+                    }
+                    CloudStreamProviderMenuRow(
+                        label = "Off",
+                        selected = selectedProviderId == "off",
+                        onClick = { onSelect("off"); menuExpanded = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudStreamProviderMenuRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val palette = LocalPalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .then(if (selected) Modifier.background(palette.accent.copy(alpha = 0.16f)) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = TextPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = palette.accent,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
