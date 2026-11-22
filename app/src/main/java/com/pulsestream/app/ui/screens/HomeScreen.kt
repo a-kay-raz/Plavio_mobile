@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -48,7 +49,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,9 +76,13 @@ import com.pulsestream.app.ui.tv.rememberIsTv
 import com.pulsestream.app.ui.tv.tvFocusRing
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -93,6 +97,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -122,6 +127,7 @@ import com.pulsestream.app.ui.components.CardDepthSurface
 import com.pulsestream.app.ui.components.CustomPosterResolver
 import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.LocalPosterStyle
+import com.pulsestream.app.ui.components.PosterStyle
 import com.pulsestream.app.ui.components.cardDepth
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.data.CustomListsRepository
@@ -715,7 +721,7 @@ fun HomeScreen(
                                 SectionTitle("Continue Watching")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
                                     itemsIndexed(
                                         mainWatching,
@@ -735,7 +741,7 @@ fun HomeScreen(
                                         }
                                     }
                                 }
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(12.dp))
                               }
                             }
                         }
@@ -1691,6 +1697,19 @@ private fun ReleaseRadarCard(
     }
 }
 
+/**
+ * Nuvio CW card (HomeContinueWatchingSection, "card" style — the
+ * default): a 1.77 landscape thumb with the episode code + title
+ * INSIDE the thumb over a bottom gradient, a top-end status badge
+ * ("45m left" / "62% watched" / "Up next"), a top-start
+ * smart-signal pill, and a 3dp progress bar inset at the bottom.
+ * Card width = landscape poster width x 1.2 (Nuvio
+ * ContinueWatchingLandscapeCardScale), corner = poster corner
+ * radius. The visible remove-x stays (Plavio requirement — Nuvio
+ * has none); the badge sits left of it. The third Nuvio line
+ * (episode title) is NOT shown: PlaybackState carries no episode
+ * title. "wide"/"poster" follow Nuvio's Wide/Poster cards.
+ */
 @Composable
 private fun ContinueWatchingCard(
     item: PlaybackState,
@@ -1699,14 +1718,6 @@ private fun ContinueWatchingCard(
     onRemove: () -> Unit,
     onClick: () -> Unit
 ) {
-    // Card style (Nuvio ContinueWatchingSectionStyle): card = current wide
-    // thumbnail, wide = larger thumbnail, poster = tall poster card.
-    // Default card is 247x140dp (Nuvio CW card).
-    val (cardWidth, thumbHeight) = when (style) {
-        "wide" -> 280.dp to 140.dp
-        "poster" -> 128.dp to 192.dp
-        else -> 247.dp to 140.dp
-    }
     // Nuvio blurUnwatchedEpisodes: an episode thumb blurs 18dp while the
     // episode is unwatched (below the watched threshold).
     val isEpisode = item.season > 0 || item.episode > 0
@@ -1725,29 +1736,506 @@ private fun ContinueWatchingCard(
             shape = "landscape"
         )
     } else null
-    Column(
+    val artModel = cwCustom ?: tmdbSizedImage(item.poster, "w780")
+    val progressFraction = if (item.durationMs > 0) {
+        (item.positionMs.toFloat() / item.durationMs).coerceIn(0f, 1f)
+    } else 0f
+    val episodeCode = if (isEpisode) "S${item.season} E${item.episode}" else null
+    val signalText = if (progressFraction >= 0.70f) "Almost there" else "Resume ready"
+    when (style) {
+        "wide" -> CwWideCard(
+            item = item,
+            cornerRadius = posterStyle.cornerRadius,
+            progressFraction = progressFraction,
+            episodeCode = episodeCode,
+            signalText = signalText,
+            blurThumb = blurThumb,
+            artModel = artModel,
+            onRemove = onRemove,
+            onClick = onClick
+        )
+        "poster" -> CwPosterCard(
+            item = item,
+            posterStyle = posterStyle,
+            progressFraction = progressFraction,
+            episodeCode = episodeCode,
+            signalText = signalText,
+            blurThumb = blurThumb,
+            artModel = artModel,
+            onRemove = onRemove,
+            onClick = onClick
+        )
+        else -> CwLandscapeCard(
+            item = item,
+            posterStyle = posterStyle,
+            progressFraction = progressFraction,
+            episodeCode = episodeCode,
+            badgeText = cwBadgeText(item, progressFraction),
+            signalText = signalText,
+            blurThumb = blurThumb,
+            artModel = artModel,
+            onRemove = onRemove,
+            onClick = onClick
+        )
+    }
+}
+
+/** Nuvio continueWatchingCardBadgeText, adapted to PlaybackState (no release alerts / air dates): time left when known, "% watched" when the duration is unknown, "Up next" at 0 progress. */
+private fun cwBadgeText(item: PlaybackState, progressFraction: Float): String {
+    if (progressFraction > 0f) {
+        if (item.durationMs <= 0L) {
+            return "${(progressFraction * 100f).roundToInt().coerceIn(1, 99)}% watched"
+        }
+        val remainingMs = (item.durationMs - item.positionMs).coerceAtLeast(0L)
+        return "${formatRemaining(remainingMs)} left"
+    }
+    return "Up next"
+}
+
+/** Nuvio ContinueWatchingSmartSignalPill: black 0.40 pill, white 0.14 border, AutoAwesome glyph. */
+@Composable
+private fun CwSmartSignalPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.Black.copy(alpha = 0.40f))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(999.dp))
+            .padding(
+                horizontal = if (compact) 8.dp else 9.dp,
+                vertical = if (compact) 5.dp else 6.dp
+            ),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.AutoAwesome,
+            contentDescription = null,
+            modifier = Modifier.size(if (compact) 12.dp else 13.dp),
+            tint = Color.White.copy(alpha = 0.92f)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = if (compact) 9.sp else 10.sp,
+                fontWeight = FontWeight.SemiBold
+            ),
+            color = Color.White.copy(alpha = 0.92f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** Nuvio Card-style CW metrics, tiered on the base poster width exactly like Nuvio's continueWatchingLandscapeCardMetrics. */
+private data class CwLandscapeMetrics(
+    val width: Dp,
+    val contentPadding: Dp,
+    val textGap: Dp,
+    val badgeInset: Dp,
+    val badgeHorizontalPadding: Dp,
+    val badgeVerticalPadding: Dp,
+    val progressHorizontalPadding: Dp,
+    val progressBottomPadding: Dp,
+    val titleTextSize: TextUnit,
+    val metaTextSize: TextUnit,
+    val badgeTextSize: TextUnit,
+)
+
+private fun cwLandscapeMetrics(posterStyle: PosterStyle): CwLandscapeMetrics {
+    val width = posterStyle.landscapeWidth * 1.2f
+    return when {
+        posterStyle.cardWidth.value <= 108f -> CwLandscapeMetrics(
+            width = width,
+            contentPadding = 8.dp,
+            textGap = 1.dp,
+            badgeInset = 6.dp,
+            badgeHorizontalPadding = 6.dp,
+            badgeVerticalPadding = 2.dp,
+            progressHorizontalPadding = 8.dp,
+            progressBottomPadding = 3.dp,
+            titleTextSize = 12.sp,
+            metaTextSize = 9.sp,
+            badgeTextSize = 8.sp
+        )
+        posterStyle.cardWidth.value <= 120f -> CwLandscapeMetrics(
+            width = width,
+            contentPadding = 9.dp,
+            textGap = 1.dp,
+            badgeInset = 6.dp,
+            badgeHorizontalPadding = 7.dp,
+            badgeVerticalPadding = 3.dp,
+            progressHorizontalPadding = 8.dp,
+            progressBottomPadding = 3.dp,
+            titleTextSize = 13.sp,
+            metaTextSize = 10.sp,
+            badgeTextSize = 9.sp
+        )
+        else -> CwLandscapeMetrics(
+            width = width,
+            contentPadding = 10.dp,
+            textGap = 2.dp,
+            badgeInset = 7.dp,
+            badgeHorizontalPadding = 7.dp,
+            badgeVerticalPadding = 3.dp,
+            progressHorizontalPadding = 9.dp,
+            progressBottomPadding = 4.dp,
+            titleTextSize = 14.sp,
+            metaTextSize = 10.sp,
+            badgeTextSize = 10.sp
+        )
+    }
+}
+
+/** Nuvio ContinueWatchingCard ("card" style): landscape thumb, gradient, in-thumb text, status badge, 3dp progress bar. */
+@Composable
+private fun CwLandscapeCard(
+    item: PlaybackState,
+    posterStyle: PosterStyle,
+    progressFraction: Float,
+    episodeCode: String?,
+    badgeText: String,
+    signalText: String,
+    blurThumb: Boolean,
+    artModel: String?,
+    onRemove: () -> Unit,
+    onClick: () -> Unit
+) {
+    val metrics = remember(posterStyle.cardWidth, posterStyle.cornerRadius) {
+        cwLandscapeMetrics(posterStyle)
+    }
+    val palette = LocalPalette.current
+    val corner = RoundedCornerShape(posterStyle.cornerRadius)
+    Box(
         modifier = Modifier
-            .width(cardWidth)
-            .tvFocusRing(RoundedCornerShape(14.dp))
+            .width(metrics.width)
+            .aspectRatio(1.77f)
+            .clip(corner)
+            .background(palette.panel)
+            .cardDepth(corner, CardDepthSurface.ContinueWatching)
+            .tvFocusRing(corner)
+            .clickable(onClick = onClick)
+            .focusable()
+    ) {
+        SafePosterImage(
+            model = artModel,
+            contentDescription = item.title,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (blurThumb) Modifier.blur(18.dp) else Modifier)
+                .drawWithContent {
+                    drawContent()
+                    // Nuvio bottom gradient: transparent from 45% height,
+                    // background 0.70 at 60%, 0.95 at the bottom.
+                    val startY = size.height * 0.45f
+                    val gradient = Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color.Transparent,
+                            0.60f to palette.background.copy(alpha = 0.70f),
+                            1.0f to palette.background.copy(alpha = 0.95f),
+                        ),
+                        startY = startY,
+                        endY = size.height,
+                    )
+                    drawRect(
+                        brush = gradient,
+                        topLeft = Offset(-2f, startY),
+                        size = Size(size.width + 4f, (size.height - startY) + 4f),
+                    )
+                }
+        )
+        CwSmartSignalPill(
+            text = signalText,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(metrics.badgeInset)
+        )
+        // Visible remove button (Plavio requirement): top-end.
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(6.dp)
+                .size(28.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.65f))
+        ) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "Remove from Continue Watching",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        // Status badge, top-end left of the remove button.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = metrics.badgeInset, end = metrics.badgeInset + 28.dp + 6.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(palette.background.copy(alpha = 0.80f))
+                .padding(
+                    horizontal = metrics.badgeHorizontalPadding,
+                    vertical = metrics.badgeVerticalPadding
+                )
+        ) {
+            Text(
+                text = badgeText,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = metrics.badgeTextSize,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = Color.White,
+                maxLines = 1
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(metrics.contentPadding),
+            verticalArrangement = Arrangement.spacedBy(metrics.textGap)
+        ) {
+            if (episodeCode != null) {
+                Text(
+                    text = episodeCode,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = metrics.metaTextSize,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = metrics.titleTextSize,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (progressFraction > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(
+                        horizontal = metrics.progressHorizontalPadding,
+                        vertical = metrics.progressBottomPadding
+                    )
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(999.dp))
+                    .height(3.dp)
+                    .background(Color.Black.copy(alpha = 0.30f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progressFraction)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(palette.accent)
+                )
+            }
+        }
+    }
+}
+
+/** Nuvio ContinueWatchingWideCard (phone: 280x120): horizontal row, poster strip left, title + meta + progress + "% watched" right. */
+@Composable
+private fun CwWideCard(
+    item: PlaybackState,
+    cornerRadius: Dp,
+    progressFraction: Float,
+    episodeCode: String?,
+    signalText: String,
+    blurThumb: Boolean,
+    artModel: String?,
+    onRemove: () -> Unit,
+    onClick: () -> Unit
+) {
+    val palette = LocalPalette.current
+    val corner = RoundedCornerShape(cornerRadius)
+    Row(
+        modifier = Modifier
+            .width(280.dp)
+            .height(120.dp)
+            .clip(corner)
+            .background(palette.panel)
+            .border(1.5.dp, Color.White.copy(alpha = 0.15f), corner)
+            .cardDepth(corner, CardDepthSurface.ContinueWatching)
+            .tvFocusRing(corner)
             .clickable(onClick = onClick)
             .focusable()
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(thumbHeight)
-                .liquidGlass(RoundedCornerShape(14.dp))
-                .cardDepth(RoundedCornerShape(14.dp), CardDepthSurface.ContinueWatching)
+                .width(80.dp)
+                .fillMaxHeight()
+                .background(palette.panel)
         ) {
             SafePosterImage(
-                model = cwCustom ?: tmdbSizedImage(item.poster, "w780"),
+                model = artModel,
                 contentDescription = item.title,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
                     .then(if (blurThumb) Modifier.blur(18.dp) else Modifier)
             )
-            // Visible remove button: live channels can leak into Continue
-            // Watching with no expiry, so the user must be able to clear
-            // any entry by hand.
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .weight(1f)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = item.title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    CwSmartSignalPill(
+                        text = signalText,
+                        compact = true,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier
+                            .padding(start = 2.dp)
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.Black.copy(alpha = 0.65f))
+                    ) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Remove from Continue Watching",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = episodeCode ?: "Movie",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (progressFraction > 0f) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(999.dp))
+                            .height(4.dp)
+                            .background(Color.White.copy(alpha = 0.10f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progressFraction)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(palette.accent)
+                        )
+                    }
+                    Text(
+                        text = "${(progressFraction * 100f).roundToInt().coerceIn(1, 99)}% watched",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = TextSecondary
+                    )
+                }
+            } else {
+                // No progress yet: the "Up next" badge sits where the bar goes.
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(palette.background.copy(alpha = 0.80f))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Up next",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Nuvio ContinueWatchingPosterCard: tall poster, progress pill at the bottom, title + episode code below. */
+@Composable
+private fun CwPosterCard(
+    item: PlaybackState,
+    posterStyle: PosterStyle,
+    progressFraction: Float,
+    episodeCode: String?,
+    signalText: String,
+    blurThumb: Boolean,
+    artModel: String?,
+    onRemove: () -> Unit,
+    onClick: () -> Unit
+) {
+    val palette = LocalPalette.current
+    val corner = RoundedCornerShape(posterStyle.cornerRadius)
+    Column(
+        modifier = Modifier.width(posterStyle.cardWidth),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(posterStyle.cardHeight)
+                .clip(corner)
+                .background(palette.panel)
+                .cardDepth(corner, CardDepthSurface.ContinueWatching)
+                .tvFocusRing(corner)
+                .clickable(onClick = onClick)
+                .focusable()
+        ) {
+            SafePosterImage(
+                model = artModel,
+                contentDescription = item.title,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (blurThumb) Modifier.blur(18.dp) else Modifier)
+            )
+            CwSmartSignalPill(
+                text = signalText,
+                compact = true,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
             IconButton(
                 onClick = onRemove,
                 modifier = Modifier
@@ -1764,52 +2252,93 @@ private fun ContinueWatchingCard(
                     modifier = Modifier.size(16.dp)
                 )
             }
-            if (item.durationMs > 0) {
-                LinearProgressIndicator(
-                    progress = { (item.positionMs.toFloat() / item.durationMs).coerceIn(0f, 1f) },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp),
-                    color = LocalPalette.current.accent,
-                    trackColor = Color.Black.copy(alpha = 0.5f)
+            if (progressFraction <= 0f && episodeCode != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 8.dp, end = 8.dp + 28.dp + 6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(palette.background.copy(alpha = 0.80f))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Up next",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+            }
+            if (progressFraction > 0f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 10.dp, vertical = 10.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(palette.panel)
+                        .padding(horizontal = 6.dp, vertical = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(posterStyle.cardWidth - 32.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .height(4.dp)
+                            .background(palette.accent.copy(alpha = 0.16f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progressFraction)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(palette.accent)
+                        )
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 18.sp
+                    ),
+                    color = TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (episodeCode != null) {
+                Text(
+                    text = episodeCode,
+                    modifier = Modifier.padding(start = 6.dp),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = TextSecondary
                 )
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = item.title,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        val remainingMs = item.durationMs - item.positionMs
-        // H-A (owner's pick 2026-10-24): the slot under a Continue
-        // Watching title carries the time left as a quiet micro label —
-        // the same slot catalog cards use for the popularity meter, and
-        // no meter here. (PlaybackState has no rating, so no rating
-        // chip on these cards.)
-        val slotStyle = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.8.sp
-        )
-        if (remainingMs > 60_000) {
-            Text(
-                text = "${formatRemaining(remainingMs)} LEFT".uppercase(),
-                style = slotStyle,
-                color = TextSecondary,
-                maxLines = 1
-            )
-        } else {
-            Text(
-                text = "RESUME",
-                style = slotStyle,
-                color = TextSecondary,
-                maxLines = 1
-            )
-        }
     }
 }
+
 
 /** "50m left" / "1h 20m left" for Continue Watching cards. */
 private fun formatRemaining(ms: Long): String {
