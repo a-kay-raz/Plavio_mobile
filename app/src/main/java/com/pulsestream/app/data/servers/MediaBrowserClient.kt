@@ -203,7 +203,11 @@ object MediaBrowserClient {
             posterUrl = imageUrl(server, id),
             backdropUrl = backdropUrl(server, id),
             overview = row.optString("Overview").takeIf { it.isNotBlank() },
-            imdbId = null, // MediaBrowser items carry no IMDb id in this read
+            // Jellyfin/Emby report ProviderIds (Imdb/Tmdb/Tvdb) on Items
+            // by default — the IMDb id lets Discover taps open the Cinemeta
+            // detail page for a server title.
+            imdbId = row.optJSONObject("ProviderIds")
+                ?.optString("Imdb")?.takeIf { it.startsWith("tt", ignoreCase = true) },
             season = row.optInt("ParentIndexNumber", 0).takeIf { it > 0 },
             episode = row.optInt("IndexNumber", 0).takeIf { it > 0 },
             seriesId = row.optString("SeriesId").takeIf { it.isNotBlank() },
