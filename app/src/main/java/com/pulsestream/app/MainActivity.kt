@@ -89,7 +89,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -381,19 +380,6 @@ class MainActivity : ComponentActivity() {
         // Safety net: (re)schedule the episode check on cold start.
         // Idempotent (KEEP) and a no-op when alerts are disabled.
         EpisodeNotifications.ensureScheduled(this)
-        // Anonymous-stats heartbeat (the owner's own open-source
-        // counting, 2026-10-22): while the app is on screen, one tiny
-        // ping every 5 minutes — this is what makes "online now" on
-        // his stats server true. RESUMED only, so time in the
-        // background never counts as online.
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                while (true) {
-                    delay(5 * 60 * 1000L)
-                    com.pulsestream.app.data.AppStats.heartbeat(this@MainActivity)
-                }
-            }
-        }
         // PiP play/pause RemoteAction receiver (explicit intent, not exported).
         val pipFilter = IntentFilter(ACTION_PIP_TOGGLE)
         ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -540,13 +526,6 @@ class MainActivity : ComponentActivity() {
         runCatching { pipEmergencyStop?.invoke() }
     }
 
-    override fun onStart() {
-        super.onStart()
-        // Time-in-app (owner's order 2026-10-25): arm the session clock;
-        // onStop reports the real foreground duration to Stats.
-        com.pulsestream.app.data.AppStats.sessionStarted()
-    }
-
     override fun onResume() {
         super.onResume()
         // Back in fullscreen (e.g. PiP expanded): the next onStop is a
@@ -556,7 +535,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        com.pulsestream.app.data.AppStats.sessionEnded(this)
         // PiP dismissed with X: activity stops but is NOT destroyed and
         // the player screen never leaves composition — the dismissal
         // handler stops playback directly instead of relying on the

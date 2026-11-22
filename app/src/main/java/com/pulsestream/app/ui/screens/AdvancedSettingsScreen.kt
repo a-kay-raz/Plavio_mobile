@@ -11,7 +11,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,7 +51,6 @@ fun AdvancedSettingsScreen(
 ) {
     val settings = repository.settings
     val context = LocalContext.current
-    var telemetryEnabled by remember { mutableStateOf(com.pulsestream.app.data.AppStats.enabled(context)) }
     var sentryEnabled by remember { mutableStateOf(repository.settings.sentryEnabled) }
     // Step 70: which cache was cleared most recently ("playback" / "images" / "").
     var clearedCache by remember { mutableStateOf("") }
@@ -91,18 +89,6 @@ fun AdvancedSettingsScreen(
                             subtitle = "Pause automatic hero slides and decorative pulses; also respects Android animation settings.",
                             checked = reducedMotion,
                             onCheckedChange = { com.pulsestream.app.data.MotionPreferences.setReduced(context, it) }
-                        )
-                    },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.Info,
-                            title = "Anonymous usage counting",
-                            subtitle = "On by default. Counts installs and active users on Avio's own server — a random ID only, no personal data, no Google.",
-                            checked = telemetryEnabled,
-                            onCheckedChange = {
-                                com.pulsestream.app.data.AppStats.setEnabled(context, it)
-                                telemetryEnabled = it
-                            }
                         )
                     }
                 )

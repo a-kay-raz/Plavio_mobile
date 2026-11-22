@@ -3530,8 +3530,7 @@ class StreamRepository(
     private fun isSecretPreference(key: String): Boolean {
         val k = key.lowercase()
         return k in setOf("simkl_token", "torbox_api_key", "realdebrid_api_key", "trakt_access_token", "trakt_refresh_token") ||
-            listOf("token", "api_key", "apikey", "password", "secret", "auth").any { it in k } ||
-            k.startsWith("plavio_privacy")
+            listOf("token", "api_key", "apikey", "password", "secret", "auth").any { it in k }
     }
 
     private fun isHttpUrl(value: String): Boolean = runCatching {

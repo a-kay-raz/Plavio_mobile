@@ -172,7 +172,6 @@ fun SettingsScreen(
     val settings = repository.settings
     val context = LocalContext.current
 
-    var telemetryEnabled by remember { mutableStateOf(com.pulsestream.app.data.AppStats.enabled(context)) }
     var sentryEnabled by remember { mutableStateOf(repository.settings.sentryEnabled) }
     // Step 70: which cache was cleared most recently ("playback" / "images" / "").
     var clearedCache by remember { mutableStateOf("") }
@@ -561,7 +560,7 @@ fun SettingsScreen(
             )
         },
         SettingsEntry(sectionAdvanced, "Advanced",
-            "advanced motion crash reports cache clear usage counting") {
+            "advanced motion crash reports cache clear") {
             SettingsNavRow(
                 icon = Icons.Filled.Tune,
                 title = "Advanced",
@@ -578,20 +577,6 @@ fun SettingsScreen(
                 subtitle = "Pause automatic hero slides and decorative pulses; also respects Android animation settings.",
                 checked = reducedMotion,
                 onCheckedChange = { com.pulsestream.app.data.MotionPreferences.setReduced(context, it) },
-                compact = true
-            )
-        },
-        SettingsEntry(sectionAdvanced, "Anonymous usage counting",
-            "anonymous counting installs online users privacy usage data own server", hub = "advanced") {
-            SettingsToggleRow(
-                icon = Icons.Filled.Info,
-                title = "Anonymous usage counting",
-                subtitle = "On by default. Counts installs and active users on Avio's own server — a random ID only, no personal data, no Google.",
-                checked = telemetryEnabled,
-                onCheckedChange = {
-                    com.pulsestream.app.data.AppStats.setEnabled(context, it)
-                    telemetryEnabled = it
-                },
                 compact = true
             )
         },
