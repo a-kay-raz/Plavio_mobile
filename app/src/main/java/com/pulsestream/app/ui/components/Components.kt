@@ -30,8 +30,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -288,37 +289,83 @@ fun SectionTitle(
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
-    onMoreClick: (() -> Unit)? = null
+    onMoreClick: (() -> Unit)? = null,
+    compact: Boolean = false
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    // Nuvio shelf header (ShelfComponents.NuvioShelfSectionHeader): titleLarge
+    // 18sp Bold + 60x4dp accent underline; View All is a 40dp pill (32dp
+    // compact) with an invisible placeholder keeping alignment when the row
+    // has no View All.
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            if (subtitle != null) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextSecondary
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary
+                    )
+                }
             }
-        }
-        if (onMoreClick != null) {
-            IconButton(onClick = onMoreClick, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    Icons.Filled.ChevronRight,
-                    contentDescription = "View all $title",
-                    tint = TextSecondary
-                )
+            val pillModifier = if (onMoreClick == null) {
+                Modifier.alpha(0f).clearAndSetSemantics { }
+            } else {
+                Modifier
             }
+            ViewAllPill(
+                onClick = onMoreClick,
+                compact = compact,
+                contentDescription = "View all $title",
+                modifier = pillModifier
+            )
         }
+        Box(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .width(60.dp)
+                .height(4.dp)
+                .background(LocalPalette.current.gradient, RoundedCornerShape(2.dp))
+        )
+    }
+}
+
+/** Nuvio View All pill (ShelfComponents.NuvioViewAllPill): 40dp, 32dp compact. */
+@Composable
+private fun ViewAllPill(
+    onClick: (() -> Unit)?,
+    compact: Boolean,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val size = if (compact) 32.dp else 40.dp
+    val iconSize = if (compact) 16.dp else 20.dp
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(LocalPalette.current.panel, RoundedCornerShape(16.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = contentDescription,
+            tint = TextSecondary,
+            modifier = Modifier.size(iconSize)
+        )
     }
 }
 
