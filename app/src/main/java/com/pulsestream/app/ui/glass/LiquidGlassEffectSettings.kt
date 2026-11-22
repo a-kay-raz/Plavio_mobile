@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
  * These are Nuvio's exact defaults — blur, refraction, tint.
  */
 
-internal data class LiquidGlassEffectSettings(
+data class LiquidGlassEffectSettings(
     val cornerRadiusPercent: Float,
     val blurRadiusDp: Float,
     val refractionHeightDp: Float,
@@ -45,7 +45,7 @@ internal data class LiquidGlassEffectSettings(
         (value.takeIf { it.isFinite() } ?: fallback).coerceIn(0f, maximum)
 }
 
-internal data class LiquidGlassEffectLimits(
+data class LiquidGlassEffectLimits(
     val maxBlurRadiusDp: Float,
     val maxRefractionHeightDp: Float,
     val maxRefractionAmountDp: Float,
@@ -67,7 +67,7 @@ internal fun LiquidGlassEffectSettings.shouldCaptureTabIcons(): Boolean =
 internal fun LiquidGlassEffectSettings.shouldCaptureFloatingBar(): Boolean =
     affectFloatingBar && hasActiveRefraction()
 
-internal object LiquidGlassEffectDefaults {
+object LiquidGlassEffectDefaults {
     val floatingBar = LiquidGlassEffectSettings(
         cornerRadiusPercent = 50f,
         blurRadiusDp = 10f,
