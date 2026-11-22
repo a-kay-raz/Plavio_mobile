@@ -136,7 +136,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -151,7 +150,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1131,9 +1129,6 @@ fun PlayerScreen(
     // tracks…" once preparing but before any track is known, "Buffering…"
     // once tracks are in and data is awaited.
     var loadingStep by remember { mutableStateOf("Opening source…") }
-    // Measured height of the header row, so the device-status strip can
-    // sit directly under it without overlapping the title.
-    var headerHeightPx by remember { mutableIntStateOf(0) }
     var switchingMedia by remember { mutableStateOf(false) }
     /** True once the current request has actually played — gates the
      * startup presentation (backdrop + orbit) against a plain rebuffer
@@ -4350,12 +4345,11 @@ fun PlayerScreen(
                     Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(top = 8.dp, start = 20.dp, end = 20.dp)
-                        .onSizeChanged { headerHeightPx = it.height },
+                        .padding(top = 8.dp, start = 20.dp, end = 20.dp),
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp, top = 2.dp)) {
+                    Column(Modifier.weight(1f).padding(end = if (settings.playerStatusOverlayEnabled) 36.dp else 12.dp)) {
                         Text(
                             headerTitle,
                             color = Color.White,
@@ -4366,7 +4360,7 @@ fun PlayerScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (episodeLine != null) {
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(6.dp))
                             Text(
                                 episodeLine,
                                 color = Color.White.copy(alpha = 0.9f),
@@ -4377,7 +4371,7 @@ fun PlayerScreen(
                             )
                         }
                         if (streamLabelText != null || sourceNameText != null) {
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(6.dp))
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -4417,6 +4411,7 @@ fun PlayerScreen(
                     // order/visibility follow the user's toolbar layout.
                     // Back is last, always.
                     Row(
+                        modifier = Modifier.padding(start = if (settings.playerStatusOverlayEnabled) 36.dp else 0.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -4485,15 +4480,19 @@ fun PlayerScreen(
                 }
 
                 // Device-status strip (Nuvio PlayerDeviceStatusOverlay):
-                // clock + battery + network, top-center directly under
-                // the header. Reads live while the controls are up.
-                val deviceStatus = rememberPlayerDeviceStatus()
-                PlayerDeviceStatusStrip(
-                    status = deviceStatus,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = with(LocalDensity.current) { headerHeightPx.toDp() } + 8.dp)
-                )
+                // top-centre pill, only when the status overlay is on
+                // (default off in Nuvio). The header leaves 36dp clear
+                // of it on both sides (see the title/icon paddings above).
+                if (settings.playerStatusOverlayEnabled) {
+                    val deviceStatus = rememberPlayerDeviceStatus()
+                    PlayerDeviceStatusStrip(
+                        status = deviceStatus,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = 4.dp)
+                    )
+                }
 
                 // ---- Center transport (Nuvio legacy: 56dp gap, 10dp lift,
                 // 34dp play icon in a glass circle, 34dp skip icons) ----
@@ -4561,9 +4560,23 @@ fun PlayerScreen(
 
                 // The action pill is shared by the live and on-demand
                 // bottom blocks — Nuvio legacy order: PiP, Quality, Subs,
-                // Audio, Resize, Speed, Sources, Episodes. (No Chapters /
-                // Live-channels buttons: Avio has no chapters panel and
-                // no channels panel in the player.)
+                // Audio, Resize, Speed, Sources, Chapters, Next episode,
+                // Episodes, Live channels.
+                // Nuvio legacy pill: a Next-episode button when a next
+                // episode exists (independent of autoplay-next — same as
+                // Nuvio's nextEpisodeButtonEnabled gate with it on).
+                val pillNextEpisode = if (
+                    !req.isMovie && !currentRequest.isTrailer &&
+                    currentRequest.episodes.isNotEmpty()
+                ) {
+                    resolveNextEpisode(
+                        currentRequest.episodes,
+                        currentRequest.season,
+                        currentRequest.episode,
+                        currentRequest.videoId,
+                        settings.shuffleEpisodes
+                    )
+                } else null
                 val actionPill: @Composable () -> Unit = {
                     Box(
                         Modifier.liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
@@ -4621,6 +4634,23 @@ fun PlayerScreen(
                                                 icon = Icons.Filled.List,
                                                 label = "Chapters",
                                                 onClick = { chaptersOpen = true }
+                                            )
+                                        }
+                                    }
+                                    com.pulsestream.app.data.PlayerBottomButton.NEXT_EPISODE -> {
+                                        val next = pillNextEpisode
+                                        if (next != null) {
+                                            PillBarButton(
+                                                icon = Icons.Filled.SkipNext,
+                                                label = "Next ep",
+                                                onClick = {
+                                                    // Cancel the auto-advance countdown so it
+                                                    // doesn't re-play the same episode after
+                                                    // the manual tap.
+                                                    nextEpisodeCard = null
+                                                    nextEpisodeCountdown = null
+                                                    playEpisode(next)
+                                                }
                                             )
                                         }
                                     }

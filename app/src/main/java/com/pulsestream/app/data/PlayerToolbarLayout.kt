@@ -25,10 +25,11 @@ enum class PlayerBottomButton(val storageId: String, val label: String) {
     QUALITY("quality", "Quality"),
     SUBTITLES("subtitles", "Subtitles"),
     AUDIO("audio", "Audio tracks"),
-    CHAPTERS("chapters", "Chapters"),
     RESIZE("resize", "Resize mode"),
     SPEED("speed", "Playback speed"),
     SOURCES("sources", "Sources"),
+    CHAPTERS("chapters", "Chapters"),
+    NEXT_EPISODE("next_episode", "Next episode"),
     EPISODES("episodes", "Episodes"),
     LIVE_CHANNELS("live_channels", "Live channels"),
 }
