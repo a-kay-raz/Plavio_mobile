@@ -342,15 +342,40 @@ fun HomeScreen(
             watching, settings.continueWatchingSortMode, settings.watchedThresholdPercent
         )
     }
-    val (mainWatching, upcomingWatching) = remember(sortedWatching) {
-        splitContinueWatchingUpcoming(sortedWatching)
-    }
-    // Step 49: Next Up — the episode after the latest watched one per
-    // series (shared enrichment with the Library calendar).
+    // Step 49: Next Up — the episode after the seed episode per series
+    // (shared enrichment with the Library calendar). The seed follows the
+    // "Next Up from furthest episode" setting: furthest-watched by default,
+    // most-recently-played for rewatches. The effect restarts only when the
+    // watched set or that setting changes — NOT on every resume-position
+    // save — so the watching snapshot used for the recency seed is the one
+    // current at the last restart.
     val watchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
     var nextUp by remember { mutableStateOf<List<com.pulsestream.app.data.NextUpEpisode>>(emptyList()) }
-    LaunchedEffect(watchedKeys) {
-        nextUp = com.pulsestream.app.data.NextUpResolver.resolveNextUp(repository, watchedKeys)
+    LaunchedEffect(watchedKeys, settings.continueWatchingNextUpFromFurthestEpisode) {
+        nextUp = com.pulsestream.app.data.NextUpResolver.resolveNextUp(
+            repository,
+            watchedKeys,
+            settings.continueWatchingNextUpFromFurthestEpisode,
+            watching,
+        )
+    }
+    // Show-unaired gate (Nuvio showUnairedNextUp): OFF drops episodes that
+    // have not aired yet from the Next Up rail entirely.
+    val visibleNextUp = remember(nextUp, settings.continueWatchingShowUnairedNextUp) {
+        if (settings.continueWatchingShowUnairedNextUp) nextUp
+        else nextUp.filter { it.hasAired() }
+    }
+    // Split-upcoming (Nuvio splitUpcomingItems): with sort mode
+    // split_upcoming, unaired next-ups move to their own "Coming up" row.
+    val (mainWatching, upcomingWatching) = remember(
+        sortedWatching, visibleNextUp, settings.continueWatchingSortMode
+    ) {
+        splitContinueWatchingUpcoming(sortedWatching, visibleNextUp, settings.continueWatchingSortMode)
+    }
+    // The Next Up rail shows the visible next-ups minus the ones the split
+    // moved to "Coming up".
+    val railNextUp = remember(visibleNextUp, upcomingWatching) {
+        visibleNextUp - upcomingWatching.toSet()
     }
     // Step 51: collections as Home rows + hero sources (Nuvio
     // HomeCollectionRowSection + collectionHeroSources). Pinned
@@ -669,9 +694,8 @@ fun HomeScreen(
                             }
                         }
                         // Split-upcoming second section (Nuvio splitUpcomingItems):
-                        // empty in Plavio today — Continue Watching is resume
-                        // positions only, with no release dates — but renders
-                        // when entries exist.
+                        // with sort mode split_upcoming, unaired next-up
+                        // episodes live here, nearest air date first.
                         if (settings.continueWatchingVisible && upcomingWatching.isNotEmpty()) {
                             item(key = "continue_watching_upcoming") {
                               Column(
@@ -682,21 +706,15 @@ fun HomeScreen(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    itemsIndexed(
+                                    items(
                                         upcomingWatching,
-                                        key = { index, item -> "up_${item.key}_$index" }
-                                    ) { _, item ->
-                                        ContinueWatchingCard(
-                                            item,
-                                            style = settings.continueWatchingStyle,
-                                            watchedThresholdPercent = settings.watchedThresholdPercent,
-                                            onRemove = {
-                                                scope.launch {
-                                                    repository.deleteSavedPosition(item.key)
-                                                }
-                                            }
+                                        key = { "${it.showId}_${it.season}_${it.episode}" }
+                                    ) { episode ->
+                                        NextUpCard(
+                                            episode,
+                                            preferEpisodeThumbnails = settings.continueWatchingPreferEpisodeThumbnails,
                                         ) {
-                                            onWatchingClick(item)
+                                            onOpenDetail("", "series", episode.showId)
                                         }
                                     }
                                 }
@@ -705,8 +723,10 @@ fun HomeScreen(
                             }
                         }
                         // Step 49: Next Up — one card per series, the
-                        // episode right after the latest watched one.
-                        if (nextUp.isNotEmpty()) {
+                        // episode right after the seed one. With sort mode
+                        // split_upcoming the unaired ones live in the
+                        // "Coming up" row above instead.
+                        if (railNextUp.isNotEmpty()) {
                             item(key = "next_up") {
                               Column(
                                 Modifier.background(LocalPalette.current.background)
@@ -717,10 +737,13 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     items(
-                                        nextUp,
+                                        railNextUp,
                                         key = { "${it.showId}_${it.season}_${it.episode}" }
                                     ) { episode ->
-                                        NextUpCard(episode) {
+                                        NextUpCard(
+                                            episode,
+                                            preferEpisodeThumbnails = settings.continueWatchingPreferEpisodeThumbnails,
+                                        ) {
                                             onOpenDetail("", "series", episode.showId)
                                         }
                                     }
@@ -1445,22 +1468,35 @@ internal fun applyContinueWatchingSort(
 
 /**
  * Splits unaired next-up items out of the main list (Nuvio
- * `splitUpcomingItems`). Always empty in Plavio today: Continue Watching
- * is resume positions only — PlaybackState carries no release date and
- * there are no next-up entries — so the main list passes through whole.
+ * `splitUpcomingItems`). Plavio's resume list (PlaybackState) carries no
+ * release dates and no next-up entries, so the split runs over the
+ * resolved Next Up episodes: with sort mode "split_upcoming", next-ups
+ * whose air date is in the future move to their own row, nearest air date
+ * first (unknown air dates count as aired and stay in the main rail).
+ * Any other sort mode returns the resume list whole with no split.
  */
 internal fun splitContinueWatchingUpcoming(
     items: List<PlaybackState>,
-): Pair<List<PlaybackState>, List<PlaybackState>> = items to emptyList()
+    nextUp: List<NextUpEpisode>,
+    sortMode: String,
+    today: LocalDate = LocalDate.now(),
+): Pair<List<PlaybackState>, List<NextUpEpisode>> {
+    if (sortMode != "split_upcoming") return items to emptyList()
+    val upcoming = nextUp
+        .filter { it.airDate != null && it.airDate.isAfter(today) }
+        .sortedBy { it.airDate }
+    return items to upcoming
+}
 
 /**
- * Step 49: Next Up card — the show poster with the next episode's
- * "S1 · E4" pill, the episode title, and its air date. Tap opens the
- * series detail.
+ * Step 49: Next Up card — the episode still (or the show poster when
+ * "Prefer episode thumbnails" is off) with the next episode's "S1 · E4"
+ * pill, the episode title, and its air date. Tap opens the series detail.
  */
 @Composable
 private fun NextUpCard(
     episode: NextUpEpisode,
+    preferEpisodeThumbnails: Boolean = true,
     onClick: () -> Unit
 ) {
     val today = LocalDate.now()
@@ -1486,7 +1522,10 @@ private fun NextUpCard(
                 .liquidGlass(RoundedCornerShape(posterStyle.cornerRadius))
         ) {
             SafePosterImage(
-                model = tmdbSizedImage(episode.poster, "w342"),
+                model = tmdbSizedImage(
+                    if (preferEpisodeThumbnails) episode.thumbnail ?: episode.poster else episode.poster,
+                    "w342"
+                ),
                 contentDescription = episode.showName,
                 modifier = Modifier.fillMaxSize()
             )
