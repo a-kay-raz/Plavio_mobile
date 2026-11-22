@@ -123,7 +123,7 @@ fun LibraryScreen(
     var libraryOffline by remember { mutableStateOf(false) }
     // Retry bumps this to re-run the load below.
     var libraryRefreshTick by remember { mutableStateOf(0) }
-    val onRetryLibrary = { libraryRefreshTick++ }
+    val onRetryLibrary: () -> Unit = { libraryRefreshTick++ }
     var upNext by remember { mutableStateOf<List<UpNextCard>>(emptyList()) }
     var traktWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var simklWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }

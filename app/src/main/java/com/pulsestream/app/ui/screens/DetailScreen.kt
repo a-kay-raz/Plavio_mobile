@@ -788,7 +788,7 @@ private fun DetailContent(
         tmdbSeasonEpisodes = if (meta.type == "series" && tmdbId != null) {
             runCatching {
                 com.pulsestream.app.data.TmdbClient.getSeasonEpisodes(
-                    settings, tmdbId!!, vm.selectedSeason
+                    settings, tmdbId!!, vm.selectedSeason ?: 1
                 )
             }.getOrDefault(emptyList())
         } else emptyList()
