@@ -1,5 +1,6 @@
 package com.pulsestream.app.data
 
+import com.pulsestream.app.data.db.PlaybackState
 import java.time.LocalDate
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -87,6 +88,34 @@ object NextUpResolver {
     suspend fun metaForSeries(repository: StreamRepository, seriesId: String): MetaDetail? =
         metaFor(repository, seriesId)
 
+    /**
+     * Most recently played episode per series, by resume-list time (Nuvio
+     * "most recently watched episode" — the rewatch seed when the
+     * furthest-episode preference is OFF). Joined on the show IMDb id, which is
+     * the series key in [watchedKeys] for Cinemeta meta. Series with no
+     * resume entry fall back to the furthest-watched seed.
+     */
+    fun latestPlayedBySeries(
+        watchedKeys: Set<String>,
+        playbackStates: List<PlaybackState>,
+    ): Map<String, Pair<Int, Int>> {
+        val furthest = latestWatchedBySeries(watchedKeys)
+        if (playbackStates.isEmpty()) return furthest
+        val latestPlayed = mutableMapOf<String, Pair<Pair<Int, Int>, Long>>()
+        playbackStates.forEach { state ->
+            val seriesId = state.imdbId ?: return@forEach
+            if (seriesId !in furthest) return@forEach
+            if (state.season <= 0 || state.episode <= 0) return@forEach
+            val current = latestPlayed[seriesId]
+            if (current == null || state.updatedAt > current.second) {
+                latestPlayed[seriesId] = (state.season to state.episode) to state.updatedAt
+            }
+        }
+        val seeds = furthest.toMutableMap()
+        latestPlayed.forEach { (seriesId, seed) -> seeds[seriesId] = seed.first }
+        return seeds
+    }
+
     private fun parseAirDate(released: String?): LocalDate? {
         if (released.isNullOrBlank()) return null
         return runCatching { LocalDate.parse(released.take(10)) }.getOrNull()
@@ -115,16 +144,26 @@ object NextUpResolver {
 
     /**
      * "Next episode" cards: one per series with watched episodes, the
-     * episode right after the latest watched one. Aired episodes first
-     * (most recently aired first — watchable now), then upcoming by air
-     * date. Series whose next episode can't be resolved (meta fetch
-     * failed, no later episode) are skipped, never fatal.
+     * episode right after the seed episode. [preferFurthestEpisode] (Nuvio
+     * upNextFromFurthestEpisode, default true) seeds from the highest
+     * season/episode watched; false seeds from the most recently played
+     * episode instead (rewatch behaviour — the next episode after the one
+     * just played, even if a higher episode was watched before). Aired
+     * episodes first (most recently aired first — watchable now), then
+     * upcoming by air date. Series whose next episode can't be resolved
+     * (meta fetch failed, no later episode) are skipped, never fatal.
      */
     suspend fun resolveNextUp(
         repository: StreamRepository,
         watchedKeys: Set<String>,
+        preferFurthestEpisode: Boolean = true,
+        playbackStates: List<PlaybackState> = emptyList(),
     ): List<NextUpEpisode> = coroutineScope {
-        val seeds = latestWatchedBySeries(watchedKeys)
+        val seeds = if (preferFurthestEpisode) {
+            latestWatchedBySeries(watchedKeys)
+        } else {
+            latestPlayedBySeries(watchedKeys, playbackStates)
+        }
         val today = LocalDate.now()
         seeds.entries.take(MAX_NEXT_UP_SERIES).map { (seriesId, watched) ->
             async {
