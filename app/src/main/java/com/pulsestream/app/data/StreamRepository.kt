@@ -107,7 +107,7 @@ class StreamRepository(
     var pendingPlayback: PlaybackRequest? = null
 
     /**
-     * Deep-link handoff: an avio-addons:// VIEW intent carries a share-bundle
+     * Deep-link handoff: an plavio-addons:// VIEW intent carries a share-bundle
      * link. MainActivity stashes the raw link here; AddonsScreen opens its
      * import dialog pre-filled with it, then clears it.
      */

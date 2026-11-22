@@ -34,7 +34,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Addon share bundles: tapping an avio-addons:// link (e.g. in
+            <!-- Addon share bundles: tapping an plavio-addons:// link (e.g. in
                  WhatsApp/Discord) opens the app so it can offer the import.
                  MainActivity routes the VIEW intent into the bundle import
                  flow (see AddonShare.bundleFromIntent). -->
@@ -42,7 +42,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="avio-addons" />
+                <data android:scheme="plavio-addons" />
             </intent-filter>
             <!-- Handle stremio:// addon install links so Android suggests Avio
                  alongside Stremio/Nuvio when users tap "Install" on addon pages.

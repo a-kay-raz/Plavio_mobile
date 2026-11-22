@@ -31,12 +31,12 @@ class UnsafeAddonShareException(val risks: List<AddonShareRisk>) : IllegalArgume
 
 /**
  * Addon share bundles: checkbox-select addons → one shareable code.
- * Format: avio-addons://<base64url(json)> where json is
+ * Format: plavio-addons://<base64url(json)> where json is
  * {"v":1,"addons":[{"name":"…","url":"…"}]}.
  * Import accepts the full link or the bare code.
  */
 object AddonShare {
-    const val SCHEME = "avio-addons://"
+    const val SCHEME = "plavio-addons://"
 
     private val sensitiveQueryNames = setOf(
         "key", "apikey", "apikeys", "accesskey", "secret", "clientsecret",
@@ -147,7 +147,7 @@ object AddonShare {
 
     /**
      * Finds the bundle payload in free text. The share sheet sends
-     * "My Avio addons (a, b):\navio-addons://<code>", and people paste
+     * "My Avio addons (a, b):\nplavio-addons://<code>", and people paste
      * with surrounding whitespace — so the scheme is EXTRACTED from anywhere
      * in the text, not just stripped when it's a prefix. A bare code (no
      * scheme) still works too.
@@ -165,7 +165,7 @@ object AddonShare {
 
     /**
      * Decodes a bundle straight from an incoming VIEW intent (deep link).
-     * Null unless the intent carries an avio-addons:// link — used by
+     * Null unless the intent carries an plavio-addons:// link — used by
      * MainActivity's onNewIntent wiring for the manifest's intent-filter.
      */
     fun bundleFromIntent(intent: android.content.Intent): List<SharedAddon>? {
