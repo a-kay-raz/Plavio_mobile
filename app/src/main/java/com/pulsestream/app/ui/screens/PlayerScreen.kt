@@ -306,6 +306,42 @@ private fun anySheetOpen(
     qualityOpen || infoOpen || chaptersOpen || speedMenuOpen
 
 /**
+ * Full dialog-open check (sheets + resume offer + player error). The whole
+ * `||` lives here so PlayerScreen itself has no boolean merge left for it —
+ * dev-38 proved even the 3-term remainder (`anySheetOpen(...) ||
+ * resumeOfferMs != null || playerError != null`) still trips D8's register
+ * allocator in the giant PlayerScreen method (VerifyError 0x36B9 v409).
+ */
+private fun isDialogOpen(
+    tracksOpen: Boolean,
+    subSearchOpen: Boolean,
+    sourcesOpen: Boolean,
+    episodesOpen: Boolean,
+    qualityOpen: Boolean,
+    infoOpen: Boolean,
+    chaptersOpen: Boolean,
+    speedMenuOpen: Boolean,
+    resumeOfferMs: Long?,
+    playerError: String?
+): Boolean = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
+    resumeOfferMs != null || playerError != null
+
+/** Full sheet-up check (sheets + resume offer + pending download). Same reason as [isDialogOpen]. */
+private fun isSheetUp(
+    tracksOpen: Boolean,
+    subSearchOpen: Boolean,
+    sourcesOpen: Boolean,
+    episodesOpen: Boolean,
+    qualityOpen: Boolean,
+    infoOpen: Boolean,
+    chaptersOpen: Boolean,
+    speedMenuOpen: Boolean,
+    resumeOfferMs: Long?,
+    downloadStream: StreamItem?
+): Boolean = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
+    resumeOfferMs != null || downloadStream != null
+
+/**
  * Reference-style player: title block top-left, icon cluster top-right,
  * big center transport, slim seekbar + time chips, bottom pill toolbar
  * (Aspect / Speed / Subs / Audio / Sources / Episodes), edge volume pill,
@@ -3631,8 +3667,7 @@ fun PlayerScreen(
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
-            resumeOfferMs != null || playerError != null
+        val dialogOpen = isDialogOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen, resumeOfferMs, playerError)
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             // Any remote activity keeps the controls on screen (they used to
@@ -3702,8 +3737,7 @@ fun PlayerScreen(
     // container, so the remote can never stay dead. Skipped while a sheet or
     // dialog (separate window) legitimately owns focus.
     var rootHasFocus by remember { mutableStateOf(true) }
-    val sheetUp = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
-        resumeOfferMs != null || downloadStream != null
+    val sheetUp = isSheetUp(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen, resumeOfferMs, downloadStream)
     LaunchedEffect(rootHasFocus, isTv, sheetUp, showControls, playerError) {
         if (isTv && !rootHasFocus && !sheetUp && playerError == null) {
             delay(400)
