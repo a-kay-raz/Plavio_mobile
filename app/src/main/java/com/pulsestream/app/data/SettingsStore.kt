@@ -583,8 +583,21 @@ class SettingsStore(
     // Smart Streams (Step 42): scored ranking + per-title filter/sort.
     // ------------------------------------------------------------------
 
-    /** Device profile for Smart Streams scoring, cached per process. */
-    val smartDeviceProfile: SmartDeviceProfile by lazy { buildSmartDeviceProfile(appContext) }
+    /** Device profile for Smart Streams scoring. Screen/codecs/memory are
+     * cached per process, but Wi-Fi is re-read on every access: a lazy
+     * onWifi goes stale when the network changes mid-session (Wi-Fi to
+     * mobile data or back) and the save-data target would be wrong until
+     * the app restarts — mobile data would keep picking heavy 4K links,
+     * or Wi-Fi would stay capped at 1080p. */
+    private val smartDeviceProfileBase: SmartDeviceProfile by lazy { buildSmartDeviceProfile(appContext) }
+    val smartDeviceProfile: SmartDeviceProfile
+        get() = smartDeviceProfileBase.copy(onWifi = isOnWifiNow())
+
+    private fun isOnWifiNow(): Boolean = runCatching {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        cm.getNetworkCapabilities(cm.activeNetwork)
+            ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+    }.getOrDefault(true)
 
     /** Sort mode for the stream list: best | quality | smallest | largest | addon. */
     var smartSortMode: String

@@ -324,21 +324,25 @@ fun applyStreamPreferences(
     isEpisode: Boolean = false
 ): List<StreamItem> {
     val perSource = settings.streamsPerSource
-    val capped = if (limitPerSource) streams.groupBy { it.addonKey() }
-        .flatMap { (_, list) -> list.take(perSource) } else streams
     val pinned = settings.pinnedStreamSources
     val smart = settings.smartStreamSettings()
     // Step 44 — Debrid stream prefs: min quality / DV / HDR / codec /
     // required / excluded tags filter the list; preferred tags boost.
     val debridPrefs = settings.debridStreamFilterPrefs()
-    val filtered = capped.filter { stream ->
+    // Filter FIRST, then cap per source. Capping first could discard the
+    // very streams the filter would keep — e.g. an addon's first 5 rows
+    // are all CAM (hidden) while its 1080p rows sit past the cap — and
+    // that addon would show zero links even though it has matching ones.
+    val filtered = streams.filter { stream ->
         val info = com.pulsestream.app.data.SmartStreamQuality.cached(stream)
         com.pulsestream.app.data.SmartStreamRanking.matches(info, smart.filters) &&
             matchesDebridStreamPrefs(stream, info, debridPrefs)
     }
+    val capped = if (limitPerSource) filtered.groupBy { it.addonKey() }
+        .flatMap { (_, list) -> list.take(perSource) } else filtered
     val sorted = if (smart.sortMode == com.pulsestream.app.data.SmartSortMode.ADDON_ORDER) {
         val order = settings.qualityOrder
-        filtered.sortedWith(compareByDescending<StreamItem> { s ->
+        capped.sortedWith(compareByDescending<StreamItem> { s ->
             if (pinnedStreamSourceKey(s) in pinned) 1 else 0
         }.thenByDescending { s ->
             if (hasDebridPreferredTag(s, debridPrefs)) 1 else 0
@@ -348,11 +352,11 @@ fun applyStreamPreferences(
         })
     } else {
         val smartSorted = com.pulsestream.app.data.SmartStreamRanking.sortStreams(
-            filtered, smart, settings.smartDeviceProfile, isEpisode,
+            capped, smart, settings.smartDeviceProfile, isEpisode,
             settings.smartPreferredLanguages()
         )
         val smartIndex = smartSorted.withIndex().associate { it.value to it.index }
-        filtered.sortedWith(compareByDescending<StreamItem> { s ->
+        capped.sortedWith(compareByDescending<StreamItem> { s ->
             if (pinnedStreamSourceKey(s) in pinned) 1 else 0
         }.thenByDescending { s ->
             if (hasDebridPreferredTag(s, debridPrefs)) 1 else 0
