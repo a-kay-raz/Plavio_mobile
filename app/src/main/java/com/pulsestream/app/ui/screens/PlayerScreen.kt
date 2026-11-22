@@ -287,6 +287,25 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
+ * Any of the eight player sheets open. Kept out of [PlayerScreen] on purpose:
+ * the 10-term `||` chains that used to inline these flags made D8 emit an
+ * invalid register move in the giant PlayerScreen method (ART VerifyError
+ * `copy-cat1 v2<-v417 MutableState` at dex 0x36AD, dev-37) — a small helper
+ * method compiles cleanly where the inlined chain did not.
+ */
+private fun anySheetOpen(
+    tracksOpen: Boolean,
+    subSearchOpen: Boolean,
+    sourcesOpen: Boolean,
+    episodesOpen: Boolean,
+    qualityOpen: Boolean,
+    infoOpen: Boolean,
+    chaptersOpen: Boolean,
+    speedMenuOpen: Boolean
+): Boolean = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen ||
+    qualityOpen || infoOpen || chaptersOpen || speedMenuOpen
+
+/**
  * Reference-style player: title block top-left, icon cluster top-right,
  * big center transport, slim seekbar + time chips, bottom pill toolbar
  * (Aspect / Speed / Subs / Audio / Sources / Episodes), edge volume pill,
@@ -3612,8 +3631,8 @@ fun PlayerScreen(
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen || chaptersOpen ||
-            speedMenuOpen || resumeOfferMs != null || playerError != null
+        val dialogOpen = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
+            resumeOfferMs != null || playerError != null
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             // Any remote activity keeps the controls on screen (they used to
@@ -3683,8 +3702,8 @@ fun PlayerScreen(
     // container, so the remote can never stay dead. Skipped while a sheet or
     // dialog (separate window) legitimately owns focus.
     var rootHasFocus by remember { mutableStateOf(true) }
-    val sheetUp = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen || qualityOpen || infoOpen || chaptersOpen ||
-        speedMenuOpen || resumeOfferMs != null || downloadStream != null
+    val sheetUp = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
+        resumeOfferMs != null || downloadStream != null
     LaunchedEffect(rootHasFocus, isTv, sheetUp, showControls, playerError) {
         if (isTv && !rootHasFocus && !sheetUp && playerError == null) {
             delay(400)
