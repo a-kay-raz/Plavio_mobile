@@ -39,6 +39,7 @@
     <string name="settings_appearance_sub">Accent color and AMOLED black</string>
 
     <string name="settings_section_general">General</string>
+    <string name="settings_section_account">Account</string>
     <string name="settings_section_advanced">Advanced</string>
     <string name="settings_section_you">You</string>
     <string name="settings_section_look">Look</string>

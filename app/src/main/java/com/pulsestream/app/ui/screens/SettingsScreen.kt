@@ -12,6 +12,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,13 +47,13 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Image
@@ -66,6 +69,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -80,7 +84,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -161,7 +164,12 @@ fun SettingsScreen(
     onGoToProfiles: () -> Unit = {},
     onGoToDetailSections: () -> Unit = {},
     onGoToStreamBadges: () -> Unit = {},
-    onGoToPlayerToolbar: () -> Unit = {}
+    onGoToPlayerToolbar: () -> Unit = {},
+    onGoToContentDiscovery: () -> Unit = {},
+    onGoToNotifications: () -> Unit = {},
+    onGoToAdvanced: () -> Unit = {},
+    onGoToWhatsNew: () -> Unit = {},
+    onGoToLicenses: () -> Unit = {}
 ) {
     val settings = repository.settings
     val context = LocalContext.current
@@ -210,33 +218,36 @@ fun SettingsScreen(
     val enabledAddons = remember(installedAddons) { installedAddons.count { it.enabled } }
     val reducedMotion by com.pulsestream.app.data.MotionPreferences.reduced.collectAsState()
 
-    // Nuvio-style categories (SettingsRootPage: You / Look / Watch /
-    // Services / System): the account card stays on top, then the
-    // entries grouped by category in Nuvio's order. Plavio's own rows
-    // stay — only the grouping and order match Nuvio.
-    val sectionYou = stringResource(R.string.settings_section_you)
-    val sectionLook = stringResource(R.string.settings_section_look)
-    val sectionWatch = stringResource(R.string.settings_section_watch)
-    val sectionServices = stringResource(R.string.settings_section_services)
-    val sectionSystem = stringResource(R.string.settings_section_system)
+    // Nuvio v1.17 root sections (SettingsRootPage: Account / General /
+    // About / Advanced): the account card stays on top, then the
+    // entries grouped by section in Nuvio's order. Sub-pages live
+    // behind hubs (Content & Discovery, Notifications, Advanced) and
+    // Appearance — only the hub rows show at root.
+    val sectionAccount = stringResource(R.string.settings_section_account)
+    val sectionGeneral = stringResource(R.string.settings_section_general)
+    val sectionAbout = stringResource(R.string.settings_section_about)
+    val sectionAdvanced = stringResource(R.string.settings_section_advanced)
 
     // Every root entry as data, so the search field filters the very
-    // rows the sections render. Destinations and behaviour are exactly
-    // the pre-restructure ones — presentation only. The old Account nav
+    // rows the sections render. Hub children (hub != null) render
+    // inside their hub screen, but stay in the search index so a
+    // search still finds them — tapping one goes straight to its
+    // destination. Destinations and behaviour are exactly the
+    // pre-restructure ones — presentation only. The old Account nav
     // row is gone: the account card above the list IS the account entry.
     val entries = listOf(
-        SettingsEntry(sectionLook, stringResource(R.string.settings_appearance_title),
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_appearance_title),
             "appearance accent color amoled black theme dark light") {
             SettingsNavRow(
-                icon = Icons.Filled.Contrast,
+                icon = Icons.Filled.Palette,
                 title = stringResource(R.string.settings_appearance_title),
-                subtitle = stringResource(R.string.settings_appearance_sub),
+                subtitle = "Home, streams, collections, and detail pages",
                 onClick = onGoToAppearance,
                 compact = true
             )
         },
-        SettingsEntry(sectionLook, stringResource(R.string.settings_home_catalogs_title),
-            "home catalogs rows arrange visibility home screen order") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_home_catalogs_title),
+            "home catalogs rows arrange visibility home screen order", hub = "appearance") {
             SettingsNavRow(
                 icon = Icons.Filled.GridView,
                 title = stringResource(R.string.settings_home_catalogs_title),
@@ -245,8 +256,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, "Continue Watching",
-            "continue watching resume sort style tap action prompt") {
+        SettingsEntry(sectionGeneral, "Continue Watching",
+            "continue watching resume sort style tap action prompt", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.History,
                 title = "Continue Watching",
@@ -255,8 +266,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, "Live TV",
-            "live tv xtream stalker iptv providers epg guide") {
+        SettingsEntry(sectionGeneral, "Live TV",
+            "live tv xtream stalker iptv providers epg guide", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.Tv,
                 title = "Live TV",
@@ -265,8 +276,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, stringResource(R.string.settings_addons_title),
-            "addons manage extensions install sources manifest") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_addons_title),
+            "addons manage extensions install sources manifest", hub = "content") {
             SettingsStaticRow(
                 icon = Icons.Filled.Extension,
                 title = stringResource(R.string.settings_addons_title),
@@ -286,18 +297,28 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, stringResource(R.string.settings_playback_title),
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_playback_title),
             "playback autoplay next episode screen skip intro audio resume buffer") {
             SettingsNavRow(
                 icon = Icons.Filled.PlayArrow,
                 title = stringResource(R.string.settings_playback_title),
-                subtitle = stringResource(R.string.settings_playback_sub),
+                subtitle = "Player, subtitles, and auto-play",
                 onClick = onGoToPlayback,
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, stringResource(R.string.settings_streams_title),
-            "streams sources source limits quality order autoplay rule providers") {
+        SettingsEntry(sectionGeneral, "Content & Discovery",
+            "content discovery addons media servers plugins cloudstream search history") {
+            SettingsNavRow(
+                icon = Icons.Filled.Extension,
+                title = "Content & Discovery",
+                subtitle = "Manage addons and discovery sources.",
+                onClick = onGoToContentDiscovery,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_streams_title),
+            "streams sources source limits quality order autoplay rule providers", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.VideoLibrary,
                 title = stringResource(R.string.settings_streams_title),
@@ -306,8 +327,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, stringResource(R.string.settings_subtitles_title),
-            "subtitles captions preferred languages appearance font size") {
+        SettingsEntry(sectionGeneral, stringResource(R.string.settings_subtitles_title),
+            "subtitles captions preferred languages appearance font size", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.ClosedCaption,
                 title = stringResource(R.string.settings_subtitles_title),
@@ -316,8 +337,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, "Downloads",
-            "downloads offline files storage downloaded movies shows") {
+        SettingsEntry(sectionGeneral, "Downloads",
+            "downloads offline files storage downloaded movies shows", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.Download,
                 title = "Downloads",
@@ -326,8 +347,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, "Collections",
-            "collections folders tmdb trakt catalog groups") {
+        SettingsEntry(sectionGeneral, "Collections",
+            "collections folders tmdb trakt catalog groups", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.Folder,
                 title = "Collections",
@@ -338,8 +359,8 @@ fun SettingsScreen(
         },
         // Step 55: media servers (Jellyfin/Emby/Plex/Silo) — sign in
         // once, libraries show as rows on Home.
-        SettingsEntry(sectionWatch, "Media Servers",
-            "media servers jellyfin emby plex silo self hosted libraries") {
+        SettingsEntry(sectionGeneral, "Media Servers",
+            "media servers jellyfin emby plex silo self hosted libraries", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.Dns,
                 title = "Media Servers",
@@ -349,7 +370,7 @@ fun SettingsScreen(
             )
         },
         // Step 56: profiles — each keeps its own library, progress and settings.
-        SettingsEntry(sectionYou, "Profiles",
+        SettingsEntry(sectionAccount, "Profiles",
             "profiles switch manage pin lock multi profile") {
             SettingsNavRow(
                 icon = Icons.Filled.Person,
@@ -360,8 +381,8 @@ fun SettingsScreen(
             )
         },
         // Step 57: detail sections — reorder/hide the detail page's sections.
-        SettingsEntry(sectionLook, "Detail sections",
-            "detail sections reorder hide tabs episodes cast production") {
+        SettingsEntry(sectionGeneral, "Detail sections",
+            "detail sections reorder hide tabs episodes cast production", hub = "appearance") {
             SettingsNavRow(
                 icon = Icons.Filled.Tune,
                 title = "Detail sections",
@@ -371,8 +392,8 @@ fun SettingsScreen(
             )
         },
         // Step 61: custom stream badges — import rule sets, show chips on streams.
-        SettingsEntry(sectionLook, "Stream badges",
-            "stream badges rules import chips labels quality codec group") {
+        SettingsEntry(sectionGeneral, "Stream badges",
+            "stream badges rules import chips labels quality codec group", hub = "appearance") {
             SettingsNavRow(
                 icon = Icons.Filled.Style,
                 title = "Stream badges",
@@ -382,8 +403,8 @@ fun SettingsScreen(
             )
         },
         // Step 63: player toolbar — reorder/hide the pill and top buttons.
-        SettingsEntry(sectionLook, "Player buttons",
-            "player buttons toolbar pill reorder hide chapters sources speed") {
+        SettingsEntry(sectionGeneral, "Player buttons",
+            "player buttons toolbar pill reorder hide chapters sources speed", hub = "appearance") {
             SettingsNavRow(
                 icon = Icons.Filled.Dashboard,
                 title = "Player buttons",
@@ -392,28 +413,38 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionServices, "Tracking",
+        SettingsEntry(sectionAccount, "Tracking",
             "tracking trakt simkl library progress ratings source") {
             SettingsNavRow(
                 icon = Icons.Filled.Sync,
                 title = "Tracking",
-                subtitle = "Library, Up Next and ratings sources",
+                subtitle = "Connect tracking providers and choose which one powers your Library and Continue Watching.",
                 onClick = onGoToTracking,
                 compact = true
             )
         },
-        SettingsEntry(sectionServices, "Integrations",
+        SettingsEntry(sectionGeneral, "Integrations",
             "integrations torbox debrid real-debrid alldebrid premiumize link accounts api keys") {
             SettingsNavRow(
                 icon = Icons.Filled.Link,
                 title = "Integrations",
-                subtitle = "TorBox debrid and more",
+                subtitle = "Manage available integrations",
                 onClick = onGoToIntegrations,
                 compact = true
             )
         },
-        SettingsEntry(sectionWatch, "CloudStream",
-            "cloudstream cs3 plugins providers repositories") {
+        SettingsEntry(sectionGeneral, "Notifications",
+            "notifications episode alerts test notification releases") {
+            SettingsNavRow(
+                icon = Icons.Filled.Notifications,
+                title = "Notifications",
+                subtitle = "Manage episode release alerts and send a test notification.",
+                onClick = onGoToNotifications,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "CloudStream",
+            "cloudstream cs3 plugins providers repositories", hub = "content") {
             SettingsNavRow(
                 icon = Icons.Filled.Extension,
                 title = "CloudStream",
@@ -422,8 +453,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, "New episode alerts",
-            "notifications new episode alerts series watchlist releases") {
+        SettingsEntry(sectionGeneral, "New episode alerts",
+            "notifications new episode alerts series watchlist releases", hub = "notifications") {
             SettingsToggleRow(
                 icon = Icons.Filled.Notifications,
                 title = "New episode alerts",
@@ -446,8 +477,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, "Send test notification",
-            "notifications test notification episode alerts") {
+        SettingsEntry(sectionGeneral, "Send test notification",
+            "notifications test notification episode alerts", hub = "notifications") {
             // Re-read on every recomposition so a grant made elsewhere is picked up.
             val notificationsOn = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() &&
                 (android.os.Build.VERSION.SDK_INT < 33 ||
@@ -471,7 +502,17 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, stringResource(R.string.settings_feedback_title),
+        SettingsEntry(sectionAbout, "What's New",
+            "whats new changelog version updates features changes") {
+            SettingsNavRow(
+                icon = Icons.Filled.NewReleases,
+                title = "What's New",
+                subtitle = "What changed in this version.",
+                onClick = onGoToWhatsNew,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionAbout, stringResource(R.string.settings_feedback_title),
             "feedback send bug report feature request support") {
             SettingsNavRow(
                 icon = Icons.Filled.Feedback,
@@ -481,7 +522,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, stringResource(R.string.settings_about_title),
+        SettingsEntry(sectionAbout, stringResource(R.string.settings_about_title),
             "about version website updates app info check") {
             SettingsNavRow(
                 icon = Icons.Filled.Info,
@@ -491,8 +532,28 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, "Reduced motion",
-            "reduced motion animations accessibility pause hero slides pulses") {
+        SettingsEntry(sectionAbout, "Licenses",
+            "licenses attributions open source data sources tmdb fanart") {
+            SettingsNavRow(
+                icon = Icons.Filled.Info,
+                title = "Licenses",
+                subtitle = "Data sources, acknowledgements, and platform licenses",
+                onClick = onGoToLicenses,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionAdvanced, "Advanced",
+            "advanced motion crash reports cache clear usage counting") {
+            SettingsNavRow(
+                icon = Icons.Filled.Tune,
+                title = "Advanced",
+                subtitle = "Reduced motion, crash reports and cache controls.",
+                onClick = onGoToAdvanced,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionAdvanced, "Reduced motion",
+            "reduced motion animations accessibility pause hero slides pulses", hub = "advanced") {
             SettingsToggleRow(
                 icon = Icons.Filled.Contrast,
                 title = "Reduced motion",
@@ -502,8 +563,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, "Anonymous usage counting",
-            "anonymous counting installs online users privacy usage data own server") {
+        SettingsEntry(sectionAdvanced, "Anonymous usage counting",
+            "anonymous counting installs online users privacy usage data own server", hub = "advanced") {
             SettingsToggleRow(
                 icon = Icons.Filled.Info,
                 title = "Anonymous usage counting",
@@ -516,8 +577,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, "Crash reports",
-            "crash reports sentry bugs errors anonymous fix") {
+        SettingsEntry(sectionAdvanced, "Crash reports",
+            "crash reports sentry bugs errors anonymous fix", hub = "advanced") {
             SettingsToggleRow(
                 icon = Icons.Filled.BugReport,
                 title = "Crash reports",
@@ -531,8 +592,8 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionSystem, "Clear playback cache",
-            "clear cache playback video buffer storage") {
+        SettingsEntry(sectionAdvanced, "Clear playback cache",
+            "clear cache playback video buffer storage", hub = "advanced") {
             SettingsClearRow(
                 icon = Icons.Filled.Storage,
                 title = "Clear playback cache",
@@ -544,8 +605,8 @@ fun SettingsScreen(
                 }
             )
         },
-        SettingsEntry(sectionSystem, "Clear image cache",
-            "clear cache images posters thumbnails") {
+        SettingsEntry(sectionAdvanced, "Clear image cache",
+            "clear cache images posters thumbnails", hub = "advanced") {
             SettingsClearRow(
                 icon = Icons.Filled.Image,
                 title = "Clear image cache",
@@ -704,10 +765,13 @@ fun SettingsScreen(
             // ---- Entries: sticky section headers when browsing; a
             // flat filtered list while searching (Sample F) ----
             if (normalizedQuery.isEmpty()) {
-                // Categories render in Nuvio's fixed order (You / Look /
-                // Watch / Services / System), not in first-entry order.
-                val groupedEntries = entries.groupBy { it.section }
-                val orderedSections = listOf(sectionYou, sectionLook, sectionWatch, sectionServices, sectionSystem)
+                // Sections render in Nuvio v1.17's fixed order
+                // (Account / General / About / Advanced), not in
+                // first-entry order. Only root entries render here —
+                // hub children live in their hub screens.
+                val rootEntries = entries.filter { it.hub == null }
+                val groupedEntries = rootEntries.groupBy { it.section }
+                val orderedSections = listOf(sectionAccount, sectionGeneral, sectionAbout, sectionAdvanced)
                     .mapNotNull { section -> groupedEntries[section]?.let { section to it } }
                 orderedSections.forEach { (section, sectionEntries) ->
                     stickyHeader(key = "section_$section") {
@@ -741,41 +805,30 @@ fun SettingsScreen(
                 }
             }
 
-            item(key = "credit") {
+            item(key = "footer") {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 20.dp, bottom = 8.dp),
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // The heart follows the picked accent (owner's
-                    // order 2026-10-25) — a real icon, not the old
-                    // fixed-green emoji, so it can be tinted.
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Made with ",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = TextPrimary
-                        )
-                        Icon(
-                            Icons.Filled.Favorite,
-                            contentDescription = null,
-                            tint = LocalPalette.current.accent,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = " by Kotlinsyd",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = TextPrimary
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    SocialIconRow()
-                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        text = "Plavio",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = LocalPalette.current.accent,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -865,6 +918,10 @@ private data class SettingsEntry(
     val title: String,
     /** Extra lowercase keywords the settings search matches against. */
     val searchText: String,
+    /** Hub this entry lives in ("content" / "notifications" / "advanced" /
+     * "appearance") — null means it renders at root. Hub children stay
+     * in the search index either way. */
+    val hub: String? = null,
     val content: @Composable () -> Unit
 )
 
@@ -908,8 +965,8 @@ fun SettingsGroup(vararg rows: @Composable () -> Unit) {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 74.dp, end = 16.dp)
-                                .height(1.dp)
+                                .padding(start = 66.dp, end = 16.dp)
+                                .height(0.5.dp)
                                 .background(TextSecondary.copy(alpha = 0.16f))
                         )
                     }
@@ -942,42 +999,82 @@ fun settingsSwitchColors(): SwitchColors =
         )
     }
 
+/** Nuvio's muted subtitle colour (#969CA3) for settings rows. */
+private val SettingsMuted = Color(0xFF969CA3)
+
+/**
+ * Custom gradient switch (Nuvio's SettingsGradientSwitch, Plavio
+ * accent): 52x32dp track, 24dp thumb, 180ms tween. The track wears the
+ * current accent's gradient brush while ON; the thumb is white ON,
+ * muted OFF. Visual only in rows — the row itself handles the tap;
+ * standalone (AppUpdaterCard) it is clickable.
+ */
+@Composable
+fun SettingsGradientSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) 20.dp else 0.dp,
+        animationSpec = tween(durationMillis = 180),
+        label = "settings_switch_thumb"
+    )
+    Box(
+        modifier = modifier
+            .size(width = 52.dp, height = 32.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .then(
+                if (checked && enabled) Modifier.background(LocalPalette.current.accentTheme.swatchBrush)
+                else Modifier.background(
+                    if (checked) LocalPalette.current.accent
+                    else TextSecondary.copy(alpha = 0.35f)
+                )
+            )
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(4.dp)
+            .alpha(if (enabled) 1f else 0.5f),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset)
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(if (checked) Color.White else SettingsMuted)
+        )
+    }
+}
+
 /** Small-caps section header, Pulse style. */
 @Composable
 fun SettingsSectionHeader(title: String) {
     Text(
-        text = title.uppercase(),
-        style = MaterialTheme.typography.labelLarge.copy(
+        text = title,
+        style = MaterialTheme.typography.labelMedium.copy(
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 2.sp
+            letterSpacing = 0.8.sp
         ),
-        color = TextSecondary,
-        modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
+        color = SettingsMuted,
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 10.dp)
     )
 }
 
-/** Leading icon in a rounded glass tile. */
+/** Leading icon in a rounded accent tile (Nuvio: 36dp, accent @ 0.12, 12dp radius). */
 @Composable
 fun SettingsIconTile(icon: ImageVector, contentDescription: String?) {
-    if (LocalPalette.current.appTheme == AppTheme.ONYX) {
-        // Onyx: flat charcoal tile, white glyph (owner's reference).
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .background(Color(0xFF2E2E30), RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription, tint = Color.White, modifier = Modifier.size(24.dp))
-        }
-    } else {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .liquidGlass(RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
-        }
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .background(
+                LocalPalette.current.accent.copy(alpha = 0.12f),
+                RoundedCornerShape(12.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -994,8 +1091,9 @@ fun SettingsToggleRow(
         SettingsToggleRowGrouped(icon, title, subtitle, checked, onCheckedChange, compact)
         return
     }
-    // Infuse-style flat row (no card): 16dp horizontal / 14dp vertical,
-    // plain 24dp accent icon, bodyLarge title + bodyMedium subtitle.
+    // Nuvio-style flat row: 16dp horizontal / 14dp vertical, 36dp
+    // accent icon tile, bodyLarge title + bodyMedium muted subtitle,
+    // custom gradient switch.
     Box(
         Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }
     ) {
@@ -1004,14 +1102,9 @@ fun SettingsToggleRow(
                 .padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = title,
-                tint = LocalPalette.current.accent,
-                modifier = Modifier.size(if (compact) 21.dp else 24.dp)
-            )
-            Spacer(Modifier.width(if (compact) 12.dp else 14.dp))
-            Column(Modifier.weight(1f)) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
@@ -1022,14 +1115,13 @@ fun SettingsToggleRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
+                    color = SettingsMuted
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Switch(
+            SettingsGradientSwitch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                colors = settingsSwitchColors()
+                modifier = Modifier.padding(start = 4.dp)
             )
         }
     }
@@ -1038,13 +1130,49 @@ fun SettingsToggleRow(
 /** Step 70: action row for one-shot actions (cache clears): icon + title /
  * subtitle + a Clear button that turns into "Cleared" after it runs. */
 @Composable
-private fun SettingsClearRow(
+fun SettingsClearRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
     cleared: Boolean,
     onClear: () -> Unit
 ) {
+    if (LocalSettingsGrouped.current) {
+        // Flat inside the group card, like the other rows.
+        Box(Modifier.fillMaxWidth().clickable { if (!cleared) onClear() }) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SettingsIconTile(icon, title)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SettingsMuted
+                    )
+                }
+                if (cleared) {
+                    Text(
+                        "Cleared",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalPalette.current.accent
+                    )
+                } else {
+                    TextButton(onClick = onClear) { Text("Clear") }
+                }
+            }
+        }
+        return
+    }
     GlassCard(
         modifier = Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 3.dp),
@@ -1054,13 +1182,8 @@ private fun SettingsClearRow(
                 .padding(horizontal = 14.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = title,
-                tint = LocalPalette.current.accent,
-                modifier = Modifier.size(21.dp)
-            )
-            Spacer(Modifier.width(12.dp))
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -1072,7 +1195,7 @@ private fun SettingsClearRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    color = SettingsMuted
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -1089,21 +1212,24 @@ private fun SettingsClearRow(
     }
 }
 
-/** Navigation row (Infuse-style flat): icon + title/subtitle + chevron, opens a sub-screen. */
+/** Navigation row (Nuvio-style flat): icon tile + title/subtitle, opens a
+ * sub-screen. No built-in chevron — the caller supplies [trailing] when
+ * one is needed. */
 @Composable
 fun SettingsNavRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    compact: Boolean = false
+    compact: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null
 ) {
     if (LocalSettingsGrouped.current) {
-        SettingsNavRowGrouped(icon, title, subtitle, onClick, compact)
+        SettingsNavRowGrouped(icon, title, subtitle, onClick, compact, trailing)
         return
     }
-    // Infuse-style flat row (no card): 16dp horizontal / 14dp vertical,
-    // plain 24dp accent icon, bodyLarge title + bodyMedium subtitle.
+    // Nuvio-style flat row: 16dp horizontal / 14dp vertical, 36dp
+    // accent icon tile, bodyLarge title + bodyMedium muted subtitle.
     Box(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
@@ -1112,14 +1238,9 @@ fun SettingsNavRow(
                 .padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = title,
-                tint = LocalPalette.current.accent,
-                modifier = Modifier.size(if (compact) 21.dp else 24.dp)
-            )
-            Spacer(Modifier.width(if (compact) 12.dp else 14.dp))
-            Column(Modifier.weight(1f)) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
@@ -1130,15 +1251,10 @@ fun SettingsNavRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
+                    color = SettingsMuted
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = TextSecondary
-            )
+            trailing?.invoke()
         }
     }
 }
@@ -1158,8 +1274,8 @@ fun SettingsStaticRow(
         SettingsStaticRowGrouped(icon, title, subtitle, trailing, dimmed, onClick, compact)
         return
     }
-    // Infuse-style flat row (no card): 16dp horizontal / 14dp vertical,
-    // plain 24dp accent icon, bodyLarge title + bodyMedium subtitle.
+    // Nuvio-style flat row: 16dp horizontal / 14dp vertical, 36dp
+    // accent icon tile, bodyLarge title + bodyMedium muted subtitle.
     Box(
         Modifier
             .fillMaxWidth()
@@ -1171,14 +1287,9 @@ fun SettingsStaticRow(
                 .padding(horizontal = 16.dp, vertical = if (compact) 9.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = title,
-                tint = LocalPalette.current.accent,
-                modifier = Modifier.size(if (compact) 21.dp else 24.dp)
-            )
-            Spacer(Modifier.width(if (compact) 12.dp else 14.dp))
-            Column(Modifier.weight(1f)) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
@@ -1189,10 +1300,9 @@ fun SettingsStaticRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
+                    color = SettingsMuted
                 )
             }
-            Spacer(Modifier.width(12.dp))
             trailing()
         }
     }
@@ -1212,20 +1322,18 @@ private fun SettingsToggleRowGrouped(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (compact) {
-                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(21.dp))
-                Spacer(Modifier.width(12.dp))
-            } else {
-                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(14.dp))
-            }
-            Column(Modifier.weight(1f)) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = TextPrimary)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = SettingsMuted)
             }
-            Spacer(Modifier.width(12.dp))
-            Switch(checked = checked, onCheckedChange = onCheckedChange, colors = settingsSwitchColors())
+            SettingsGradientSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.padding(start = 4.dp)
+            )
         }
     }
 }
@@ -1236,27 +1344,22 @@ private fun SettingsNavRowGrouped(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    compact: Boolean
+    compact: Boolean,
+    trailing: (@Composable () -> Unit)? = null
 ) {
     Box(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (compact) {
-                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(21.dp))
-                Spacer(Modifier.width(12.dp))
-            } else {
-                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(14.dp))
-            }
-            Column(Modifier.weight(1f)) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = TextPrimary)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = SettingsMuted)
             }
-            Spacer(Modifier.width(12.dp))
-            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
+            trailing?.invoke()
         }
     }
 }
@@ -1281,19 +1384,13 @@ private fun SettingsStaticRowGrouped(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (compact) {
-                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(21.dp))
-                Spacer(Modifier.width(12.dp))
-            } else {
-                Icon(icon, contentDescription = title, tint = LocalPalette.current.accent, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(14.dp))
-            }
-            Column(Modifier.weight(1f)) {
+            SettingsIconTile(icon, title)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = TextPrimary)
                 Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = SettingsMuted)
             }
-            Spacer(Modifier.width(12.dp))
             trailing()
         }
     }
@@ -1432,13 +1529,12 @@ fun AppUpdaterCard() {
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Switch(
+                SettingsGradientSwitch(
                     checked = autoCheck,
                     onCheckedChange = {
                         autoCheck = it
                         UpdateChecker.setAutoCheckEnabled(appContext, it)
-                    },
-                    colors = settingsSwitchColors()
+                    }
                 )
             }
             Spacer(Modifier.height(12.dp))
@@ -1500,53 +1596,4 @@ fun AppUpdaterCard() {
         info = updateInfo,
         onDismiss = { updateInfo = null }
     )
-}
-
-/**
- * Icon-only social/community links, placed directly below the App Installs
- * counter. Icons only, no text labels (content descriptions for a11y).
- */
-@Composable
-private fun SocialIconRow() {
-    val context = LocalContext.current
-    val palette = LocalPalette.current
-    val links = listOf(
-        Triple(R.drawable.ic_discord, "Discord", "https://discord.gg/cwzHH3r9pa"),
-        Triple(R.drawable.ic_github, "GitHub", "https://github.com/kotlinsyd/Plavio"),
-        Triple(R.drawable.ic_gitlab, "GitLab", "https://gitlab.com/KotlinJS5/plavio"),
-        Triple(R.drawable.ic_reddit, "Reddit", "https://www.reddit.com/r/Plavio/"),
-    )
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        links.forEach { (iconRes, label, url) ->
-            IconButton(
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                        )
-                    }
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        color = palette.panel.copy(alpha = 0.7f),
-                        shape = CircleShape
-                    )
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = label,
-                    // No tint — show icons in their native white for clean look
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-    }
 }
