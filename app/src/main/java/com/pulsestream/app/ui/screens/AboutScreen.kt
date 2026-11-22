@@ -75,7 +75,7 @@ fun AboutScreen(
 }
 
 /**
- * What's New row (Nuvio): opens the latest-commits screen.
+ * What's New row (Nuvio): opens the changelog screen.
  * Grouped v1.17 card (gap report §2): 24dp radius, 0.5dp dividers
  * inset 66dp between rows; rows are 16dp / 14dp with a 36dp icon
  * tile and a caller-supplied chevron.
