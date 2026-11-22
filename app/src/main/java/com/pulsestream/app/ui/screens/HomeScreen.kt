@@ -752,6 +752,11 @@ fun HomeScreen(
                                 // as one readable surface.
                                 Modifier.background(LocalPalette.current.background)
                               ) {
+                                // Typed local: an `if (c) null else { ... }`
+                                // argument cannot carry a lambda literal in
+                                // the else branch (nullable expected type
+                                // parses the braces as a block, Unit?).
+                                val openCatalogAction: () -> Unit = { onOpenCatalog(row) }
                                 SectionTitle(
                                     row.catalogName,
                                     // Don't repeat the addon name when the catalog name
@@ -763,7 +768,7 @@ fun HomeScreen(
                                             !row.catalogName.startsWith(it, ignoreCase = true)
                                     },
                                     onMoreClick = if (row.addonId.startsWith("cs3:")) null
-                                        else { onOpenCatalog(row) }
+                                        else openCatalogAction
                                 )
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),

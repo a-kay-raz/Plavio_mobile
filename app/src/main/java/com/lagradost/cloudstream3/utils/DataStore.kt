@@ -101,7 +101,8 @@ object DataStore {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun <T : Any> decodeValue(json: String, valueType: Class<T>): T? {
+    @PublishedApi
+    internal fun <T : Any> decodeValue(json: String, valueType: Class<T>): T? {
         val parsed = runCatching { JSONTokener(json).nextValue() }.getOrNull() ?: return null
         return decodeAny(parsed, valueType) as? T
     }

@@ -276,8 +276,7 @@ object CloudStreamDexRuntime {
                     api.init()
                     liveProviders += api
                 } catch (error: Throwable) {
-                    val haystack = "${error.message}
-${error.stackTraceToString()}"
+                    val haystack = "${error.message}\n${error.stackTraceToString()}"
                     if ("SyncRepo" in haystack || "library-" in haystack) {
                         Log.w(TAG, "CloudStream provider init skipped api=${api.name}: ${error.message}")
                         APIHolder.allProviders.remove(api)
