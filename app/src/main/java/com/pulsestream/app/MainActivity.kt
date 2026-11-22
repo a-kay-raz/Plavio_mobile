@@ -1570,7 +1570,12 @@ private fun PulseNavGraph(
                 onGoToProfiles = { navController.navigate(Routes.PROFILES) },
                 onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) },
                 onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) },
-                onGoToPlayerToolbar = { navController.navigate(Routes.PLAYER_TOOLBAR) }
+                onGoToPlayerToolbar = { navController.navigate(Routes.PLAYER_TOOLBAR) },
+                onGoToContentDiscovery = { navController.navigate(Routes.CONTENT_DISCOVERY_SETTINGS) },
+                onGoToNotifications = { navController.navigate(Routes.NOTIFICATIONS_SETTINGS) },
+                onGoToAdvanced = { navController.navigate(Routes.ADVANCED_SETTINGS) },
+                onGoToWhatsNew = { navController.navigate(Routes.WHATS_NEW) },
+                onGoToLicenses = { navController.navigate(Routes.LICENSES) }
             )
         }
         composable(Routes.MEDIA_SERVERS) {
@@ -1705,6 +1710,37 @@ private fun PulseNavGraph(
             AppearanceSettingsScreen(
                 repository = repository,
                 onThemeChanged = onThemeChanged,
+                onGoToHomeCatalogs = { navController.navigate(Routes.HOME_CATALOGS) },
+                onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) },
+                onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) },
+                onGoToPlayerToolbar = { navController.navigate(Routes.PLAYER_TOOLBAR) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.CONTENT_DISCOVERY_SETTINGS) {
+            ContentDiscoverySettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onGoToContinueWatching = { navController.navigate(Routes.CONTINUE_WATCHING_SETTINGS) },
+                onGoToLiveTv = { navController.navigate(Routes.LIVE_TV_SETTINGS) },
+                onGoToAddons = { navController.navigate(Routes.ADDONS) },
+                onGoToStreams = { navController.navigate(Routes.STREAMS_SETTINGS) },
+                onGoToSubtitles = { navController.navigate(Routes.SUBTITLE_SETTINGS) },
+                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
+                onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
+                onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) },
+                onGoToCloudStream = { navController.navigate(Routes.CLOUDSTREAM) }
+            )
+        }
+        composable(Routes.NOTIFICATIONS_SETTINGS) {
+            NotificationsSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ADVANCED_SETTINGS) {
+            AdvancedSettingsScreen(
+                repository = repository,
                 onBack = { navController.popBackStack() }
             )
         }
