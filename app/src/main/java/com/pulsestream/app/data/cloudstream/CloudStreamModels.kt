@@ -256,6 +256,7 @@ internal data class StoredCloudStreamPlugin(
     val enabled: Boolean = false,
     val verified: Boolean = false,
     val installedAtEpochMs: Long = 0L,
+    val pinned: Boolean = false,
 )
 
 @Serializable

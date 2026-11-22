@@ -144,7 +144,8 @@ fun BackupScreen(repository: StreamRepository, onBack: () -> Unit) {
             text = {
                 Column {
                     Text("Format version ${counts.version}")
-                    Text("${counts.addonCount} addons · ${counts.watchlistCount} watchlist entries · ${counts.playbackCount} playback states")
+                    Text("${counts.addonCount} addons · ${counts.watchlistCount} watchlist entries · ${counts.playbackCount} playback states" +
+                        if (counts.cloudstreamRepoCount > 0 || counts.cloudstreamPluginCount > 0) " · ${counts.cloudstreamRepoCount} CS3 repos · ${counts.cloudstreamPluginCount} CS3 plugins" else "")
                     Text("${counts.customListCount} custom lists · ${counts.customListItemCount} list items")
                     Spacer(Modifier.height(10.dp))
                     Text("This will replace the sections shown above. Downloads/media are not included; integration credentials and local consent settings remain on this device.")

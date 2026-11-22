@@ -43,6 +43,7 @@ data class CloudStreamPluginItem(
     val verified: Boolean = false,
     val isInstalling: Boolean = false,
     val errorMessage: String? = null,
+    val pinned: Boolean = false,
 ) {
     val isInstalled: Boolean
         get() = installedVersion != null
@@ -166,6 +167,47 @@ object CloudStreamRepository {
         _uiState.value = CloudStreamUiState()
         cancelInFlightMainPageRequests()
         cancelInFlightLoadLinksRequests()
+        clearLoadCaches()
+        CloudStreamDexRuntime.clear()
+        CloudStreamStorage.clearPackages()
+        CloudStreamStorage.clearAllState()
+    }
+
+    /**
+     * Restores the registry from a backup payload (the raw StoredCloudStreamState JSON
+     * written by exportBackupJson). Validates the schema BEFORE touching stored state,
+     * so a corrupt payload leaves the current registry intact. Installed packages on
+     * disk are untouched: restoreState() drops installedVersion for any plugin whose
+     * package file is missing, so on a fresh device the restored plugins show as
+     * not-installed with Install available. Returns false when the payload is invalid.
+     * Loaded plugins are unloaded (DexRuntime.provider() lazy-loads on next use) and
+     * the registry revision is bumped so cached stream sessions are invalidated.
+     */
+    fun importState(payload: String): Boolean {
+        val stored = runCatching { json.decodeFromString<StoredCloudStreamState>(payload) }
+            .onFailure { Log.w(TAG, "Could not import CloudStream state", it) }
+            .getOrNull() ?: return false
+        // Decode succeeded: the payload is a well-formed registry. Persist it, then
+        // restore through the same path as a cold start.
+        val previousRevision = _uiState.value.registryRevision
+        CloudStreamStorage.saveState(1, json.encodeToString(stored))
+        refreshJobs.values.forEach { it.cancel() }
+        refreshJobs.clear()
+        initialized = false
+        cancelInFlightMainPageRequests()
+        cancelInFlightLoadLinksRequests()
+        clearLoadCaches()
+        CloudStreamDexRuntime.clear()
+        initialize()
+        // Bump from the pre-import revision (restoreState() always resets it to 1,
+        // which could collide with the pre-import value and leave cached stream
+        // sessions valid). Monotonic bump guarantees old cached links are invalid.
+        _uiState.update { current -> current.copy(registryRevision = previousRevision + 1) }
+        persist()
+        return true
+    }
+
+    private fun clearLoadCaches() {
         loadLinksCacheMutex.tryLock().let { locked ->
             if (locked) {
                 try { loadLinksCache.clear() } finally { loadLinksCacheMutex.unlock() }
@@ -176,9 +218,6 @@ object CloudStreamRepository {
                 try { loadResultCache.clear() } finally { loadResultCacheMutex.unlock() }
             }
         }
-        CloudStreamDexRuntime.clear()
-        CloudStreamStorage.clearPackages()
-        CloudStreamStorage.clearAllState()
     }
 
     fun acceptSecurityWarning() {
@@ -221,19 +260,29 @@ object CloudStreamRepository {
             )
     }
 
+    /**
+     * True when the input asks for the MegaRepo discovery list instead of one repository:
+     * the keyword "MegaProvider"/"MegaRepo", or a URL pointing at the cs-repos repos-db.json.
+     * Used by the manager screen to decide between Discover and a single add.
+     */
+    fun isDiscoveryInput(input: String): Boolean {
+        val trimmed = input.trim()
+        return trimmed.equals("MegaProvider", ignoreCase = true) ||
+            trimmed.equals("MegaRepo", ignoreCase = true) ||
+            trimmed.contains("self-similarity/MegaRepo", ignoreCase = true) ||
+            trimmed.contains("cs-repos/master/repos-db.json", ignoreCase = true)
+    }
+
     suspend fun discoverRepositories(rawInput: String): Result<Int> {
         initialize()
         val input = rawInput.trim()
         if (input.isBlank()) return Result.failure(IllegalArgumentException("Repository input is empty"))
 
         return runCatching {
-            val databaseUrl = when {
-                input.equals("MegaProvider", ignoreCase = true) ||
-                    input.equals("MegaRepo", ignoreCase = true) ||
-                    input.contains("self-similarity/MegaRepo", ignoreCase = true) ||
-                    input.contains("cs-repos/master/repos-db.json", ignoreCase = true) ->
-                    "https://raw.githubusercontent.com/recloudstream/cs-repos/master/repos-db.json"
-                else -> null
+            val databaseUrl = if (isDiscoveryInput(input)) {
+                "https://raw.githubusercontent.com/recloudstream/cs-repos/master/repos-db.json"
+            } else {
+                null
             }
 
             val repositoryUrls = if (databaseUrl != null) {
@@ -489,6 +538,34 @@ object CloudStreamRepository {
             CloudStreamDexRuntime.unload(pluginId)
         }
         persist()
+    }
+
+    /**
+     * Pins or unpins a plugin's stream source, so its streams sort first in Choose Stream
+     * (the same idea as Infuse's StreamSourcePreferencesRepository pin, applied to the
+     * starred-addons sort in StreamRepository). Pinned state survives backup/restore.
+     */
+    fun setProviderPinned(pluginId: String, pinned: Boolean) {
+        initialize()
+        var changed = false
+        _uiState.update { current ->
+            val plugins = current.plugins.map { item ->
+                if (item.metadata.id.value != pluginId || item.pinned == pinned) return@map item
+                changed = true
+                item.copy(pinned = pinned)
+            }
+            current.copy(
+                plugins = plugins,
+                registryRevision = current.registryRevision + if (changed) 1 else 0,
+            )
+        }
+        if (changed) persist()
+    }
+
+    /** Plugin ids whose sources sort first in Choose Stream. */
+    fun pinnedProviderIds(): Set<String> {
+        initialize()
+        return _uiState.value.plugins.filter { it.pinned }.map { it.metadata.id.value }.toSet()
     }
 
     fun removePlugin(pluginId: String) {
@@ -908,6 +985,7 @@ object CloudStreamRepository {
                 // restart, the first persist afterwards making the loss permanent.
                 enabled = plugin.enabled && packageExists && plugin.verified && compatibility.isRunnable && metadata.status.canInstall,
                 verified = plugin.verified && packageExists,
+                pinned = plugin.pinned,
             )
         }
         return CloudStreamUiState(
@@ -958,6 +1036,7 @@ object CloudStreamRepository {
         enabled = enabled,
         verified = verified,
         installedAtEpochMs = installedAtEpochMs.takeIf { installedVersion != null } ?: 0L,
+        pinned = pinned,
     )
 
     private fun StoredCloudStreamPlugin.toMetadata(): CloudStreamPluginMetadata {
