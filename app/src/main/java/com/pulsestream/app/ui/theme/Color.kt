@@ -87,7 +87,7 @@ enum class AccentTheme(val label: String, val primary: Color, val secondary: Col
 
     companion object {
         fun byName(name: String?): AccentTheme =
-            values().firstOrNull { it.name == name } ?: WHITE
+            values().firstOrNull { it.name == name } ?: GOLD
     }
 }
 
@@ -112,7 +112,7 @@ data class AppPalette(
     val accentText: Color = accent,
     /** The six-theme identity this palette was built from. */
     val appTheme: AppTheme = AppTheme.ONYX,
-    val accentTheme: AccentTheme = AccentTheme.WHITE,
+    val accentTheme: AccentTheme = AccentTheme.GOLD,
     /**
      * Frosted glass on/off. Weak devices get the solid version of the
      * chosen theme instead (same colours, flat surfaces, no glows).
@@ -127,8 +127,8 @@ data class AppPalette(
 
 val LocalPalette = compositionLocalOf {
     AppPalette(
-        accent = AccentTheme.WHITE.primary,
-        accent2 = AccentTheme.WHITE.secondary,
+        accent = AccentTheme.GOLD.primary,
+        accent2 = AccentTheme.GOLD.secondary,
         background = BgDeep,
         panel = BgPanel,
         amoled = false

@@ -1519,7 +1519,7 @@ class SettingsStore(
 
     /** Accent color theme name (see AccentTheme). */
     var accentName: String
-        get() = prefs.getString(KEY_ACCENT, AccentTheme.WHITE.name) ?: AccentTheme.WHITE.name
+        get() = prefs.getString(KEY_ACCENT, AccentTheme.GOLD.name) ?: AccentTheme.GOLD.name
         set(value) = prefs.edit().putString(KEY_ACCENT, value).apply()
 
     /** Pure-black backgrounds (AMOLED-friendly). */
