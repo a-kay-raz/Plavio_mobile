@@ -693,7 +693,7 @@ object CloudStreamRepository {
     }
 
     /**
-     * Phase 2: load a `plavio-cs-api:` route when the owning provider is
+     * Phase 2: load a `avio-cs-api:` route when the owning provider is
      * unknown — Home/search poster clicks carry the route, not the
      * provider id. Tries every runnable plugin in registry order; only
      * the owner can decode the route, and [CloudStreamDexRuntime.load]
@@ -800,7 +800,7 @@ object CloudStreamRepository {
                 }
             }
             CloudStreamPackageInspector.inspect(bytes)
-            // Plavio strict policy (stricter than Infuse): a plugin with no
+            // Avio strict policy (stricter than Infuse): a plugin with no
             // repo-listed SHA-256 hash is refused, never auto-verified. A
             // malformed hash also parses to null and is refused the same way.
             val expectedHash = item.metadata.fileHash
@@ -1139,7 +1139,7 @@ object CloudStreamRepository {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json, text/plain, */*")
-            .header("User-Agent", "Plavio")
+            .header("User-Agent", "Avio")
             .get()
             .build()
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -1156,7 +1156,7 @@ object CloudStreamRepository {
     private suspend fun httpGetBytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray {
         val builder = Request.Builder().url(url).get()
         headers.forEach { (name, value) -> builder.header(name, value) }
-        builder.header("User-Agent", "Plavio")
+        builder.header("User-Agent", "Avio")
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
             httpClient.newCall(builder.build()).execute().use { response ->
                 require(response.isSuccessful) {

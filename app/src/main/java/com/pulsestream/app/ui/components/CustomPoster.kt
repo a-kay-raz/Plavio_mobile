@@ -100,7 +100,7 @@ object CustomPosterResolver {
     }
 
     /**
-     * Extract [ContentIds] from a Plavio meta ID and an optional explicit
+     * Extract [ContentIds] from an Avio meta ID and an optional explicit
      * IMDb id (PlaybackState carries one for Continue Watching).
      *
      * Examples:

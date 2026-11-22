@@ -28,7 +28,7 @@ import java.util.ArrayList
  * the EAC3, AC3, DTS, and TrueHD decoders.
  */
 @UnstableApi
-class PlavioRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+class AvioRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
 
     init {
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)

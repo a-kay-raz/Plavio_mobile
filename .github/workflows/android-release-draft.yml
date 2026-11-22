@@ -80,10 +80,10 @@ jobs:
             umask 077
             printf '%s' "$SIGNING_STORE_B64" | base64 --decode > "$RUNNER_TEMP/owner.jks"
             {
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE=$RUNNER_TEMP/owner.jks"
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE_PASSWORD=$SIGNING_STORE_PASSWORD"
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_ALIAS=$SIGNING_KEY_ALIAS"
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_PASSWORD=$SIGNING_KEY_PASSWORD"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_STORE=$RUNNER_TEMP/owner.jks"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_STORE_PASSWORD=$SIGNING_STORE_PASSWORD"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_KEY_ALIAS=$SIGNING_KEY_ALIAS"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_KEY_PASSWORD=$SIGNING_KEY_PASSWORD"
             } >> "$GITHUB_ENV"
             echo "Signing with owner key."
           else
@@ -92,10 +92,10 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug, O=Android, C=US"
             {
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE=$RUNNER_TEMP/debug.jks"
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_STORE_PASSWORD=android"
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_ALIAS=androiddebugkey"
-              echo "ORG_GRADLE_PROJECT_PLAVIO_SIGNING_KEY_PASSWORD=android"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_STORE=$RUNNER_TEMP/debug.jks"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_STORE_PASSWORD=android"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_KEY_ALIAS=androiddebugkey"
+              echo "ORG_GRADLE_PROJECT_AVIO_SIGNING_KEY_PASSWORD=android"
             } >> "$GITHUB_ENV"
             echo "No owner signing secrets: debug-signed test APK."
           fi
@@ -110,11 +110,11 @@ jobs:
           version="$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)"
           tag="v${version}-dev-${{ github.run_number }}"
           apk="app/build/outputs/apk/mobile/release/app-mobile-release.apk"
-          asset="Plavio-v${version}-arm64.apk"
+          asset="Avio-v${version}-arm64.apk"
           test -f "$apk" || { echo "Missing release APK: $apk" >&2; exit 1; }
           cp "$apk" "$asset"
           gh release create "$tag" --draft \
-            --title "Plavio v${version} dev build ${{ github.run_number }} (arm64)" \
+            --title "Avio v${version} dev build ${{ github.run_number }} (arm64)" \
             --notes "Draft release, owner only. Android arm64-only build." \
             "$asset"
 

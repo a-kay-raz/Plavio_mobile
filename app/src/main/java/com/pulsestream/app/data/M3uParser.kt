@@ -37,7 +37,7 @@ object M3uParser {
             runCatching {
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Plavio/${BuildConfig.VERSION_NAME}")
+                    .header("User-Agent", "Avio/${BuildConfig.VERSION_NAME}")
                     .build()
                 client.newCall(request).execute().use { resp ->
                     if (!resp.isSuccessful) {

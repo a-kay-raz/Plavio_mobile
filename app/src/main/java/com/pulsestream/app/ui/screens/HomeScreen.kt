@@ -571,7 +571,7 @@ fun HomeScreen(
     var heroFocusDone by remember { mutableStateOf(false) }
 
     GlowBackground {
-        // No header (v0.12.3, owner's order): the "Plavio" wordmark +
+        // No header (v0.12.3, owner's order): the "Avio" wordmark +
         // tagline row is gone, so the screen starts clear and the hero
         // poster owns the full top of the screen. The one functional
         // control the header held — the Saved (Watchlist / My Lists)
@@ -874,8 +874,8 @@ fun HomeScreen(
                                 SectionTitle(
                                     row.catalogName,
                                     // Don't repeat the addon name when the catalog name
-                                    // already starts with it ("PlavioMeta: Trending
-                                    // Movies" + "PlavioMeta" looks broken). The whole
+                                    // already starts with it ("AvioMeta: Trending
+                                    // Movies" + "AvioMeta" looks broken). The whole
                                     // subtitle goes away with "Show catalog type" off.
                                     row.addonName.takeIf {
                                         prefs.showCatalogType &&
@@ -1668,7 +1668,7 @@ private fun formatHeroReleaseDate(raw: String?): String? {
 
 /**
  * Continue Watching order (Nuvio `applyStreamingStyleSort`, adapted to
- * Plavio's data): default = most recently watched first (the stored order);
+ * Avio's data): default = most recently watched first (the stored order);
  * streaming-style = unfinished first by recency, finished last. Finished
  * means at the watched threshold (Step 2).
  */
@@ -1687,7 +1687,7 @@ internal fun applyContinueWatchingSort(
 
 /**
  * Splits unaired next-up items out of the main list (Nuvio
- * `splitUpcomingItems`). Plavio's resume list (PlaybackState) carries no
+ * `splitUpcomingItems`). Avio's resume list (PlaybackState) carries no
  * release dates and no next-up entries, so the split runs over the
  * resolved Next Up episodes: with sort mode "split_upcoming", next-ups
  * whose air date is in the future move to their own row, nearest air date
@@ -1864,7 +1864,7 @@ private fun ReleaseRadarCard(
  * smart-signal pill, and a 3dp progress bar inset at the bottom.
  * Card width = landscape poster width x 1.2 (Nuvio
  * ContinueWatchingLandscapeCardScale), corner = poster corner
- * radius. The visible remove-x stays (Plavio requirement — Nuvio
+ * radius. The visible remove-x stays (Avio requirement — Nuvio
  * has none); the badge sits left of it. The third Nuvio line
  * (episode title) is NOT shown: PlaybackState carries no episode
  * title. "wide"/"poster" follow Nuvio's Wide/Poster cards.
@@ -2112,7 +2112,7 @@ private fun CwLandscapeCard(
                 .align(Alignment.TopStart)
                 .padding(metrics.badgeInset)
         )
-        // Visible remove button (Plavio requirement): top-end.
+        // Visible remove button (Avio requirement): top-end.
         IconButton(
             onClick = onRemove,
             modifier = Modifier
@@ -2932,7 +2932,7 @@ private fun CollectionFolderCard(
 
 /**
  * Phase 2: CS3 provider selector (Infuse's CloudStreamProviderSelectorHeader,
- * Plavio palette — flat panel + accent border, no glass). "All CS3" shows
+ * Avio palette — flat panel + accent border, no glass). "All CS3" shows
  * every runnable provider's sections, one provider shows only its sections,
  * "Off" hides CS3 sections. The pill stays visible with no CS3 rows so
  * "Off" can always be undone.

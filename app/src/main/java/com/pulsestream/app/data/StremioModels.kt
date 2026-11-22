@@ -111,9 +111,9 @@ data class CastMember(
     val character: String? = null
 )
 
-/** Actor filmography from PlavioMeta /person (Step 58: Nuvio
+/** Actor filmography from AvioMeta /person (Step 58: Nuvio
  * PersonDetail fields — biography/birthday/deathday/placeOfBirth/
- * knownFor arrive from PlavioMeta when it serves them, otherwise
+ * knownFor arrive from AvioMeta when it serves them, otherwise
  * StreamRepository merges them from TMDB when a key is set). */
 data class PersonDetail(
     val id: Int,
@@ -128,7 +128,7 @@ data class PersonDetail(
     val knownFor: String? = null
 )
 
-/** A YouTube trailer reference from an addon's meta (PlavioMeta `trailerStreams`). */
+/** A YouTube trailer reference from an addon's meta (AvioMeta `trailerStreams`). */
 data class TrailerStream(
     val title: String,
     val ytId: String
@@ -146,9 +146,9 @@ data class MetaDetail(
     val imdbRating: String? = null,
     val genres: List<String> = emptyList(),
     val videos: List<Video> = emptyList(),
-    /** YouTube trailers (PlavioMeta `trailerStreams`); empty when the addon provides none. */
+    /** YouTube trailers (AvioMeta `trailerStreams`); empty when the addon provides none. */
     val trailerStreams: List<TrailerStream> = emptyList(),
-    /** Top-billed cast (PlavioMeta; names only in keyless/Cinemeta mode). */
+    /** Top-billed cast (AvioMeta; names only in keyless/Cinemeta mode). */
     val cast: List<CastMember> = emptyList(),
     /** Extra facts for the Show Details tiles — present only when the meta addon provides them. */
     val runtime: String? = null,
@@ -156,9 +156,9 @@ data class MetaDetail(
     val certification: String? = null,
     val country: String? = null,
     val network: String? = null,
-    /** Director names (PlavioMeta + Cinemeta serve `director`). */
+    /** Director names (AvioMeta + Cinemeta serve `director`). */
     val director: List<String> = emptyList(),
-    /** Writer names (Cinemeta serves `writer`; PlavioMeta serves none). */
+    /** Writer names (Cinemeta serves `writer`; AvioMeta serves none). */
     val writer: List<String> = emptyList()
 )
 
@@ -243,9 +243,9 @@ data class SearchOutcome(val results: List<CachedMeta>, val remoteFailed: Boolea
 
 /**
  * Step 71: one search-results section per addon (Nuvio's orderedSections,
- * Plavio scope: per ADDON, not per catalog — one section per addon is the
+ * Avio scope: per ADDON, not per catalog — one section per addon is the
  * user's own wording, and it matches how the remote fan-out already groups
- * by addon). The server leg ("Plavio Search") is its own section.
+ * by addon). The server leg ("Avio Search") is its own section.
  */
 data class SearchSection(
     val addonId: String,

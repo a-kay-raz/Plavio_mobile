@@ -44,7 +44,7 @@ import com.pulsestream.app.ui.theme.TextPrimary
  * updated, these can delegate to them.
  */
 
-/** Nuvio `textMuted` — #969CA3 (Plavio's TextSecondary is #B8BEC5). */
+/** Nuvio `textMuted` — #969CA3 (Avio's TextSecondary is #B8BEC5). */
 val V117Muted = Color(0xFF969CA3)
 
 /**

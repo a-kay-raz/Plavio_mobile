@@ -11,11 +11,11 @@ import kotlin.math.min
 /**
  * Step 42 — Smart Streams (Nuvio streams/SmartStreamRanking.kt,
  * SmartStreamQuality.kt, SmartStreamSettings.kt, SmartStreamDevice.kt,
- * SmartStreamLanguages.kt, ported to Plavio's StreamItem + SettingsStore).
+ * SmartStreamLanguages.kt, ported to Avio's StreamItem + SettingsStore).
  *
  * Scored auto-pick + per-title filter/sort: instant-ness, resolution vs
  * screen, bitrate sweet spot, codec hardware, HDR, source, audio and
- * language — instead of quality-order only. Plavio has no binge groups,
+ * language — instead of quality-order only. Avio has no binge groups,
  * no debrid cache-status and no behaviorHints, so those inputs are
  * approximated from title/name markers (see readInstant / readLanguages).
  */
@@ -388,7 +388,7 @@ object SmartStreamQuality {
     }
 
     /**
-     * Plavio has no debrid cache-status: a direct http(s) link plays at once
+     * Avio has no debrid cache-status: a direct http(s) link plays at once
      * (YES), a ⚡/cached marker is instant (YES), an uncached/download marker
      * or an unresolved infohash: is not (NO), everything else is UNKNOWN.
      */

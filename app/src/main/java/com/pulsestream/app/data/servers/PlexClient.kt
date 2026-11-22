@@ -48,7 +48,7 @@ object PlexClient {
     )
 
     private fun plexHeaders(settings: SettingsStore): Map<String, String> = mapOf(
-        "X-Plex-Product" to "Plavio",
+        "X-Plex-Product" to "Avio",
         "X-Plex-Version" to BuildConfig.VERSION_NAME,
         "X-Plex-Client-Identifier" to settings.mediaServerDeviceId,
         "X-Plex-Device" to "Android",

@@ -38,7 +38,7 @@ object MediaBrowserClient {
 
     private fun authHeader(settings: SettingsStore, token: String? = null): String =
         buildString {
-            append("MediaBrowser Client=\"Plavio\", Device=\"Android\", ")
+            append("MediaBrowser Client=\"Avio\", Device=\"Android\", ")
             append("DeviceId=\"${settings.mediaServerDeviceId}\", ")
             append("Version=\"${BuildConfig.VERSION_NAME}\"")
             if (token != null) append(", Token=\"$token\"")

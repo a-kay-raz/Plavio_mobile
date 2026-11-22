@@ -296,7 +296,7 @@ fun SubtitleSettingsScreen(
 }
 
 /**
- * Step 38 — subtitle font picker (Nuvio SubtitleFontPicker, Plavio-native):
+ * Step 38 — subtitle font picker (Nuvio SubtitleFontPicker, Avio-native):
  * built-in faces with an "Aa" preview, imported ttf/otf fonts with delete,
  * and a file import (SAF picker, validated + deduped by SubtitleFonts).
  * Selecting a row applies it at once; importing applies the new font.

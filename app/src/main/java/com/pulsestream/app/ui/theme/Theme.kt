@@ -24,7 +24,7 @@ private val JetBrainsSans = FontFamily(
 
 /** Nuvio's type scale (NuvioTokens.Type): body 14/15/16sp, titles
  * 18/22sp, headline 26sp, labels 11/12sp semibold. */
-private val PlavioTypography = Typography(
+private val AvioTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = JetBrainsSans, fontSize = 38.sp, lineHeight = 42.sp,
         fontWeight = FontWeight.Bold, letterSpacing = (-1.2).sp,
@@ -111,7 +111,7 @@ fun PulseStreamTheme(
     CompositionLocalProvider(LocalPalette provides palette) {
         MaterialTheme(
             colorScheme = scheme,
-            typography = PlavioTypography,
+            typography = AvioTypography,
             content = content
         )
     }

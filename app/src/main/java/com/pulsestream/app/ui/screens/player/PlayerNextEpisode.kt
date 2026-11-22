@@ -38,7 +38,7 @@ fun resolveNextEpisode(
 /**
  * Whether the next-episode card shows at [positionMs] (Nuvio
  * PlayerNextEpisodeRules.shouldShowNextEpisodeCard, simplified: the
- * post-credits-scene sub-branch is omitted — Plavio's chapter/IntroDB
+ * post-credits-scene sub-branch is omitted — Avio's chapter/IntroDB
  * outro intervals carry no post-credits scene model).
  *
  * With outro segments: when the gap after the latest outro end is wider

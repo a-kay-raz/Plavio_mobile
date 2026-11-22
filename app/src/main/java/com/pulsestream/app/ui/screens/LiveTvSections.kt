@@ -84,7 +84,7 @@ import kotlinx.coroutines.launch
 internal const val LIVE_TV_SPORTS_FILTER_ALL = "all"
 internal const val LIVE_TV_SPORTS_FILTER_LIVE = "live"
 
-/** FilterChip colors matching the Plavio dark aesthetic (same as LiveScreen's chipColors). */
+/** FilterChip colors matching the Avio dark aesthetic (same as LiveScreen's chipColors). */
 @Composable
 private fun liveTvSectionChipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),

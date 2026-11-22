@@ -24,7 +24,7 @@ import kotlin.coroutines.resumeWithException
 /**
  * Google Drive sync (user's order 2026-10-19): replaces Supabase entirely.
  * - Login via device Google account (AccountManager, no Play Services needed)
- * - Backup stored in Drive's appDataFolder (private to Plavio, invisible to user)
+ * - Backup stored in Drive's appDataFolder (private to Avio, invisible to user)
  * - Auto-backup on login + manual; auto-restore on login
  * - Includes API keys (user's order: simple sync, no passphrase)
  *
@@ -199,7 +199,7 @@ class GoogleDriveSyncManager(
                         put("name", BACKUP_FILENAME)
                         put("parents", org.json.JSONArray().put("appDataFolder"))
                     }
-                    val boundary = "plavio-boundary-${System.currentTimeMillis()}"
+                    val boundary = "avio-boundary-${System.currentTimeMillis()}"
                     val body = StringBuilder()
                         .append("--$boundary\r\n")
                         .append("Content-Type: application/json; charset=UTF-8\r\n\r\n")

@@ -137,7 +137,7 @@ class SimklApi {
 
     /**
      * The user's Simkl library — Plan to Watch + Watching only (Completed /
-     * On Hold / Dropped are not "library" in Plavio's sense). Throws on
+     * On Hold / Dropped are not "library" in Avio's sense). Throws on
      * failure so the sync can tell "empty" from "unreachable".
      */
     suspend fun getAllItems(token: String): List<ListEntry> = withContext(Dispatchers.IO) {

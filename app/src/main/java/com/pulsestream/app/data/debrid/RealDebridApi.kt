@@ -37,7 +37,7 @@ class RealDebridApi(private val apiKey: String) {
         private val VIDEO_EXTS = setOf("mp4", "mkv", "avi", "webm", "mov", "m4v", "ts")
     }
 
-    private val userAgent = "Plavio/${BuildConfig.VERSION_NAME}"
+    private val userAgent = "Avio/${BuildConfig.VERSION_NAME}"
 
     private val client = OkHttpClient.Builder()
         .callTimeout(60, TimeUnit.SECONDS)

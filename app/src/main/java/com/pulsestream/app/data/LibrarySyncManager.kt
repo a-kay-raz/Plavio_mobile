@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
  *  - a title present anywhere ends up everywhere (local + both services);
  *  - a title that was synced before but is now gone from the local
  *    library, or gone from every linked service, is removed everywhere —
- *    that's how "delete it in Plavio" (or on Trakt/Simkl) propagates.
+ *    that's how "delete it in Avio" (or on Trakt/Simkl) propagates.
  * Adding a title to a service is also how it gets tracked there: Trakt
  * watchlist, Simkl "Plan to Watch".
  *

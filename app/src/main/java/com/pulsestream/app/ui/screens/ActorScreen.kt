@@ -77,7 +77,7 @@ import com.pulsestream.app.ui.theme.TextSecondary
  * born/age line, place of birth, known for, credits summary, expandable
  * biography — then Popular / Latest / Upcoming rails (Nuvio's three
  * credit sorts). Wide screens (>= 900dp) get Nuvio's sidebar layout:
- * identity on the left, rails on the right. Backed by PlavioMeta
+ * identity on the left, rails on the right. Backed by AvioMeta
  * /person, enriched from TMDB when a key is set; when no addon serves
  * /person the repository falls back to search by actor name.
  */
@@ -98,7 +98,7 @@ fun ActorScreen(
         favoritePeopleRepository.ensureLoaded()
         loading = true
         // Person data comes from whichever installed metadata addon
-        // serves /person (PlavioMeta is the richest); when none does,
+        // serves /person (AvioMeta is the richest); when none does,
         // the repository falls back to that addon's search by actor
         // name (metadata flexibility, owner's order 2026-10-26).
         person = runCatching { repository.getPerson(personId, personName) }.getOrNull()
