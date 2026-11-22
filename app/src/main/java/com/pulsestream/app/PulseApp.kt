@@ -120,6 +120,14 @@ class PulseApp : Application(), ImageLoaderFactory {
         appScope.launch { com.pulsestream.app.data.CrashReports.initIfEnabled(this@PulseApp, settings) }
         // Quietly install the pre-installed addons (PlavioMeta + Cinemeta + subtitles) on first launch.
         appScope.launch { repository.ensurePreinstalledAddons() }
+        // CloudStream (CS3): cheap restore of the persisted registry
+        // (repositories + installed plugins) so the stream leg and the
+        // manager screen see it. Loading stays lazy — no plugin dex is
+        // loaded until a stream, search or main-page call needs it.
+        appScope.launch {
+            com.pulsestream.app.data.cloudstream.CloudStreamStorage.initialize(this@PulseApp)
+            com.pulsestream.app.data.cloudstream.CloudStreamRepository.initialize()
+        }
         // The house addon is the LOCKED PlavioHD (addon.plavio.site):
         // pre-installed ON; the public one is no longer pre-installed and
         // its pre-installed row is removed (owner's orders 2026-10-24).

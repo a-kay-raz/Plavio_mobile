@@ -14,6 +14,8 @@ import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.data.db.SubtitleCache
 import com.pulsestream.app.data.db.WatchlistItem
 import com.pulsestream.app.data.simkl.SimklSyncEngine
+import com.pulsestream.app.data.cloudstream.CloudStreamRepository
+import com.pulsestream.app.data.cloudstream.CloudStreamStreamSource
 import com.pulsestream.app.data.servers.MediaServerOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -1724,7 +1726,9 @@ class StreamRepository(
         type: String,
         videoId: String,
         preferredAddonId: String? = null,
-        preserveHeaderVariants: Boolean = false
+        preserveHeaderVariants: Boolean = false,
+        /** Title for the CloudStream search fallback; null skips the fallback. */
+        title: String? = null
     ): Flow<StreamResult> = channelFlow {
         val addons = streamAddons()
         if (addons.isEmpty()) {
@@ -1733,7 +1737,7 @@ class StreamRepository(
         }
         // Session cache: reopening a title shows its last streams instantly
         // while the fresh fetch below replaces them as it lands.
-        val cacheKey = "$type|$videoId|${preferredAddonId.orEmpty()}|$preserveHeaderVariants"
+        val cacheKey = "$type|$videoId|${preferredAddonId.orEmpty()}|$preserveHeaderVariants|cs3:${CloudStreamRepository.uiState.value.registryRevision}"
         streamResultCache[cacheKey]?.let { (cachedAt, cached) ->
             if (System.currentTimeMillis() - cachedAt < STREAM_RESULT_CACHE_TTL_MS) {
                 send(cached)
@@ -1786,6 +1790,43 @@ class StreamRepository(
                         res.streams.forEach { s ->
                             if (seenStreams.add(streamIdentity(s))) {
                                 accStreams.add(s.copy(sourceName = addon.name, sourceId = addon.id))
+                                changed = true
+                            }
+                        }
+                        res.subtitles.forEach { s ->
+                            if (seenSubs.add(s.url)) {
+                                accSubs.add(s)
+                                changed = true
+                            }
+                        }
+                    }
+                    if (changed) {
+                        mutex.withLock { send(StreamResult(prioritize(accStreams.toList()), accSubs.toList())) }
+                    }
+                }
+            }
+            // CloudStream (CS3): one leg for the whole plugin group, own 35s
+            // timeout, emitting into the same accumulation — so dedupe,
+            // probing, Smart Streams, debrid and the player all inherit CS3
+            // streams exactly like Stremio ones. A CS3 failure (no plugins,
+            // provider error) only ever yields zero streams, never an error.
+            if (CloudStreamRepository.runnablePlugins().isNotEmpty()) {
+                launch {
+                    val videoParts = videoId.split(":")
+                    val isImdbVideo = videoParts.firstOrNull()
+                        ?.matches(Regex("^tt\\d{5,12}$")) == true
+                    val season = if (isImdbVideo) videoParts.getOrNull(1)?.toIntOrNull() else null
+                    val episode = if (isImdbVideo) videoParts.getOrNull(2)?.toIntOrNull() else null
+                    val res = try {
+                        withTimeoutOrNull(CLOUDSTREAM_FETCH_TIMEOUT_MS) {
+                            CloudStreamStreamSource.fetchStreams(videoId, season, episode, title, type)
+                        }
+                    } catch (_: Exception) { null } ?: return@launch
+                    var changed = false
+                    mutex.withLock {
+                        res.streams.forEach { s ->
+                            if (seenStreams.add(streamIdentity(s))) {
+                                accStreams.add(s)
                                 changed = true
                             }
                         }
@@ -2596,6 +2637,8 @@ class StreamRepository(
         private const val SUBTITLE_CACHE_TTL_MS = 6L * 3600L * 1000L
         /** Fail-fast budget per addon when resolving streams/subtitles. */
         private const val STREAM_FETCH_TIMEOUT_MS = 20000L
+        /** Budget for the whole CloudStream plugin group (one leg, all providers). */
+        private const val CLOUDSTREAM_FETCH_TIMEOUT_MS = 35000L
         /** How long a cached stream list may be shown before it must be refreshed. */
         private const val STREAM_RESULT_CACHE_TTL_MS = 5L * 60L * 1000L
         /**

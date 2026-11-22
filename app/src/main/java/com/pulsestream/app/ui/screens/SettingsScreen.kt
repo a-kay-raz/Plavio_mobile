@@ -153,6 +153,7 @@ fun SettingsScreen(
     onGoToFeedback: () -> Unit = {},
     onGoToAccount: () -> Unit = {},
     onGoToIntegrations: () -> Unit = {},
+    onGoToCloudStream: () -> Unit = {},
     onGoToDownloads: () -> Unit = {},
     onGoToCollections: () -> Unit = {},
     onGoToTracking: () -> Unit = {},
@@ -405,6 +406,16 @@ fun SettingsScreen(
                 title = "Integrations",
                 subtitle = "TorBox debrid and more",
                 onClick = onGoToIntegrations,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "CloudStream",
+            "cloudstream cs3 plugins providers repositories") {
+            SettingsNavRow(
+                icon = Icons.Filled.Extension,
+                title = "CloudStream",
+                subtitle = "Community plugins and repositories",
+                onClick = onGoToCloudStream,
                 compact = true
             )
         },
