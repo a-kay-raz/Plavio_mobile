@@ -210,19 +210,22 @@ fun SettingsScreen(
     val enabledAddons = remember(installedAddons) { installedAddons.count { it.enabled } }
     val reducedMotion by com.pulsestream.app.data.MotionPreferences.reduced.collectAsState()
 
-    // Nuvio-style grouping (SettingsRootPage): the account card on top,
-    // then General / About / Advanced, in Nuvio's order. Plavio's own
-    // rows stay — only the grouping and order match Nuvio.
-    val sectionGeneral = stringResource(R.string.settings_section_general)
-    val sectionAbout = stringResource(R.string.settings_section_about)
-    val sectionAdvanced = stringResource(R.string.settings_section_advanced)
+    // Nuvio-style categories (SettingsRootPage: You / Look / Watch /
+    // Services / System): the account card stays on top, then the
+    // entries grouped by category in Nuvio's order. Plavio's own rows
+    // stay — only the grouping and order match Nuvio.
+    val sectionYou = stringResource(R.string.settings_section_you)
+    val sectionLook = stringResource(R.string.settings_section_look)
+    val sectionWatch = stringResource(R.string.settings_section_watch)
+    val sectionServices = stringResource(R.string.settings_section_services)
+    val sectionSystem = stringResource(R.string.settings_section_system)
 
     // Every root entry as data, so the search field filters the very
     // rows the sections render. Destinations and behaviour are exactly
     // the pre-restructure ones — presentation only. The old Account nav
     // row is gone: the account card above the list IS the account entry.
     val entries = listOf(
-        SettingsEntry(sectionGeneral, stringResource(R.string.settings_appearance_title),
+        SettingsEntry(sectionLook, stringResource(R.string.settings_appearance_title),
             "appearance accent color amoled black theme dark light") {
             SettingsNavRow(
                 icon = Icons.Filled.Contrast,
@@ -232,7 +235,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, stringResource(R.string.settings_home_catalogs_title),
+        SettingsEntry(sectionLook, stringResource(R.string.settings_home_catalogs_title),
             "home catalogs rows arrange visibility home screen order") {
             SettingsNavRow(
                 icon = Icons.Filled.GridView,
@@ -242,7 +245,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Continue Watching",
+        SettingsEntry(sectionWatch, "Continue Watching",
             "continue watching resume sort style tap action prompt") {
             SettingsNavRow(
                 icon = Icons.Filled.History,
@@ -252,7 +255,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Live TV",
+        SettingsEntry(sectionWatch, "Live TV",
             "live tv xtream stalker iptv providers epg guide") {
             SettingsNavRow(
                 icon = Icons.Filled.Tv,
@@ -262,7 +265,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, stringResource(R.string.settings_addons_title),
+        SettingsEntry(sectionWatch, stringResource(R.string.settings_addons_title),
             "addons manage extensions install sources manifest") {
             SettingsStaticRow(
                 icon = Icons.Filled.Extension,
@@ -283,7 +286,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, stringResource(R.string.settings_playback_title),
+        SettingsEntry(sectionWatch, stringResource(R.string.settings_playback_title),
             "playback autoplay next episode screen skip intro audio resume buffer") {
             SettingsNavRow(
                 icon = Icons.Filled.PlayArrow,
@@ -293,7 +296,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, stringResource(R.string.settings_streams_title),
+        SettingsEntry(sectionWatch, stringResource(R.string.settings_streams_title),
             "streams sources source limits quality order autoplay rule providers") {
             SettingsNavRow(
                 icon = Icons.Filled.VideoLibrary,
@@ -303,7 +306,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, stringResource(R.string.settings_subtitles_title),
+        SettingsEntry(sectionWatch, stringResource(R.string.settings_subtitles_title),
             "subtitles captions preferred languages appearance font size") {
             SettingsNavRow(
                 icon = Icons.Filled.ClosedCaption,
@@ -313,7 +316,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Downloads",
+        SettingsEntry(sectionWatch, "Downloads",
             "downloads offline files storage downloaded movies shows") {
             SettingsNavRow(
                 icon = Icons.Filled.Download,
@@ -323,7 +326,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Collections",
+        SettingsEntry(sectionWatch, "Collections",
             "collections folders tmdb trakt catalog groups") {
             SettingsNavRow(
                 icon = Icons.Filled.Folder,
@@ -335,7 +338,7 @@ fun SettingsScreen(
         },
         // Step 55: media servers (Jellyfin/Emby/Plex/Silo) — sign in
         // once, libraries show as rows on Home.
-        SettingsEntry(sectionGeneral, "Media Servers",
+        SettingsEntry(sectionWatch, "Media Servers",
             "media servers jellyfin emby plex silo self hosted libraries") {
             SettingsNavRow(
                 icon = Icons.Filled.Dns,
@@ -346,7 +349,7 @@ fun SettingsScreen(
             )
         },
         // Step 56: profiles — each keeps its own library, progress and settings.
-        SettingsEntry(sectionGeneral, "Profiles",
+        SettingsEntry(sectionYou, "Profiles",
             "profiles switch manage pin lock multi profile") {
             SettingsNavRow(
                 icon = Icons.Filled.Person,
@@ -357,7 +360,7 @@ fun SettingsScreen(
             )
         },
         // Step 57: detail sections — reorder/hide the detail page's sections.
-        SettingsEntry(sectionGeneral, "Detail sections",
+        SettingsEntry(sectionLook, "Detail sections",
             "detail sections reorder hide tabs episodes cast production") {
             SettingsNavRow(
                 icon = Icons.Filled.Tune,
@@ -368,7 +371,7 @@ fun SettingsScreen(
             )
         },
         // Step 61: custom stream badges — import rule sets, show chips on streams.
-        SettingsEntry(sectionGeneral, "Stream badges",
+        SettingsEntry(sectionLook, "Stream badges",
             "stream badges rules import chips labels quality codec group") {
             SettingsNavRow(
                 icon = Icons.Filled.Style,
@@ -379,7 +382,7 @@ fun SettingsScreen(
             )
         },
         // Step 63: player toolbar — reorder/hide the pill and top buttons.
-        SettingsEntry(sectionGeneral, "Player buttons",
+        SettingsEntry(sectionLook, "Player buttons",
             "player buttons toolbar pill reorder hide chapters sources speed") {
             SettingsNavRow(
                 icon = Icons.Filled.Dashboard,
@@ -389,7 +392,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Tracking",
+        SettingsEntry(sectionServices, "Tracking",
             "tracking trakt simkl library progress ratings source") {
             SettingsNavRow(
                 icon = Icons.Filled.Sync,
@@ -399,7 +402,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Integrations",
+        SettingsEntry(sectionServices, "Integrations",
             "integrations torbox debrid real-debrid alldebrid premiumize link accounts api keys") {
             SettingsNavRow(
                 icon = Icons.Filled.Link,
@@ -409,7 +412,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "CloudStream",
+        SettingsEntry(sectionWatch, "CloudStream",
             "cloudstream cs3 plugins providers repositories") {
             SettingsNavRow(
                 icon = Icons.Filled.Extension,
@@ -419,7 +422,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "New episode alerts",
+        SettingsEntry(sectionSystem, "New episode alerts",
             "notifications new episode alerts series watchlist releases") {
             SettingsToggleRow(
                 icon = Icons.Filled.Notifications,
@@ -443,7 +446,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionGeneral, "Send test notification",
+        SettingsEntry(sectionSystem, "Send test notification",
             "notifications test notification episode alerts") {
             // Re-read on every recomposition so a grant made elsewhere is picked up.
             val notificationsOn = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() &&
@@ -468,7 +471,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionAbout, stringResource(R.string.settings_feedback_title),
+        SettingsEntry(sectionSystem, stringResource(R.string.settings_feedback_title),
             "feedback send bug report feature request support") {
             SettingsNavRow(
                 icon = Icons.Filled.Feedback,
@@ -478,7 +481,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionAbout, stringResource(R.string.settings_about_title),
+        SettingsEntry(sectionSystem, stringResource(R.string.settings_about_title),
             "about version website updates app info check") {
             SettingsNavRow(
                 icon = Icons.Filled.Info,
@@ -488,7 +491,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionAdvanced, "Reduced motion",
+        SettingsEntry(sectionSystem, "Reduced motion",
             "reduced motion animations accessibility pause hero slides pulses") {
             SettingsToggleRow(
                 icon = Icons.Filled.Contrast,
@@ -499,7 +502,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionAdvanced, "Anonymous usage counting",
+        SettingsEntry(sectionSystem, "Anonymous usage counting",
             "anonymous counting installs online users privacy usage data own server") {
             SettingsToggleRow(
                 icon = Icons.Filled.Info,
@@ -513,7 +516,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionAdvanced, "Crash reports",
+        SettingsEntry(sectionSystem, "Crash reports",
             "crash reports sentry bugs errors anonymous fix") {
             SettingsToggleRow(
                 icon = Icons.Filled.BugReport,
@@ -528,7 +531,7 @@ fun SettingsScreen(
                 compact = true
             )
         },
-        SettingsEntry(sectionAdvanced, "Clear playback cache",
+        SettingsEntry(sectionSystem, "Clear playback cache",
             "clear cache playback video buffer storage") {
             SettingsClearRow(
                 icon = Icons.Filled.Storage,
@@ -541,7 +544,7 @@ fun SettingsScreen(
                 }
             )
         },
-        SettingsEntry(sectionAdvanced, "Clear image cache",
+        SettingsEntry(sectionSystem, "Clear image cache",
             "clear cache images posters thumbnails") {
             SettingsClearRow(
                 icon = Icons.Filled.Image,
@@ -701,7 +704,12 @@ fun SettingsScreen(
             // ---- Entries: sticky section headers when browsing; a
             // flat filtered list while searching (Sample F) ----
             if (normalizedQuery.isEmpty()) {
-                entries.groupBy { it.section }.forEach { (section, sectionEntries) ->
+                // Categories render in Nuvio's fixed order (You / Look /
+                // Watch / Services / System), not in first-entry order.
+                val groupedEntries = entries.groupBy { it.section }
+                val orderedSections = listOf(sectionYou, sectionLook, sectionWatch, sectionServices, sectionSystem)
+                    .mapNotNull { section -> groupedEntries[section]?.let { section to it } }
+                orderedSections.forEach { (section, sectionEntries) ->
                     stickyHeader(key = "section_$section") {
                         SettingsSectionHeader(section)
                     }

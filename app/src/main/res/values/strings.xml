@@ -40,6 +40,11 @@
 
     <string name="settings_section_general">General</string>
     <string name="settings_section_advanced">Advanced</string>
+    <string name="settings_section_you">You</string>
+    <string name="settings_section_look">Look</string>
+    <string name="settings_section_watch">Watch</string>
+    <string name="settings_section_services">Services</string>
+    <string name="settings_section_system">System</string>
     <string name="settings_account_title">Account</string>
     <string name="settings_account_sub">Backup &amp; sync with your Google account</string>
     <string name="settings_backup_title">Backup &amp; Restore</string>
