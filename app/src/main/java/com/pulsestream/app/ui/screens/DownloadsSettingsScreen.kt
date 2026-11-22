@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -58,9 +60,17 @@ import com.pulsestream.app.ui.theme.TextSecondary
  *   for HLS streams (720p/1080p/2160p, default 1080p).
  * - Max simultaneous downloads: 1–5, default 3 — rebuilds the manager's
  *   permit pool when changed.
+ * - Max concurrent shows (1–5, default 1) + max episodes per series
+ *   (1–5, default 1): the Step-36-deferred caps (Nuvio
+ *   DownloadConcurrencyLimit.ConcurrentShows / EpisodesPerShow),
+ *   enforced by the manager's show-slot + per-show semaphore queue.
  *
- * Nuvio also caps episodes-per-show (1) and concurrent shows (1); those
- * belong with per-show grouping (Step 36), not here.
+ * Row order follows Nuvio's DownloadsSettingsPage: resolution, the three
+ * concurrency caps, Wi-Fi only, show button, location.
+ *
+ * Presentation (§2 of the v1.17 gap report) comes from the shared
+ * components — 36dp icon tile, gradient switch, 12sp muted section
+ * header, 0.5dp dividers inset 66dp.
  */
 @Composable
 fun DownloadsSettingsScreen(
@@ -75,8 +85,12 @@ fun DownloadsSettingsScreen(
     var showButton by remember { mutableStateOf(settings.showDownloadButton) }
     var resolution by remember { mutableIntStateOf(manager.getDownloadPreferredResolution()) }
     var concurrency by remember { mutableIntStateOf(manager.getDownloadConcurrencyLimit()) }
+    var maxShows by remember { mutableIntStateOf(manager.getMaxConcurrentShows()) }
+    var maxEpisodes by remember { mutableIntStateOf(manager.getMaxEpisodesPerShow()) }
     var resolutionOpen by remember { mutableStateOf(false) }
     var concurrencyOpen by remember { mutableStateOf(false) }
+    var showsOpen by remember { mutableStateOf(false) }
+    var episodesOpen by remember { mutableStateOf(false) }
     // Step 37: custom download folder (SAF) — system folder picker, the
     // permission survives restarts via takePersistableUriPermission.
     var locationName by remember { mutableStateOf(manager.downloadLocationDisplayName()) }
@@ -123,12 +137,46 @@ fun DownloadsSettingsScreen(
                         "How downloads behave — quality, speed and when they run.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
-                        modifier = Modifier.padding(start = 56.dp, end = 8.dp)
+                        // Aligned with the title text (16dp screen pad +
+                        // 48dp back button + 4dp gap = 68dp from the edge).
+                        modifier = Modifier.padding(start = 52.dp, end = 8.dp)
                     )
                 }
             }
             item(key = "group") {
                 SettingsGroup(
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.HighQuality,
+                            title = "Preferred resolution",
+                            subtitle = "${resolution}p — the quality offered for HLS downloads",
+                            onClick = { resolutionOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Layers,
+                            title = "Simultaneous downloads",
+                            subtitle = "$concurrency at a time",
+                            onClick = { concurrencyOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.VideoLibrary,
+                            title = "Max concurrent shows",
+                            subtitle = if (maxShows == 1) "1 show at a time" else "$maxShows shows at a time",
+                            onClick = { showsOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.PlaylistPlay,
+                            title = "Max episodes per series",
+                            subtitle = if (maxEpisodes == 1) "1 episode of a series at a time" else "$maxEpisodes episodes of a series at a time",
+                            onClick = { episodesOpen = true }
+                        )
+                    },
                     {
                         SettingsToggleRow(
                             icon = Icons.Filled.Wifi,
@@ -158,22 +206,6 @@ fun DownloadsSettingsScreen(
                         )
                     },
                     {
-                        SettingsNavRow(
-                            icon = Icons.Filled.HighQuality,
-                            title = "Preferred resolution",
-                            subtitle = "${resolution}p — the quality offered for HLS downloads",
-                            onClick = { resolutionOpen = true }
-                        )
-                    },
-                    {
-                        SettingsNavRow(
-                            icon = Icons.Filled.Layers,
-                            title = "Simultaneous downloads",
-                            subtitle = "$concurrency at a time",
-                            onClick = { concurrencyOpen = true }
-                        )
-                    },
-                    {
                         // Step 37: custom download folder — new downloads
                         // move there on completion; old files stay reachable.
                         SettingsNavRow(
@@ -186,7 +218,9 @@ fun DownloadsSettingsScreen(
                     {
                         if (locationName != null) {
                             Row(
-                                modifier = Modifier.padding(start = 56.dp, end = 16.dp, top = 2.dp, bottom = 8.dp)
+                                // Aligned with the rows' text column (16dp
+                                // group pad + 36dp icon tile + 14dp gap).
+                                modifier = Modifier.padding(start = 50.dp, end = 16.dp, top = 2.dp, bottom = 8.dp)
                             ) {
                                 TextButton(onClick = {
                                     manager.setDownloadLocationUri(null)
@@ -270,6 +304,86 @@ fun DownloadsSettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { concurrencyOpen = false }) { Text("Done") }
+            }
+        )
+    }
+
+    if (showsOpen) {
+        AlertDialog(
+            onDismissRequest = { showsOpen = false },
+            title = { Text("Max concurrent shows", color = TextPrimary) },
+            text = {
+                Column(Modifier.selectableGroup()) {
+                    (1..5).forEach { limit ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .selectable(
+                                    selected = maxShows == limit,
+                                    onClick = {
+                                        maxShows = limit
+                                        manager.setMaxConcurrentShows(limit)
+                                        showsOpen = false
+                                    },
+                                    role = Role.RadioButton
+                                )
+                                .padding(vertical = 8.dp)
+                        ) {
+                            RadioButton(
+                                selected = maxShows == limit,
+                                onClick = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (limit == 1) "1 show at a time" else "$limit shows at a time",
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showsOpen = false }) { Text("Done") }
+            }
+        )
+    }
+
+    if (episodesOpen) {
+        AlertDialog(
+            onDismissRequest = { episodesOpen = false },
+            title = { Text("Max episodes per series", color = TextPrimary) },
+            text = {
+                Column(Modifier.selectableGroup()) {
+                    (1..5).forEach { limit ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .selectable(
+                                    selected = maxEpisodes == limit,
+                                    onClick = {
+                                        maxEpisodes = limit
+                                        manager.setMaxEpisodesPerShow(limit)
+                                        episodesOpen = false
+                                    },
+                                    role = Role.RadioButton
+                                )
+                                .padding(vertical = 8.dp)
+                        ) {
+                            RadioButton(
+                                selected = maxEpisodes == limit,
+                                onClick = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (limit == 1) "1 episode at a time" else "$limit episodes at a time",
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { episodesOpen = false }) { Text("Done") }
             }
         )
     }

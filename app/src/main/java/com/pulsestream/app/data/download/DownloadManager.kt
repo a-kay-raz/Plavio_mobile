@@ -16,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
@@ -29,6 +30,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
@@ -74,10 +76,16 @@ class DownloadManager private constructor(private val appContext: Context) {
         private const val MAX_SEGMENT_WORKERS = 8
         private const val MAX_SEGMENT_FAILURES = 12
         private const val MAX_CONCURRENT_DOWNLOADS = 3
+        // Step 36 caps (Nuvio DownloadConcurrencyLimit): max shows at
+        // once and max episodes of one show at once, both default 1.
+        private const val MAX_CONCURRENT_SHOWS = 1
+        private const val MAX_EPISODES_PER_SHOW = 1
         private const val PREFS = "download_policy"
         private const val KEY_WIFI_ONLY = "wifi_only"
         private const val KEY_PREFERRED_RESOLUTION = "download_preferred_resolution"
         private const val KEY_CONCURRENCY_LIMIT = "download_concurrency_limit"
+        private const val KEY_MAX_CONCURRENT_SHOWS = "download_max_concurrent_shows"
+        private const val KEY_MAX_EPISODES_PER_SHOW = "download_max_episodes_per_show"
         // Step 36: paused show keys (JSON array of meta ids).
         private const val KEY_PAUSED_SHOWS = "paused_download_shows"
         // Step 37: custom download folder (SAF tree URI string, null = app-private dir).
@@ -116,12 +124,24 @@ class DownloadManager private constructor(private val appContext: Context) {
     // Stored limit (default 3) — `prefs` is lazy and declared above, so the
     // initializer reads the saved value on first construction.
     @Volatile private var downloadPermits = Semaphore(getDownloadConcurrencyLimit())
-    // Step 36: one mutex per show — at most one episode of a show downloads
-    // at a time (Nuvio DownloadConcurrencyLimit.EpisodesPerShow = 1).
-    private val showMutexes = mutableMapOf<String, Mutex>()
-    private fun showMutexFor(showKey: String): Mutex = synchronized(showMutexes) {
-        showMutexes.getOrPut(showKey) { Mutex() }
+    // Per-show episode caps (Nuvio DownloadConcurrencyLimit.EpisodesPerShow,
+    // default 1): one semaphore per show — at most maxEpisodesPerShow
+    // episodes of a show download at a time. Rebuilt (emptied) when the
+    // cap changes; jobs already running keep the old pool's permits until
+    // they finish (same pattern as downloadPermits above).
+    private val showSemaphores = mutableMapOf<String, Semaphore>()
+    private fun showSemaphoreFor(showKey: String): Semaphore = synchronized(showSemaphores) {
+        showSemaphores.getOrPut(showKey) { Semaphore(getMaxEpisodesPerShow()) }
     }
+    // Concurrent-shows cap (Nuvio DownloadConcurrencyLimit.ConcurrentShows,
+    // default 1): a show holds one slot no matter how many of its episodes
+    // are active. The slot records the Semaphore instance it was taken
+    // from, so a cap change mid-download can never release a permit to
+    // the wrong pool.
+    @Volatile private var showSlots = Semaphore(getMaxConcurrentShows())
+    private data class ActiveShowSlot(val semaphore: Semaphore, var episodes: Int)
+    private val activeShowSlots = mutableMapOf<String, ActiveShowSlot>()
+    private val showSlotMutex = Mutex()
     private val recoveryLock = Any()
     @Volatile private var recoveryRunning = false
 
@@ -188,6 +208,28 @@ class DownloadManager private constructor(private val appContext: Context) {
         val clamped = limit.coerceIn(1, 5)
         prefs.edit().putInt(KEY_CONCURRENCY_LIMIT, clamped).apply()
         downloadPermits = Semaphore(clamped)
+    }
+
+    /** Max shows downloading at once, 1–5, default 1 (Nuvio DownloadConcurrencyLimit.ConcurrentShows). */
+    fun getMaxConcurrentShows(): Int =
+        prefs.getInt(KEY_MAX_CONCURRENT_SHOWS, MAX_CONCURRENT_SHOWS).coerceIn(1, 5)
+    fun setMaxConcurrentShows(limit: Int) {
+        val clamped = limit.coerceIn(1, 5)
+        prefs.edit().putInt(KEY_MAX_CONCURRENT_SHOWS, clamped).apply()
+        // New jobs take slots from the new pool; jobs already running keep
+        // holding the old pool's slot until they finish.
+        showSlots = Semaphore(clamped)
+    }
+
+    /** Max episodes of one show downloading at once, 1–5, default 1 (Nuvio DownloadConcurrencyLimit.EpisodesPerShow). */
+    fun getMaxEpisodesPerShow(): Int =
+        prefs.getInt(KEY_MAX_EPISODES_PER_SHOW, MAX_EPISODES_PER_SHOW).coerceIn(1, 5)
+    fun setMaxEpisodesPerShow(limit: Int) {
+        val clamped = limit.coerceIn(1, 5)
+        prefs.edit().putInt(KEY_MAX_EPISODES_PER_SHOW, clamped).apply()
+        // New jobs get a fresh per-show semaphore at the new cap; running
+        // jobs keep the old pool's permits until they finish.
+        synchronized(showSemaphores) { showSemaphores.clear() }
     }
 
     /** Total device storage bytes (StatFs on the downloads dir) — storage bar. */
@@ -531,26 +573,64 @@ class DownloadManager private constructor(private val appContext: Context) {
                 put(item.id, DownloadProgress(item.id, item.downloadedBytes, item.totalBytes, "QUEUED"))
             }
             val job = scope.launch(start = CoroutineStart.LAZY) {
-                // Step 36: at most one episode of a show downloads at a time
-                // (Nuvio EpisodesPerShow = 1) — the mutex is taken before the
-                // global permit so a waiting episode holds no permit.
-                val showMutex = if (item.showKey.isNotBlank()) showMutexFor(item.showKey) else null
-                var showLocked = false
+                // Queue caps (Nuvio DownloadQueuePolicy.canStart): a job
+                // acquires, always in this order — (1) a show slot when it
+                // is the first active episode of its show (max concurrent
+                // shows, default 1), (2) a permit from its show's episode
+                // semaphore (max episodes per series, default 1), (3) a
+                // global permit (max simultaneous downloads, default 3).
+                // One fixed order, so no two jobs can deadlock waiting on
+                // each other; a job waiting on (1) or (2) holds no global
+                // permit. Movies (blank showKey) skip (1) and (2).
+                // Deviation from Nuvio: Nuvio counts only DOWNLOADING
+                // items, so a show whose episodes are all still waiting
+                // for a global permit does not count against maxShows
+                // there; here the slot is taken up-front, so it does.
+                // The global permit is the binding constraint in
+                // practice, and the up-front slot keeps the queue fair —
+                // a later show cannot jump a waiting one.
+                val showKey = item.showKey
+                var slotSemaphore: Semaphore? = null
+                var slotPermitHeld = false
+                var slotRegistered = false
                 try {
-                    showMutex?.lock()
-                    showLocked = showMutex != null
-                    downloadPermits.withPermit {
-                        if (isWifiOnlyDownloads() && !isOnWifi()) {
-                            withContext(Dispatchers.IO) { dao.updateStatus(item.id, "QUEUED", "Waiting for Wi-Fi") }
-                            updateProgressFlow(item.id)
-                            _activeDownloads.value = _activeDownloads.value - item.id
-                            return@withPermit
+                    if (showKey.isNotBlank()) {
+                        val joined = showSlotMutex.withLock {
+                            val slot = activeShowSlots[showKey]
+                            if (slot != null) { slot.episodes += 1; true } else false
                         }
-                        withContext(Dispatchers.IO) { dao.updateStatus(item.id, "DOWNLOADING") }
-                        _activeDownloads.value = _activeDownloads.value.toMutableMap().apply {
-                            put(item.id, DownloadProgress(item.id, item.downloadedBytes, item.totalBytes, "DOWNLOADING"))
+                        if (joined) {
+                            slotRegistered = true
+                        } else {
+                            val slots = showSlots
+                            slots.acquire()
+                            slotSemaphore = slots
+                            slotPermitHeld = true
+                            // Another episode of this show may have claimed
+                            // the slot while we waited — join it and hand
+                            // our permit back.
+                            val duplicate = showSlotMutex.withLock {
+                                val slot = activeShowSlots[showKey]
+                                if (slot != null) { slot.episodes += 1; true } else {
+                                    activeShowSlots[showKey] = ActiveShowSlot(slots, 1)
+                                    false
+                                }
+                            }
+                            if (duplicate) {
+                                slots.release()
+                                slotSemaphore = null
+                                slotPermitHeld = false
+                            }
+                            slotRegistered = true
                         }
-                        downloadFile(item)
+                    }
+                    val showSemaphore = if (showKey.isNotBlank()) showSemaphoreFor(showKey) else null
+                    if (showSemaphore != null) {
+                        showSemaphore.withPermit {
+                            downloadPermits.withPermit { runDownloadBody(item) }
+                        }
+                    } else {
+                        downloadPermits.withPermit { runDownloadBody(item) }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -559,13 +639,64 @@ class DownloadManager private constructor(private val appContext: Context) {
                     withContext(Dispatchers.IO) { dao.updateStatus(item.id, "FAILED", e.message?.take(200)) }
                     updateProgressFlow(item.id)
                 } finally {
-                    if (showLocked) showMutex?.unlock()
+                    // Cleanup must run even when the job is cancelled, so
+                    // the slot release runs under NonCancellable — a
+                    // suspending withLock would otherwise throw at once
+                    // and leak the permit / the jobs entry below.
+                    if (slotRegistered || slotPermitHeld) {
+                        runCatching {
+                            withContext(NonCancellable) {
+                                if (slotRegistered) {
+                                    // The last episode of a show to finish
+                                    // hands the show's slot back to the pool
+                                    // it came from.
+                                    val slotToRelease = showSlotMutex.withLock {
+                                        val slot = activeShowSlots[showKey]
+                                        if (slot == null) {
+                                            null
+                                        } else if (slot.episodes <= 1) {
+                                            activeShowSlots.remove(showKey)
+                                            slot.semaphore
+                                        } else {
+                                            slot.episodes -= 1
+                                            null
+                                        }
+                                    }
+                                    slotToRelease?.release()
+                                } else {
+                                    // Cancelled after taking a slot but
+                                    // before registering it — hand the
+                                    // permit straight back.
+                                    slotSemaphore?.release()
+                                }
+                            }
+                        }
+                    }
                     synchronized(jobs) { jobs.remove(item.id) }
                 }
             }
             jobs[item.id] = job
             job.start()
         }
+    }
+
+    /**
+     * The work inside the global permit: Wi-Fi gate, mark DOWNLOADING,
+     * then the actual file download. Split out of launchDownload so the
+     * show-slot / episode-semaphore / global-permit nesting stays flat.
+     */
+    private suspend fun runDownloadBody(item: DownloadItem) {
+        if (isWifiOnlyDownloads() && !isOnWifi()) {
+            withContext(Dispatchers.IO) { dao.updateStatus(item.id, "QUEUED", "Waiting for Wi-Fi") }
+            updateProgressFlow(item.id)
+            _activeDownloads.value = _activeDownloads.value - item.id
+            return
+        }
+        withContext(Dispatchers.IO) { dao.updateStatus(item.id, "DOWNLOADING") }
+        _activeDownloads.value = _activeDownloads.value.toMutableMap().apply {
+            put(item.id, DownloadProgress(item.id, item.downloadedBytes, item.totalBytes, "DOWNLOADING"))
+        }
+        downloadFile(item)
     }
 
     private suspend fun downloadFile(item: DownloadItem) {
