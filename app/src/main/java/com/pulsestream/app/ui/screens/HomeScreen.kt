@@ -3,6 +3,8 @@ package com.pulsestream.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.focusable
@@ -36,8 +38,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
+
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Close
+
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
@@ -45,12 +51,17 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
+
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.window.Dialog
@@ -84,6 +95,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -515,7 +529,7 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
 
     /** Shared by the CW card tap and the resume prompt: resume the saved position. */
-    fun resumeItem(item: PlaybackState) {
+    fun resumeItem(item: PlaybackState, fromStart: Boolean = false) {
         repository.pendingPlayback = PlaybackRequest(
             streamUrl = item.streamUrl,
             title = item.title,
@@ -525,7 +539,8 @@ fun HomeScreen(
             season = item.season,
             episode = item.episode,
             isMovie = item.season == 0 && item.episode == 0,
-            type = if (item.season == 0 && item.episode == 0) "movie" else "series"
+            type = if (item.season == 0 && item.episode == 0) "movie" else "series",
+            playFromStart = fromStart
         )
         onResumePlayback()
     }
@@ -547,6 +562,10 @@ fun HomeScreen(
     }
     // Long-press context menu target: (addonId, meta) for the pressed poster.
     var contextMenuTarget by remember { mutableStateOf<Pair<String, MetaPreview>?>(null) }
+    // Long-press options sheet target (Nuvio CW actions): the pressed
+    // Continue Watching item. Null = sheet closed.
+    var cwLongPressTarget by remember { mutableStateOf<PlaybackState?>(null) }
+    val haptics = LocalHapticFeedback.current
     // Add-to-list sheet target: (addonId, meta).
     var addToListTarget by remember { mutableStateOf<Pair<String, MetaPreview>?>(null) }
     // Watchlist lives ONLY in the Watchlist tab (top-right bookmark) — it is
@@ -747,6 +766,10 @@ fun HomeScreen(
                                                 scope.launch {
                                                     repository.deleteSavedPosition(item.key)
                                                 }
+                                            },
+                                            onLongClick = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                cwLongPressTarget = item
                                             }
                                         ) {
                                             onWatchingClick(item)
@@ -1012,6 +1035,127 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text("Add to My List", color = TextPrimary)
+                }
+            }
+        }
+    }
+
+    // Continue Watching long-press options (Nuvio CW action sheet):
+    // Details / Play from beginning / Mark as watched / Remove.
+    // "Play manually" (pick the stream) is the Details route in Avio —
+    // the source picker lives on the detail page and in the player.
+    cwLongPressTarget?.let { cwItem ->
+        val episodeCode = if (cwItem.season > 0 || cwItem.episode > 0) {
+            "S${cwItem.season} E${cwItem.episode}"
+        } else null
+        ModalBottomSheet(
+            onDismissRequest = { cwLongPressTarget = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = cwItem.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                )
+                if (episodeCode != null) {
+                    Text(
+                        text = episodeCode,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        cwLongPressTarget = null
+                        openItemDetails(cwItem)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = LocalPalette.current.accent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Details", color = TextPrimary)
+                }
+                TextButton(
+                    onClick = {
+                        cwLongPressTarget = null
+                        resumeItem(cwItem, fromStart = true)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Filled.Replay,
+                        contentDescription = null,
+                        tint = LocalPalette.current.accent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Play from beginning", color = TextPrimary)
+                }
+                if (cwItem.durationMs > 0) {
+                    TextButton(
+                        onClick = {
+                            cwLongPressTarget = null
+                            scope.launch {
+                                // Record the watch (same threshold path as
+                                // finishing naturally) then drop it from CW.
+                                repository.savePlayback(
+                                    title = cwItem.title,
+                                    poster = cwItem.poster,
+                                    videoId = cwItem.videoId,
+                                    streamUrl = cwItem.streamUrl,
+                                    positionMs = cwItem.durationMs,
+                                    durationMs = cwItem.durationMs,
+                                    imdbId = cwItem.imdbId,
+                                    season = cwItem.season,
+                                    episode = cwItem.episode
+                                )
+                                repository.deleteSavedPosition(cwItem.key)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = LocalPalette.current.accent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Mark as watched", color = TextPrimary)
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        cwLongPressTarget = null
+                        scope.launch { repository.deleteSavedPosition(cwItem.key) }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = Color(0xFFE5484D),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Remove from Continue Watching", color = Color(0xFFE5484D))
                 }
             }
         }
@@ -1876,7 +2020,8 @@ private fun ContinueWatchingCard(
     style: String = "card",
     watchedThresholdPercent: Int = 90,
     onRemove: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     // Nuvio blurUnwatchedEpisodes: an episode thumb blurs 18dp while the
     // episode is unwatched (below the watched threshold).
@@ -1912,7 +2057,8 @@ private fun ContinueWatchingCard(
             blurThumb = blurThumb,
             artModel = artModel,
             onRemove = onRemove,
-            onClick = onClick
+            onClick = onClick,
+            onLongClick = onLongClick
         )
         "poster" -> CwPosterCard(
             item = item,
@@ -1923,7 +2069,8 @@ private fun ContinueWatchingCard(
             blurThumb = blurThumb,
             artModel = artModel,
             onRemove = onRemove,
-            onClick = onClick
+            onClick = onClick,
+            onLongClick = onLongClick
         )
         else -> CwLandscapeCard(
             item = item,
@@ -1935,7 +2082,8 @@ private fun ContinueWatchingCard(
             blurThumb = blurThumb,
             artModel = artModel,
             onRemove = onRemove,
-            onClick = onClick
+            onClick = onClick,
+            onLongClick = onLongClick
         )
     }
 }
@@ -2052,6 +2200,7 @@ private fun cwLandscapeMetrics(posterStyle: PosterStyle): CwLandscapeMetrics {
 
 /** Nuvio ContinueWatchingCard ("card" style): landscape thumb, gradient, in-thumb text, status badge, 3dp progress bar. */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun CwLandscapeCard(
     item: PlaybackState,
     posterStyle: PosterStyle,
@@ -2062,7 +2211,8 @@ private fun CwLandscapeCard(
     blurThumb: Boolean,
     artModel: String?,
     onRemove: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val metrics = remember(posterStyle.cardWidth, posterStyle.cornerRadius) {
         cwLandscapeMetrics(posterStyle)
@@ -2077,7 +2227,7 @@ private fun CwLandscapeCard(
             .background(palette.panel)
             .cardDepth(corner, CardDepthSurface.ContinueWatching)
             .tvFocusRing(corner)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .focusable()
     ) {
         SafePosterImage(
@@ -2208,6 +2358,7 @@ private fun CwLandscapeCard(
 
 /** Nuvio ContinueWatchingWideCard (phone: 280x120): horizontal row, poster strip left, title + meta + progress + "% watched" right. */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun CwWideCard(
     item: PlaybackState,
     cornerRadius: Dp,
@@ -2217,7 +2368,8 @@ private fun CwWideCard(
     blurThumb: Boolean,
     artModel: String?,
     onRemove: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val palette = LocalPalette.current
     val corner = RoundedCornerShape(cornerRadius)
@@ -2230,7 +2382,7 @@ private fun CwWideCard(
             .border(1.5.dp, Color.White.copy(alpha = 0.15f), corner)
             .cardDepth(corner, CardDepthSurface.ContinueWatching)
             .tvFocusRing(corner)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .focusable()
     ) {
         Box(
@@ -2354,6 +2506,7 @@ private fun CwWideCard(
 
 /** Nuvio ContinueWatchingPosterCard: tall poster, progress pill at the bottom, title + episode code below. */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun CwPosterCard(
     item: PlaybackState,
     posterStyle: PosterStyle,
@@ -2363,7 +2516,8 @@ private fun CwPosterCard(
     blurThumb: Boolean,
     artModel: String?,
     onRemove: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val palette = LocalPalette.current
     val corner = RoundedCornerShape(posterStyle.cornerRadius)
@@ -2379,7 +2533,7 @@ private fun CwPosterCard(
                 .background(palette.panel)
                 .cardDepth(corner, CardDepthSurface.ContinueWatching)
                 .tvFocusRing(corner)
-                .clickable(onClick = onClick)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .focusable()
         ) {
             SafePosterImage(
