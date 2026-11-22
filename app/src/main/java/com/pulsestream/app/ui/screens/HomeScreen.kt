@@ -182,11 +182,48 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
     var cloudStreamProviders by mutableStateOf<List<CloudStreamPluginItem>>(emptyList())
         private set
 
-    /** Applies a pill choice and reloads Home rows for it. */
+    /**
+     * True while a pill-triggered CS3 refresh is in flight: the old
+     * provider's rows are already dropped, so Home shows a skeleton,
+     * not stale catalogs, until the new rows land.
+     */
+    var cloudStreamLoading by mutableStateOf(false)
+        private set
+
+    /**
+     * Generation counter for CS3 merges: a pill tap supersedes any
+     * in-flight CS3 refresh, and only the latest generation's rows
+     * ever land on Home.
+     */
+    private var cloudStreamGeneration = 0
+
+    /**
+     * Applies a pill choice and reloads Home rows for it. CS3-only: the
+     * old provider's rows drop at tap time and a dedicated CS3 refresh
+     * starts right away — no full refresh(), so the switch never waits
+     * behind the Stremio refresh, and Stremio rows stay untouched.
+     */
     fun updateCloudStreamSelection(selection: String) {
         repo.setCloudStreamHomeSelection(selection)
         cloudStreamSelection = selection
-        refresh()
+        cloudStreamGeneration++
+        dropCloudStreamRows()
+        if (selection.isBlank() || selection == "off") {
+            // "Off" hides CS3 rows immediately; nothing to load.
+            cloudStreamLoading = false
+            return
+        }
+        cloudStreamLoading = true
+        refreshCloudStreamRows()
+    }
+
+    /** Drops the current CS3 rows from Home state, keeping Stremio rows. */
+    private fun dropCloudStreamRows() {
+        val state = uiState as? HomeUiState.Content ?: return
+        uiState = HomeUiState.Content(
+            state.rows.filterNot { repo.isCloudStreamRowAddonId(it.addonId) },
+            refreshing = state.refreshing
+        )
     }
 
     /** Re-reads the CS3 selection + runnable providers after a row load. */
@@ -202,9 +239,14 @@ class HomeViewModel(private val repo: StreamRepository) : ViewModel() {
      * Stremio refresh keeps them via its retained-rows logic).
      */
     private fun refreshCloudStreamRows() {
+        // Captured at launch: only this generation's rows may merge, and
+        // only it may clear the loading flag — a superseded refresh must
+        // never merge (or un-skeleton) after a newer pill tap.
+        val generation = cloudStreamGeneration
         viewModelScope.launch {
             runCatching { repo.refreshCloudStreamHomeRows() }
-                .onSuccess { mergeCloudStreamRows(it) }
+                .onSuccess { if (generation == cloudStreamGeneration) mergeCloudStreamRows(it) }
+            if (generation == cloudStreamGeneration) cloudStreamLoading = false
         }
     }
 
@@ -860,6 +902,14 @@ fun HomeScreen(
                                     selectedProviderId = vm.cloudStreamSelection,
                                     onSelect = { vm.updateCloudStreamSelection(it) },
                                 )
+                            }
+                            // Pill switch in flight: the old rows are
+                            // already dropped, so a skeleton fills the gap
+                            // under the pill instead of stale catalogs.
+                            if (vm.cloudStreamLoading) {
+                                item(key = "cloudstream_loading_skeleton") {
+                                    CloudStreamLoadingSkeleton()
+                                }
                             }
                         }
                         // Step 51: collection sections (Nuvio
@@ -1989,6 +2039,38 @@ private fun HomeSkeleton() {
                 }
             }
         }
+    }
+}
+
+/**
+ * CS3 pill-switch skeleton: one title bar + one shimmer poster row,
+ * shown right under the provider pill while the newly selected
+ * provider's rows load (the old rows are already dropped).
+ */
+@Composable
+private fun CloudStreamLoadingSkeleton() {
+    Column(Modifier.background(LocalPalette.current.background)) {
+        Spacer(Modifier.height(18.dp))
+        ShimmerPoster(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .width(140.dp)
+                .height(18.dp)
+        )
+        Spacer(Modifier.height(10.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(5) {
+                ShimmerPoster(
+                    modifier = Modifier
+                        .width(128.dp)
+                        .height(190.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
     }
 }
 
