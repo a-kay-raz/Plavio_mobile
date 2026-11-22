@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Layers
@@ -59,6 +60,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,16 +75,20 @@ import androidx.compose.ui.focus.focusRequester
 import com.pulsestream.app.ui.tv.rememberIsTv
 import com.pulsestream.app.ui.tv.tvFocusRing
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -611,31 +617,17 @@ fun HomeScreen(
                         // turned the hero off in Home catalogs settings.
                         if (prefs.heroEnabled && featured.isNotEmpty()) {
                             item(key = "hero_carousel") {
-                                // Pinned hero (v0.12.5, owner's order): the
-                                // hero stays at the top while the catalog
-                                // sheet scrolls UP AND OVER it. The hero is
-                                // still a normal list item (pager swipe,
-                                // tap and TV focus untouched), but its draw
-                                // position is counter-translated by exactly
-                                // its scrolled-off amount, so it visually
-                                // never leaves the top; the sections below
-                                // are drawn after it, hence over it. At rest
-                                // the translation is 0 and the first section
-                                // starts exactly at the hero's bottom
-                                // border — the round-5 -22dp static overlap
-                                // (which also left a 22dp dead band in the
-                                // layout under the first row) is gone.
-                                Box(
-                                    Modifier.graphicsLayer {
-                                        val heroInfo = homeListState.layoutInfo
-                                            .visibleItemsInfo
-                                            .firstOrNull { it.key == "hero_carousel" }
-                                        translationY = if (heroInfo != null && heroInfo.offset < 0)
-                                            -heroInfo.offset.toFloat() else 0f
-                                    }
-                                ) {
-                                    HeroCarousel(featured, onOpenDetail, heroFocus)
-                                }
+                                // Scroll-away hero (Nuvio HomeHeroSection):
+                                // a normal list item with parallax — the
+                                // pinned-hero sheet (v0.12.5) is gone, the
+                                // sections below no longer slide over it.
+                                HeroCarousel(
+                                    featured = featured,
+                                    repository = repository,
+                                    listState = homeListState,
+                                    onOpenDetail = onOpenDetail,
+                                    heroFocus = heroFocus
+                                )
                             }
                         }
                         if (settings.continueWatchingVisible && mainWatching.isNotEmpty()) {
@@ -644,11 +636,9 @@ fun HomeScreen(
                             // reshuffle every row below it on each emission.
                             item(key = "continue_watching") {
                               Column(
-                                // Scroll-over sheet (v0.12.5): sections
-                                // carry the solid app background so the
-                                // sheet reads cleanly (headers stay
-                                // legible) while it slides over the
-                                // pinned hero.
+                                // Solid section background (was the
+                                // scroll-over sheet over the pinned hero,
+                                // now just the section surface).
                                 Modifier.background(LocalPalette.current.background)
                               ) {
                                 SectionTitle("Continue Watching")
@@ -663,6 +653,7 @@ fun HomeScreen(
                                         ContinueWatchingCard(
                                             item,
                                             style = settings.continueWatchingStyle,
+                                            watchedThresholdPercent = settings.watchedThresholdPercent,
                                             onRemove = {
                                                 scope.launch {
                                                     repository.deleteSavedPosition(item.key)
@@ -698,6 +689,7 @@ fun HomeScreen(
                                         ContinueWatchingCard(
                                             item,
                                             style = settings.continueWatchingStyle,
+                                            watchedThresholdPercent = settings.watchedThresholdPercent,
                                             onRemove = {
                                                 scope.launch {
                                                     repository.deleteSavedPosition(item.key)
@@ -784,10 +776,8 @@ fun HomeScreen(
                             // and LazyColumn threw, closing the app on scroll.
                             item(key = "${row.addonId}|${row.type}|${row.catalogId}") {
                               Column(
-                                // Scroll-over sheet (v0.12.5): same solid
-                                // background as Continue Watching — the
-                                // whole sheet slides over the pinned hero
-                                // as one readable surface.
+                                // Same solid background as Continue
+                                // Watching (was the scroll-over sheet).
                                 Modifier.background(LocalPalette.current.background)
                               ) {
                                 // Typed local: an `if (c) null else { ... }`
@@ -806,14 +796,18 @@ fun HomeScreen(
                                             !row.catalogName.startsWith(it, ignoreCase = true)
                                     },
                                     onMoreClick = if (row.addonId.startsWith("cs3:")) null
-                                        else openCatalogAction
+                                        else openCatalogAction,
+                                    // Nuvio catalog rows use the compact 32dp View All pill.
+                                    compact = true
                                 )
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
+                                    // Nuvio row preview cap: 18 items per shelf
+                                    // row; the rest live behind View All.
                                     itemsIndexed(
-                                        row.items,
+                                        row.items.take(18),
                                         key = { index, meta -> "${row.addonId}_${meta.id}_$index" }
                                     ) { index, meta ->
                                         PosterCard(
@@ -993,47 +987,55 @@ private fun featuredTitles(rows: List<CatalogRow>, max: Int = 6): List<FeaturedT
 }
 
 /**
- * Netflix-style hero carousel: full-bleed backdrop pager at the top of
- * Home. Auto-advances every 5s on mobile (pausing while the user is touching
- * it); never auto-advances on TV to avoid stealing frames from D-pad input.
- * Tap opens the title's detail screen.
+ * Nuvio-style home hero (HomeHeroSection, FULL_BLEED): backdrop-first art
+ * at base scale 1.14x with parallax scroll-away, logo (or centred
+ * displaySmall title), two meta rows, 2-line overview, Details pill, and
+ * page dots below the content. Auto-advances every 8s. Replaces the
+ * pinned hero (v0.12.5) — the hero is a normal list item again and
+ * scrolls away; sections no longer slide over it.
  *
- * v0.12.4 (owner's Sample C — "immersive"): the pager is now truly
- * full-bleed — edge-to-edge with no side padding, no rounded frame —
- * the list itself is shifted up under the status bar so the art owns
- * the screen's top edge; the swipe dots moved INSIDE the poster
- * (animated, active = elongated mint pill).
- *
- * v0.12.5 (owner's order): ~20% taller again — 380dp (was 316dp) — and
- * the hero is PINNED: it stays at the top while the catalog sheet
- * scrolls up and over it (the pin lives on the hero's list item in
- * [HomeScreen]; the pager itself is unchanged).
+ * Richer meta rows need the full meta per hero title (runtime, age
+ * rating, description, logo live only there) — like Nuvio, the current
+ * page and its neighbours fetch once and merge into the catalog data.
  */
+private data class HeroMetaExtras(
+    val runtime: String? = null,
+    val certification: String? = null,
+    val status: String? = null,
+    val description: String? = null,
+    val logo: String? = null,
+    val releaseInfo: String? = null,
+    val imdbRating: String? = null,
+    val genres: List<String> = emptyList(),
+    val background: String? = null
+)
+
 @Composable
 private fun HeroCarousel(
     featured: List<FeaturedTitle>,
+    repository: StreamRepository,
+    listState: LazyListState,
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
     heroFocus: FocusRequester? = null
 ) {
     val pagerState = rememberPagerState(pageCount = { featured.size })
     val isTv = rememberIsTv()
-    // Hero height: TV keeps the 380.dp backdrop hero. On mobile the hero
-    // takes 45% of the screen height with the poster filling it
-    // edge-to-edge (owner's device verdict 2026-10-24 — 45% chosen after
-    // the same-day 40% fix, itself superseding the 60% full-poster
-    // version, which stood narrow with blurred side bars and was
-    // rejected on sight).
+    // Nuvio hero height (homeHeroLayout): phone portrait = width x 1.5;
+    // landscape = viewport x 0.82 clamped 360-760dp. TV keeps 380dp.
+    val config = LocalConfiguration.current
     val heroHeight = if (isTv) 380.dp
-        else (LocalConfiguration.current.screenHeightDp * 0.45f).dp + 40.dp
+        else if (config.screenWidthDp > config.screenHeightDp)
+            (config.screenHeightDp * 0.82f).dp.coerceIn(360.dp, 760.dp)
+        else (config.screenWidthDp * 1.5f).dp
 
     val reducedMotion = com.pulsestream.app.data.rememberReducedMotion()
     LaunchedEffect(pagerState, featured.size, reducedMotion) {
-        // No auto-advance on TV: the 5s full-bleed pager animation steals
+        // No auto-advance on TV: the 8s full-bleed pager animation steals
         // frames from D-pad browsing on weak TV GPUs/CPUs and its backdrop
         // re-decodes cause jank spikes that coincide with user input.
         if (isTv || reducedMotion) return@LaunchedEffect
         while (featured.size > 1) {
-            delay(5000)
+            delay(8000)
             if (!pagerState.isScrollInProgress) {
                 val next = (pagerState.currentPage + 1) % featured.size
                 runCatching { pagerState.animateScrollToPage(next) }
@@ -1041,16 +1043,78 @@ private fun HeroCarousel(
         }
     }
 
-    Box {
+    // Full meta for the hero titles, fetched once per title (current page
+    // + neighbours, Nuvio-style) and merged over the catalog preview.
+    var heroExtras by remember { mutableStateOf<Map<String, HeroMetaExtras>>(emptyMap()) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(pagerState.currentPage, featured) {
+        val current = pagerState.currentPage
+        listOf(current - 1, current, current + 1)
+            .filter { it in featured.indices }
+            .forEach { index ->
+                val item = featured[index]
+                val key = "${item.meta.type}|${item.meta.id}"
+                if (!heroExtras.containsKey(key)) {
+                    scope.launch {
+                        val detail = runCatching {
+                            repository.getMetaFromAny(null, item.meta.type, item.meta.id)
+                        }.getOrNull() ?: return@launch
+                        heroExtras = heroExtras + (key to HeroMetaExtras(
+                            runtime = detail.runtime,
+                            certification = detail.certification,
+                            status = detail.status,
+                            description = detail.description,
+                            logo = detail.logo,
+                            releaseInfo = detail.releaseInfo,
+                            imdbRating = detail.imdbRating,
+                            genres = detail.genres,
+                            background = detail.background
+                        ))
+                    }
+                }
+            }
+    }
+
+    // Scroll parallax (Nuvio HERO_BACKGROUND_PARALLAX 0.055 / content 0.18 /
+    // scroll 0.3, base scale 1.14x): the backdrop lags the list and grows
+    // slightly as the hero scrolls away.
+    val density = LocalDensity.current
+    val heroHeightPx = with(density) { heroHeight.toPx() }
+    val scrollOffsetPx by remember(listState, heroHeightPx) {
+        derivedStateOf {
+            when {
+                listState.firstVisibleItemIndex > 0 -> heroHeightPx
+                else -> listState.firstVisibleItemScrollOffset.toFloat()
+            }
+        }
+    }
+    val heroWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
+    val bgColor = LocalPalette.current.background
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(heroHeight)
+            .clip(RectangleShape)
+    ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(heroHeight),
+            modifier = Modifier.fillMaxSize(),
             key = { index -> "hero_${featured[index].meta.id}_$index" }
         ) { index ->
             val item = featured[index]
             val meta = item.meta
+            val extras = heroExtras["${meta.type}|${meta.id}"]
+            // Merged view: catalog data first, full-meta gaps filled in.
+            val displayMeta = meta.copy(
+                logo = meta.logo ?: extras?.logo,
+                description = meta.description ?: extras?.description,
+                releaseInfo = meta.releaseInfo ?: extras?.releaseInfo,
+                imdbRating = meta.imdbRating ?: extras?.imdbRating,
+                genres = if (meta.genres.isEmpty()) extras?.genres.orEmpty() else meta.genres,
+                background = meta.background ?: extras?.background
+            )
+            val pageOffset = (pagerState.currentPage - index) + pagerState.currentPageOffsetFraction
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1059,113 +1123,304 @@ private fun HeroCarousel(
                     .then(if (heroFocus != null && index == 0) Modifier.focusRequester(heroFocus) else Modifier)
                     .focusable()
             ) {
-                if (isTv || meta.poster.isNullOrBlank()) {
-                    SafePosterImage(
-                        model = meta.background?.takeIf { it.isNotBlank() } ?: meta.poster,
-                        contentDescription = meta.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    // Mobile hero: the poster fills the hero edge-to-edge
-                    // — full width, ContentScale.Crop, the same treatment
-                    // as the detail-page hero (the top/bottom crop of the
-                    // 2:3 poster is intended).
-                    SafePosterImage(
-                        model = meta.poster,
-                        contentDescription = meta.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
+                // Backdrop-first art (Nuvio): banner, else poster.
+                SafePosterImage(
+                    model = displayMeta.background?.takeIf { it.isNotBlank() } ?: displayMeta.poster,
+                    contentDescription = displayMeta.name,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = scrollOffsetPx * 0.3f
+                            val inc = if (scrollOffsetPx < 0f) abs(scrollOffsetPx) * 0.002f
+                                else scrollOffsetPx * 0.0001f
+                            val scale = 1.14f * (1f + inc).coerceAtMost(1.3f)
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                    contentScale = ContentScale.Crop
+                )
+                // Full-height gradient fade (Nuvio alphas 0.02/0.12/0.34/0.78)
+                // + 220dp bottom fade to the background.
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
                             listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.35f),
-                                Color.Black.copy(alpha = 0.88f)
+                                bgColor.copy(alpha = 0.02f),
+                                bgColor.copy(alpha = 0.12f),
+                                bgColor.copy(alpha = 0.34f),
+                                bgColor.copy(alpha = 0.78f)
                             )
                         )
                     )
                 )
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, bgColor)
+                            )
+                        )
+                )
+                // Content: logo or centred title, two meta rows, overview,
+                // Details pill, dots — Nuvio HeroContentBlock, centred on
+                // mobile, with swipe parallax (0.18x) on the content.
                 Column(
                     Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .graphicsLayer {
+                            val visibility = (1f - abs(pageOffset)).coerceIn(0f, 1f)
+                            alpha = ((visibility - 0.5f) * 2f).coerceIn(0f, 1f)
+                            translationX = -pageOffset * heroWidthPx * 0.18f
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = meta.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    // Hero meta line (Nuvio HomeHeroMetaRows, meta block
-                    // only): type • year • ★ rating (one decimal) • first
-                    // genre • language. Runtime and status are NOT in the
-                    // catalog data — they live only in the full meta, so
-                    // showing them here would cost one meta fetch per hero
-                    // title; the line shows what the catalog carries.
-                    val typeLabel = when (meta.type.trim().lowercase()) {
-                        "movie" -> "Movie"
-                        "series", "tv" -> "Series"
-                        else -> meta.type.replaceFirstChar { it.uppercase() }
+                    var logoLoadError by remember(displayMeta.type, displayMeta.id, displayMeta.logo) {
+                        mutableStateOf(false)
                     }
-                    val info = listOfNotNull(
-                        typeLabel,
-                        meta.releaseInfo?.take(4),
-                        meta.imdbRating?.toDoubleOrNull()?.takeIf { it > 0.0 }
-                            ?.let { "★ ${String.format(java.util.Locale.US, "%.1f", it)}" },
-                        meta.genres.firstOrNull(),
-                        meta.language?.trim()?.takeIf { it.isNotBlank() }?.uppercase()
-                    ).joinToString("  •  ")
-                    if (info.isNotBlank()) {
-                        Spacer(Modifier.height(2.dp))
+                    val logoUrl = displayMeta.logo?.takeIf { it.isNotBlank() }
+                    if (logoUrl != null && !logoLoadError) {
+                        AsyncImage(
+                            model = logoUrl,
+                            contentDescription = displayMeta.name,
+                            modifier = Modifier
+                                .fillMaxWidth(0.62f)
+                                .aspectRatio(2.6f)
+                                .clickable { onOpenDetail(item.addonId, meta.type, meta.id) },
+                            alignment = Alignment.Center,
+                            contentScale = ContentScale.Fit,
+                            onError = { logoLoadError = true }
+                        )
+                    } else {
                         Text(
-                            text = com.pulsestream.app.ui.components.accentStarText(info, LocalPalette.current.accent),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            maxLines = 1,
+                            text = displayMeta.name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenDetail(item.addonId, meta.type, meta.id) },
+                            style = MaterialTheme.typography.displaySmall,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Black,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
+                    HeroMetaRows(displayMeta, extras)
+                    val synopsis = displayMeta.description?.trim()?.takeIf { it.isNotBlank() }
+                    if (synopsis != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = synopsis,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary.copy(alpha = 0.72f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .clickable { onOpenDetail(item.addonId, meta.type, meta.id) }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = TextPrimary
+                            )
+                            Text(
+                                text = "Details",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                    // Page dots below the content (Nuvio HeroPageIndicator):
+                    // 8dp, the active dot stretches to 32dp; tap jumps.
+                    if (featured.size > 1) {
+                        Spacer(Modifier.height(18.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            repeat(featured.size) { i ->
+                                val active = i == pagerState.currentPage
+                                val dotWidth by animateDpAsState(
+                                    targetValue = if (active) 32.dp else 8.dp,
+                                    animationSpec = tween(320),
+                                    label = "heroDot$i"
+                                )
+                                Box(
+                                    Modifier
+                                        .clickable {
+                                            scope.launch {
+                                                runCatching { pagerState.animateScrollToPage(i) }
+                                            }
+                                        }
+                                        .width(dotWidth)
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (active) TextPrimary.copy(alpha = 0.92f)
+                                            else Color.White.copy(alpha = 0.35f)
+                                        )
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
-        // Swipe dots INSIDE the poster's lower edge (v0.12.4): the active
-        // dot stretches into an elongated mint pill, animated.
-        if (featured.size > 1) {
+    }
+}
+
+/**
+ * Nuvio HomeHeroMetaRows: row 1 = type • genre • runtime • date • IMDb;
+ * row 2 = age/status badge + IMDb + language. Every field is optional —
+ * a missing field drops its dot too. The IMDb rating sits in row 1 only
+ * for movies with no badges; otherwise it drops to row 2.
+ */
+@Composable
+private fun HeroMetaRows(meta: MetaPreview, extras: HeroMetaExtras?) {
+    val typeLabel = when (meta.type.trim().lowercase()) {
+        "movie" -> "Movie"
+        "series", "tv" -> "Series"
+        else -> meta.type.replaceFirstChar { it.uppercase() }
+    }
+    val genre = meta.genres.firstOrNull()?.takeIf { it.isNotBlank() }
+    val runtime = extras?.runtime?.takeIf { it.isNotBlank() }
+    val release = formatHeroReleaseDate(meta.releaseDate ?: meta.releaseInfo ?: extras?.releaseInfo)
+    val imdb = (meta.imdbRating ?: extras?.imdbRating)?.toDoubleOrNull()?.takeIf { it > 0.0 }
+        ?.let { String.format(java.util.Locale.US, "%.1f", it) }
+    val isSeries = meta.type.trim().lowercase() in listOf("series", "tv")
+    val badges = listOfNotNull(
+        extras?.certification?.trim()?.takeIf { it.isNotBlank() },
+        extras?.status?.trim()?.takeIf { it.isNotBlank() }?.uppercase()
+    )
+    val language = meta.language?.trim()?.takeIf { it.isNotBlank() }?.uppercase()
+    val primaryImdb = if (!isSeries && badges.isEmpty()) imdb else null
+    val secondaryImdb = if (primaryImdb == null) imdb else null
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HeroMetaText(typeLabel)
+            genre?.let { HeroMetaDot(); HeroMetaText(it, Modifier.weight(1f, fill = false)) }
+            runtime?.let { HeroMetaDot(); HeroMetaText(it) }
+            release?.let { HeroMetaDot(); HeroMetaText(it) }
+            primaryImdb?.let { HeroMetaDot(); HeroImdbRating(it) }
+        }
+        if (badges.isNotEmpty() || secondaryImdb != null || language != null) {
             Row(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 18.dp),
-                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                repeat(featured.size) { i ->
-                    val active = i == pagerState.currentPage
-                    val dotWidth by animateDpAsState(
-                        targetValue = if (active) 18.dp else 6.dp,
-                        animationSpec = tween(320),
-                        label = "heroDot$i"
-                    )
-                    Box(
-                        Modifier
-                            .padding(horizontal = 3.dp)
-                            .width(dotWidth)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (active) LocalPalette.current.accent
-                                else Color.White.copy(alpha = 0.35f)
-                            )
-                    )
+                if (badges.isNotEmpty()) {
+                    HeroMetaBadge(badges.first(), badges.getOrNull(1))
+                }
+                secondaryImdb?.let {
+                    if (badges.isNotEmpty()) HeroMetaDot()
+                    HeroImdbRating(it)
+                }
+                language?.let {
+                    if (badges.isNotEmpty() || secondaryImdb != null) HeroMetaDot()
+                    HeroMetaText(it)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun HeroMetaText(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        modifier = modifier,
+        style = MaterialTheme.typography.labelLarge,
+        color = TextPrimary,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+private fun HeroMetaDot() {
+    Box(
+        modifier = Modifier
+            .size(4.dp)
+            .clip(CircleShape)
+            .background(TextPrimary.copy(alpha = 0.7f))
+    )
+}
+
+@Composable
+private fun HeroImdbRating(rating: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "IMDb",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = TextPrimary,
+            maxLines = 1
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = rating,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = Color(0xFFF5C518),
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun HeroMetaBadge(text: String, secondaryText: String?) {
+    Box(
+        modifier = Modifier
+            .border(1.dp, TextPrimary.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = if (secondaryText != null) "$text • $secondaryText" else text,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextPrimary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+/** "2024-05-17" -> "May 17, 2024"; anything else passes through as-is. */
+private fun formatHeroReleaseDate(raw: String?): String? {
+    val value = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return try {
+        val date = LocalDate.parse(value.take(10))
+        date.format(DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.US))
+    } catch (_: Exception) {
+        value
     }
 }
 
@@ -1347,16 +1602,24 @@ private fun ReleaseRadarCard(
 private fun ContinueWatchingCard(
     item: PlaybackState,
     style: String = "card",
+    watchedThresholdPercent: Int = 90,
     onRemove: () -> Unit,
     onClick: () -> Unit
 ) {
     // Card style (Nuvio ContinueWatchingSectionStyle): card = current wide
     // thumbnail, wide = larger thumbnail, poster = tall poster card.
+    // Default card is 247x140dp (Nuvio CW card).
     val (cardWidth, thumbHeight) = when (style) {
         "wide" -> 280.dp to 140.dp
         "poster" -> 128.dp to 192.dp
-        else -> 200.dp to 112.dp
+        else -> 247.dp to 140.dp
     }
+    // Nuvio blurUnwatchedEpisodes: an episode thumb blurs 18dp while the
+    // episode is unwatched (below the watched threshold).
+    val isEpisode = item.season > 0 || item.episode > 0
+    val isWatched = item.durationMs > 0 &&
+        item.positionMs * 100L >= item.durationMs * watchedThresholdPercent
+    val blurThumb = isEpisode && !isWatched
     Column(
         modifier = Modifier
             .width(cardWidth)
@@ -1374,6 +1637,7 @@ private fun ContinueWatchingCard(
                 model = tmdbSizedImage(item.poster, "w780"),
                 contentDescription = item.title,
                 modifier = Modifier.fillMaxSize()
+                    .then(if (blurThumb) Modifier.blur(18.dp) else Modifier)
             )
             // Visible remove button: live channels can leak into Continue
             // Watching with no expiry, so the user must be able to clear
