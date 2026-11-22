@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,8 +44,18 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Forward5
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Replay30
+import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material3.Icon
 import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -164,6 +175,67 @@ internal fun CenterControlButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, label, tint = Color.White, modifier = Modifier.size(34.dp))
+    }
+}
+
+/** Center transport button with custom content (the skip-step icons draw
+ * the number for 15s, where no numbered material icon exists). */
+@Composable
+internal fun CenterControlButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier
+            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .tvFocusRing(CircleShape)
+            .padding(10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+/** Skip-step icon (Nuvio PlayerControls.SkipStepIcon): numbered 5/10/30s
+ * icons; any other value (15s) draws a mirrored Replay arrow with the
+ * number overlaid. */
+@Composable
+internal fun SkipStepIcon(seconds: Int, forward: Boolean, size: Dp = 34.dp) {
+    val numbered = when (seconds) {
+        5 -> if (forward) Icons.Filled.Forward5 else Icons.Filled.Replay5
+        10 -> if (forward) Icons.Filled.Forward10 else Icons.Filled.Replay10
+        30 -> if (forward) Icons.Filled.Forward30 else Icons.Filled.Replay30
+        else -> null
+    }
+    if (numbered != null) {
+        Icon(numbered, contentDescription = null, tint = Color.White, modifier = Modifier.size(size))
+        return
+    }
+    Box(modifier = Modifier.size(size), contentAlignment = Alignment.Center) {
+        Icon(
+            imageVector = Icons.Filled.Replay,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { if (forward) scaleX = -1f },
+        )
+        val density = LocalDensity.current
+        Text(
+            text = seconds.toString(),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = with(density) { (size * 0.26f).toSp() },
+                lineHeight = with(density) { (size * 0.26f).toSp() },
+                fontWeight = FontWeight.Bold,
+            ),
+            modifier = Modifier.offset(y = size * 0.1f),
+        )
     }
 }
 

@@ -345,6 +345,12 @@ val SKIP_SECONDS_OPTIONS: List<Int> = listOf(5, 10, 15, 30)
 private fun normalizeSkipSeconds(seconds: Int?): Int =
     seconds?.takeIf { it in SKIP_SECONDS_OPTIONS } ?: 10
 
+/** Hold-to-speed options (Nuvio HoldToSpeedValueDialog): 1.25–3x. */
+val HOLD_SPEED_OPTIONS: List<Float> = listOf(1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
+
+private fun normalizeHoldSpeed(speed: Float?): Float =
+    speed?.takeIf { it in HOLD_SPEED_OPTIONS } ?: 2f
+
 private fun normalizeResizeMode(mode: Int): Int =
     mode.takeIf { it in ASPECT_MODES.map { m -> m.first } }
         ?: AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -825,6 +831,11 @@ class SettingsStore(
     var skipForwardSeconds: Int
         get() = normalizeSkipSeconds(prefInt(KEY_SKIP_FORWARD_SECONDS, 10))
         set(value) = prefs.edit().putInt(KEY_SKIP_FORWARD_SECONDS, normalizeSkipSeconds(value)).apply()
+
+    /** Hold-to-speed boost (Nuvio holdToSpeedValue): long-press speed. Options 1.25/1.5/1.75/2/2.5/3, default 2. */
+    var holdSpeedValue: Float
+        get() = normalizeHoldSpeed(prefFloat(KEY_HOLD_SPEED, 2f))
+        set(value) = prefs.edit().putFloat(KEY_HOLD_SPEED, normalizeHoldSpeed(value)).apply()
 
     /** Master touch-gesture switch (Nuvio touchGesturesEnabled). Off = tap-only: no double-tap skip, drags or hold. */
     var touchGesturesEnabled: Boolean
@@ -1969,6 +1980,7 @@ class SettingsStore(
         private const val KEY_WATCHED_THRESHOLD_PERCENT = "watched_threshold_percent"
         private const val KEY_SKIP_BACKWARD_SECONDS = "skip_backward_seconds"
         private const val KEY_SKIP_FORWARD_SECONDS = "skip_forward_seconds"
+        private const val KEY_HOLD_SPEED = "hold_speed_value"
         private const val KEY_TOUCH_GESTURES_ENABLED = "touch_gestures_enabled"
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
         private const val KEY_RESIZE_MODE = "resize_mode"

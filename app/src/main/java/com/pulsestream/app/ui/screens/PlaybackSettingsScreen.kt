@@ -96,9 +96,11 @@ import com.pulsestream.app.data.subtitleColorName
 import com.pulsestream.app.data.subtitleEdgeName
 import com.pulsestream.app.data.subtitleSizeName
 import com.pulsestream.app.data.StreamRepository
+import com.pulsestream.app.data.HOLD_SPEED_OPTIONS
 import com.pulsestream.app.data.SKIP_SECONDS_OPTIONS
 import com.pulsestream.app.data.WATCHED_THRESHOLD_OPTIONS
 import com.pulsestream.app.ui.components.GlowBackground
+import com.pulsestream.app.ui.screens.player.speedLabel
 import com.pulsestream.app.ui.tv.tvFocusRing
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
@@ -141,6 +143,7 @@ fun PlaybackSettingsScreen(
     var watchedThresholdOpen by remember { mutableStateOf(false) }
     var skipBackOpen by remember { mutableStateOf(false) }
     var skipForwardOpen by remember { mutableStateOf(false) }
+    var holdSpeedOpen by remember { mutableStateOf(false) }
     var nextEpisodeOpen by remember { mutableStateOf(false) }
     var autoSkipOpen by remember { mutableStateOf(false) }
     var skipOffsetOpen by remember { mutableStateOf(false) }
@@ -458,6 +461,16 @@ fun PlaybackSettingsScreen(
                         )
                     },
                     {
+                        // Hold-to-speed (Nuvio holdToSpeedValue): long-press
+                        // speed, 1.25–3x, default 2x.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Speed,
+                            title = "Hold speed",
+                            subtitle = "Long-press plays at ${speedLabel(settings.holdSpeedValue)}",
+                            onClick = { holdSpeedOpen = true }
+                        )
+                    },
+                    {
                         SettingsToggleRow(
                             icon = Icons.Filled.TouchApp,
                             title = "Touch gestures",
@@ -646,6 +659,14 @@ fun PlaybackSettingsScreen(
         )
     }
 
+    if (holdSpeedOpen) {
+        HoldSpeedDialog(
+            settings = settings,
+            onDismiss = { holdSpeedOpen = false },
+            onDone = { holdSpeedOpen = false; skipUiTick++ }
+        )
+    }
+
     if (nextEpisodeOpen) {
         NextEpisodeThresholdDialog(
             settings = settings,
@@ -741,6 +762,68 @@ fun SkipSecondsDialog(
             TextButton(onClick = {
                 if (forward) settings.skipForwardSeconds = selected
                 else settings.skipBackwardSeconds = selected
+                onDone()
+            }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/**
+ * Hold-speed picker (Settings > Playback, Nuvio HoldToSpeedValueDialog):
+ * how fast a long-press plays. Options 1.25/1.5/1.75/2/2.5/3, default 2.
+ */
+@Composable
+fun HoldSpeedDialog(
+    settings: SettingsStore,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit
+) {
+    var selected by remember { mutableStateOf(settings.holdSpeedValue) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Hold speed", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "How fast playback runs while you hold the video.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                    items(HOLD_SPEED_OPTIONS, key = { it }) { speed ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = speed }
+                                .tvFocusRing(RoundedCornerShape(10.dp))
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = selected == speed,
+                                onClick = { selected = speed },
+                                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                    selectedColor = LocalPalette.current.accent
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(speedLabel(speed), color = TextPrimary)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                settings.holdSpeedValue = selected
                 onDone()
             }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)

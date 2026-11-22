@@ -100,9 +100,9 @@ internal fun SpeedMenuButton(
                         .padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Nuvio's option set, top → bottom (adds 0.25x, which
-                    // Plavio's SPEEDS list does not include).
-                    (SPEEDS + 0.25f).sortedDescending().forEach { s ->
+                    // Nuvio's option set, top → bottom (0.25x included,
+                    // same as the SPEEDS list).
+                    SPEEDS.sortedDescending().forEach { s ->
                         val selected = s == speed
                         Box(
                             Modifier
