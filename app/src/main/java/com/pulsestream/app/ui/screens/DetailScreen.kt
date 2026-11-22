@@ -4355,6 +4355,7 @@ private fun DetailFloatingHeader(
 // 120dp tall, thumb left with S·E + watched badges and a progress bar,
 // title/date/runtime/overview right.
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun EpisodeListCard(
     video: Video,
     selected: Boolean,
