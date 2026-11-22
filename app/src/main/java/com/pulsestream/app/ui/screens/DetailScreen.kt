@@ -171,7 +171,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pulsestream.app.ui.components.AddToListSheet
+import com.pulsestream.app.ui.components.CardDepthSurface
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PlayButton
+import com.pulsestream.app.ui.components.cardDepth
 import com.pulsestream.app.ui.components.WatchedPill
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.data.MetaDetail
@@ -1260,7 +1263,12 @@ private fun DetailContent(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(90.dp),
+                                    .height(90.dp)
+                                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                                    .cardDepth(
+                                        RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                                        CardDepthSurface.Trailers
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 // YouTube thumbnail as poster
@@ -1347,6 +1355,7 @@ private fun DetailContent(
                                     .size(64.dp)
                                     .clip(CircleShape)
                                     .liquidGlass(CircleShape)
+                                    .cardDepth(CircleShape, CardDepthSurface.Cast)
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
@@ -1423,7 +1432,8 @@ private fun DetailContent(
                     items(section.second, key = { it.id }) { preview ->
                         com.pulsestream.app.ui.components.PosterCard(
                             meta = preview,
-                            onClick = { onOpenDetail("", preview.type, preview.id) }
+                            onClick = { onOpenDetail("", preview.type, preview.id) },
+                            surface = CustomPosterScreen.DETAILS
                         )
                     }
                 }
@@ -1912,6 +1922,7 @@ private fun DetailContent(
                     items(section.metas.distinctBy { it.id }, key = { it.id }) { related ->
                         com.pulsestream.app.ui.components.PosterCard(
                             meta = related,
+                            surface = CustomPosterScreen.DETAILS,
                             // launchSingleTop-style: tapping the title that's already
                             // open is a no-op, so the backstack never stacks the
                             // same detail destination twice.
@@ -3830,6 +3841,7 @@ private fun EpisodeCardA(
                 if (selected) palette.accent else Color.White.copy(alpha = 0.10f),
                 RoundedCornerShape(18.dp)
             )
+            .cardDepth(RoundedCornerShape(18.dp), CardDepthSurface.EpisodeCards)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(Modifier.fillMaxWidth().height(132.dp)) {
@@ -4201,6 +4213,7 @@ private fun EpisodeListCard(
                 if (selected) palette.accent else Color.White.copy(alpha = 0.10f),
                 RoundedCornerShape(18.dp)
             )
+            .cardDepth(RoundedCornerShape(18.dp), CardDepthSurface.EpisodeCards)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(Modifier.fillMaxSize()) {

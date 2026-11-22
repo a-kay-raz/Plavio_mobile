@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.data.MetaPreview
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
@@ -132,6 +133,7 @@ internal fun PosterWithRemoveAction(
             }
         }
         PosterCard(meta = meta, onClick = onClick, onLongClick = onLongClick,
+            surface = CustomPosterScreen.LIBRARY,
             modifier = Modifier.fillMaxWidth())
     }
 }

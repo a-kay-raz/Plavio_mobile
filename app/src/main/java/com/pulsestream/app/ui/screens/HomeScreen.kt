@@ -118,7 +118,11 @@ import com.pulsestream.app.data.db.CollectionFolder
 import com.pulsestream.app.data.db.PlaybackState
 import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
+import com.pulsestream.app.ui.components.CardDepthSurface
+import com.pulsestream.app.ui.components.CustomPosterResolver
+import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.LocalPosterStyle
+import com.pulsestream.app.ui.components.cardDepth
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.data.CustomListsRepository
 import com.pulsestream.app.data.cloudstream.CloudStreamPluginItem
@@ -1659,6 +1663,18 @@ private fun ContinueWatchingCard(
     val isWatched = item.durationMs > 0 &&
         item.positionMs * 100L >= item.durationMs * watchedThresholdPercent
     val blurThumb = isEpisode && !isWatched
+    // W10: custom poster source (shape = "landscape" — CW thumbs are wide)
+    // resolves against the playback video id; falls back to the stored art.
+    val posterStyle = LocalPosterStyle.current
+    val cwPattern = posterStyle.customPosterPatternFor(CustomPosterScreen.CONTINUE_WATCHING)
+    val cwCustom = if (cwPattern.isNotBlank()) {
+        CustomPosterResolver.resolve(
+            cwPattern,
+            CustomPosterResolver.extractIds(item.videoId, item.imdbId),
+            type = if (isEpisode) "series" else "movie",
+            shape = "landscape"
+        )
+    } else null
     Column(
         modifier = Modifier
             .width(cardWidth)
@@ -1671,9 +1687,10 @@ private fun ContinueWatchingCard(
                 .fillMaxWidth()
                 .height(thumbHeight)
                 .liquidGlass(RoundedCornerShape(14.dp))
+                .cardDepth(RoundedCornerShape(14.dp), CardDepthSurface.ContinueWatching)
         ) {
             SafePosterImage(
-                model = tmdbSizedImage(item.poster, "w780"),
+                model = cwCustom ?: tmdbSizedImage(item.poster, "w780"),
                 contentDescription = item.title,
                 modifier = Modifier.fillMaxSize()
                     .then(if (blurThumb) Modifier.blur(18.dp) else Modifier)
