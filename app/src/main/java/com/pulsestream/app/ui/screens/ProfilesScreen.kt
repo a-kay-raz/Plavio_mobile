@@ -72,7 +72,6 @@ import com.pulsestream.app.ui.components.PRESET_AVATARS
 import com.pulsestream.app.ui.components.ProfileAvatarImage
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -153,13 +152,13 @@ fun ProfilesScreen(
                     Text(
                         text = "Each profile keeps its own watchlist, progress, lists and settings. Switching restarts the app on that profile.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
+                        color = V117Muted,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
                 if (notice != null) {
                     item {
-                        Text(notice!!, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                        Text(notice!!, color = V117Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 items(profiles, key = { it.id }) { profile ->
@@ -187,26 +186,26 @@ fun ProfilesScreen(
                                     )
                                     if (profile.pinEnabled) {
                                         Spacer(Modifier.width(6.dp))
-                                        Icon(Icons.Filled.Lock, contentDescription = "PIN locked", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Filled.Lock, contentDescription = "PIN locked", tint = V117Muted, modifier = Modifier.size(16.dp))
                                     }
                                 }
                                 Text(
                                     text = if (isActive) "Active profile — tap to stay" else "Tap to switch",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = V117Muted
                                 )
                             }
                             if (isActive) {
                                 Icon(Icons.Filled.Check, contentDescription = "Active", tint = LocalPalette.current.accent)
                             }
                             IconButton(onClick = { editing = profile }) {
-                                Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = TextSecondary)
+                                Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = V117Muted)
                             }
                             IconButton(
                                 onClick = { deleteTarget = profile },
                                 enabled = profiles.size > 1
                             ) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = TextSecondary)
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = V117Muted)
                             }
                         }
                     }
@@ -224,15 +223,17 @@ fun ProfilesScreen(
                             },
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(16.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = LocalPalette.current.accent)
+                            SettingsIconTile(Icons.Filled.Add, "Add a profile")
+                            Spacer(Modifier.width(14.dp))
                             Text(
                                 text = "Add a profile",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
                                 color = TextPrimary,
-                                modifier = Modifier.padding(start = 12.dp)
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -397,7 +398,7 @@ private fun ProfileEditorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("Color", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("Color", style = MaterialTheme.typography.bodyMedium, color = V117Muted)
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -434,7 +435,7 @@ private fun ProfileEditorDialog(
                         )
                     }
                 }
-                Text("Avatar", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("Avatar", style = MaterialTheme.typography.bodyMedium, color = V117Muted)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     modifier = Modifier.fillMaxWidth().height(196.dp),
@@ -472,13 +473,13 @@ private fun ProfileEditorDialog(
                     ) { Text("No avatar", textAlign = TextAlign.Center) }
                 }
                 if (avatar == "photo") {
-                    Text("Photo set for this profile.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text("Photo set for this profile.", style = MaterialTheme.typography.bodySmall, color = V117Muted)
                 }
                 Text(
                     if (profile?.pinEnabled == true) "PIN — set a new one, or remove it below"
                     else "PIN (optional) — 4 digits, asked when switching to this profile",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
+                    color = V117Muted
                 )
                 OutlinedTextField(
                     value = pin,
@@ -528,7 +529,7 @@ private fun ProfileEditorDialog(
             }) { Text("Save") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
         containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
     )
@@ -577,7 +578,7 @@ fun PinEntryDialog(
             ) { Text("Unlock") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
         containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
     )

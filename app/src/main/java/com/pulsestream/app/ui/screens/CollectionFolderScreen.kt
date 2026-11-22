@@ -37,7 +37,6 @@ import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.ui.components.PosterCard
 import com.pulsestream.app.ui.theme.TextPrimary
-import com.pulsestream.app.ui.theme.TextSecondary
 
 /**
  * Step 50: a collection folder's titles as a poster grid (Nuvio
@@ -89,7 +88,7 @@ fun CollectionFolderScreen(
                         Text(
                             text = "${it.size} ${if (it.size == 1) "title" else "titles"}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            color = V117Muted
                         )
                     }
                 }
@@ -108,7 +107,7 @@ fun CollectionFolderScreen(
                             "No titles resolved — check the folder's sources (a TMDB key or a linked Trakt account may be needed)."
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
+                        color = V117Muted,
                         modifier = Modifier.padding(16.dp)
                     )
                 }
