@@ -115,6 +115,14 @@ fun LibraryScreen(
     val progressSource = settings.trackingProgressSource
 
     var loading by remember { mutableStateOf(traktLinked || simklLinked) }
+    // Per-source load failures (Nuvio per-source error card + Retry):
+    // a linked service whose watchlist call failed or returned nothing.
+    var traktLoadError by remember { mutableStateOf(false) }
+    var simklLoadError by remember { mutableStateOf(false) }
+    var libraryOffline by remember { mutableStateOf(false) }
+    // Retry bumps this to re-run the load below.
+    var libraryRefreshTick by remember { mutableStateOf(0) }
+    val onRetryLibrary = { libraryRefreshTick++ }
     var upNext by remember { mutableStateOf<List<UpNextCard>>(emptyList()) }
     var traktWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
     var simklWatchlist by remember { mutableStateOf<List<MetaPreview>>(emptyList()) }
@@ -143,7 +151,7 @@ fun LibraryScreen(
         settings.librarySyncedKeys.map { it.substringAfter('|') }.toSet()
     }
 
-    LaunchedEffect(traktLinked, simklLinked, librarySource, progressSource) {
+    LaunchedEffect(traktLinked, simklLinked, librarySource, progressSource, libraryRefreshTick) {
         if (!traktLinked && !simklLinked) {
             loading = false
             return@LaunchedEffect
@@ -166,6 +174,9 @@ fun LibraryScreen(
         simklWatchlist = emptyList()
         traktLists = emptyList()
         upNext = emptyList()
+        traktLoadError = false
+        simklLoadError = false
+        libraryOffline = !isNetworkAvailable(context)
         val traktApi = TraktApi()
         val simklApi = SimklApi()
         val traktToken = if (traktLinked) {
@@ -176,26 +187,36 @@ fun LibraryScreen(
         // Posters/stills by IMDb id, fetched a few at a time.
         suspend fun metaFor(type: String, imdb: String) =
             runCatching { repository.getMetaFromAny(null, type, imdb) }.getOrNull()
+        // Nuvio hydrates release info per item in chunks of 4 — same
+        // here: bounded parallel fetches instead of one burst of 20.
         suspend fun previews(entries: List<Pair<String, Pair<String, String>>>): List<MetaPreview> =
             coroutineScope {
-                entries.map { (type, entry) ->
-                    async {
-                        val (imdb, title) = entry
-                        val meta = metaFor(type, imdb)
-                        MetaPreview(
-                            id = imdb, type = type,
-                            name = meta?.name ?: title,
-                            poster = meta?.poster,
-                            // Step 47: release year for the Saved sort.
-                            releaseInfo = meta?.releaseInfo
-                        )
-                    }
-                }.awaitAll()
+                entries.chunked(4).flatMap { chunk ->
+                    chunk.map { (type, entry) ->
+                        async {
+                            val (imdb, title) = entry
+                            val meta = metaFor(type, imdb)
+                            MetaPreview(
+                                id = imdb, type = type,
+                                name = meta?.name ?: title,
+                                poster = meta?.poster,
+                                // Step 47: release year for the Saved sort.
+                                releaseInfo = meta?.releaseInfo,
+                                // Full ISO date + genres feed the Saved
+                                // release-date sort and the genre facet.
+                                releaseDate = com.pulsestream.app.data.parseReleaseDate(meta?.releaseInfo),
+                                genres = meta?.genres.orEmpty()
+                            )
+                        }
+                    }.awaitAll()
+                }
             }
 
         val cards = mutableListOf<UpNextCard>()
         if (traktToken != null && "trakt" in libraryProviders) {
-            runCatching { traktApi.getWatchlist(traktToken) }.getOrNull()?.let { entries ->
+            val watchlistEntries = runCatching { traktApi.getWatchlist(traktToken) }.getOrNull()
+            if (watchlistEntries == null) traktLoadError = true
+            watchlistEntries?.let { entries ->
                 traktWatchlist = previews(entries.take(20).map { it.type to (it.imdbId to it.title) })
             }
             // Personal Trakt lists (Step 33, Nuvio TraktLibraryRepository):
@@ -237,7 +258,9 @@ fun LibraryScreen(
             }
         }
         if (simklToken != null && "simkl" in libraryProviders) {
-            runCatching { simklApi.getPlanToWatch(simklToken) }.getOrNull()?.let { entries ->
+            val planEntries = runCatching { simklApi.getPlanToWatch(simklToken) }.getOrNull()
+            if (planEntries == null) simklLoadError = true
+            planEntries?.let { entries ->
                 simklWatchlist = previews(entries.take(20).map { it.type to (it.imdbId to it.title) })
             }
         }
@@ -338,7 +361,11 @@ fun LibraryScreen(
                     settings = settings,
                     onOpenDetail = onOpenDetail,
                     favoritePeople = favoritePeopleState.displayPeople,
-                    onOpenPerson = onOpenPerson
+                    onOpenPerson = onOpenPerson,
+                    traktLoadError = traktLoadError,
+                    simklLoadError = simklLoadError,
+                    isOffline = libraryOffline,
+                    onRetry = onRetryLibrary
                 )
             }
             return@Column
@@ -544,19 +571,132 @@ fun LibraryScreen(
             myWatchlist.isEmpty() && myLists.isEmpty()
         ) {
             item(key = "lib_empty") {
-                Text(
-                    if (traktLinked || simklLinked) {
-                        "Nothing here yet — your watchlists and progress will show up once there is something to show."
-                    } else {
-                        "Nothing here yet — add something to your watchlist, or connect Trakt/Simkl above."
+                LibraryEmptyStateCard(
+                    isOffline = libraryOffline,
+                    failedSources = buildList {
+                        if (traktLoadError) add("Trakt")
+                        if (simklLoadError) add("Simkl")
                     },
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 28.dp)
+                    librarySource = librarySource,
+                    anyLinked = traktLinked || simklLinked,
+                    onRetry = onRetryLibrary
                 )
             }
         }
     }
+        }
+    }
+}
+
+/** Is there any usable network right now (same check DownloadManager uses). */
+private fun isNetworkAvailable(context: android.content.Context): Boolean {
+    return try {
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager ?: return true
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    } catch (e: Exception) {
+        true
+    }
+}
+
+/**
+ * Per-source empty / error / offline card (Nuvio HomeEmptyStateCard +
+ * NuvioNetworkOfflineCard, scoped port): the message names the source
+ * that failed or is empty, and a Retry button re-runs the library load.
+ */
+@Composable
+private fun LibraryEmptyStateCard(
+    isOffline: Boolean,
+    failedSources: List<String>,
+    librarySource: String,
+    anyLinked: Boolean,
+    onRetry: () -> Unit
+) {
+    val title: String
+    val body: String
+    val showRetry: Boolean
+    when {
+        isOffline && anyLinked -> {
+            title = "You're offline"
+            body = "Your saved titles need a connection — Trakt and Simkl will load again when you're back online. Your local watchlist is unaffected."
+            showRetry = true
+        }
+        failedSources.isNotEmpty() -> {
+            val names = failedSources.joinToString(" and ")
+            title = "$names couldn't load"
+            body = "We couldn't reach $names just now — your saved titles are still there. Check your connection and try again."
+            showRetry = true
+        }
+        librarySource == "trakt" -> {
+            title = "Nothing saved on Trakt yet"
+            body = "Your Trakt watchlist is empty — add a title on Trakt or in this app and it will show up here."
+            showRetry = false
+        }
+        librarySource == "simkl" -> {
+            title = "Nothing saved on Simkl yet"
+            body = "Your Simkl Plan to Watch list is empty — add a title on Simkl or in this app and it will show up here."
+            showRetry = false
+        }
+        librarySource == "local" -> {
+            title = "Nothing saved locally yet"
+            body = "Add titles to your watchlist or a list and they will show up here."
+            showRetry = false
+        }
+        else -> {
+            title = "Nothing here yet"
+            body = if (anyLinked) {
+                "Your watchlists and progress will show up once there is something to show."
+            } else {
+                "Add something to your watchlist, or connect Trakt/Simkl above."
+            }
+            showRetry = false
+        }
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 36dp icon tile (Nuvio settings row tile): accent @ 0.12, 12dp radius.
+        Box(
+            Modifier
+                .size(36.dp)
+                .background(
+                    LocalPalette.current.accent.copy(alpha = 0.12f),
+                    RoundedCornerShape(12.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                if (isOffline || failedSources.isNotEmpty()) "!" else "☆",
+                color = LocalPalette.current.accent,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            title,
+            color = TextPrimary,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            body,
+            // Nuvio muted subtitle #969CA3.
+            color = Color(0xFF969CA3),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        if (showRetry) {
+            Spacer(Modifier.height(12.dp))
+            androidx.compose.material3.TextButton(onClick = onRetry) {
+                Text("Retry", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
