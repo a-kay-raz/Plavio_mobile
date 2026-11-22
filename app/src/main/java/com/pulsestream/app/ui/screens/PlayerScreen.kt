@@ -257,6 +257,7 @@ import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.DotsLoadingIndicator
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.liquidGlass
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.components.StreamCard
 import com.pulsestream.app.ui.components.StreamList
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
@@ -4394,8 +4395,13 @@ fun PlayerScreen(
                     )
                 } else null
                 val actionPill: @Composable () -> Unit = {
+                    val palette = LocalPalette.current
                     Box(
-                        Modifier.liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
+                        Modifier.ambientLiquidGlass(
+                            shape = RoundedCornerShape(24.dp),
+                            tint = palette.panel.copy(alpha = 0.4f),
+                            fallback = palette.panel,
+                        )
                     ) {
                         Row(
                             Modifier.padding(horizontal = 4.dp, vertical = 2.dp),

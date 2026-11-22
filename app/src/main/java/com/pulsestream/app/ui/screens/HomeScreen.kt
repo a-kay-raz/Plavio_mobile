@@ -161,6 +161,7 @@ import com.pulsestream.app.ui.components.ShimmerPoster
 import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.components.pickAutoplayStream
 import com.pulsestream.app.ui.theme.isLightColor
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.GlassBorder
 import com.pulsestream.app.ui.theme.GlassWhite
@@ -3125,8 +3126,11 @@ private fun CloudStreamProviderSelectorHeader(
             )
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(palette.panel.copy(alpha = 0.92f))
+                    .ambientLiquidGlass(
+                        shape = RoundedCornerShape(20.dp),
+                        tint = palette.panel.copy(alpha = 0.4f),
+                        fallback = palette.panel.copy(alpha = 0.92f),
+                    )
                     .border(1.2.dp, palette.accent, RoundedCornerShape(20.dp))
                     .clickable { menuExpanded = !menuExpanded }
                     .padding(horizontal = 11.dp, vertical = 6.dp),

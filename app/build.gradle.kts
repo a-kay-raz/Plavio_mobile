@@ -181,6 +181,13 @@ dependencies {
     implementation(libs.ksoup.jvm)
     implementation(libs.conscrypt.android)
     implementation(libs.fuzzywuzzy)
+    // Kyant Backdrop — liquid-glass (Nuvio-style) refraction + blur.
+    // 1.0.6: Kotlin 2.3.10 matches this project; its drawBackdrop /
+    // lens / blur / vibrancy API is the same as Nuvio's 2.0.1 usage.
+    // 2.0.1 needs Compose 1.12 / Kotlin 2.4.10 — NOT compatible with
+    // this project's Compose BOM 2024.10.01 (1.7.x), so do not upgrade
+    // the version without also upgrading the Compose BOM.
+    implementation("io.github.kyant0:backdrop:1.0.6")
     implementation(libs.rhino)
     implementation(libs.tmdb.java)
     implementation(libs.cryptography.core)

@@ -96,12 +96,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -143,7 +137,13 @@ import com.pulsestream.app.util.ExternalPlayer
 import com.pulsestream.app.data.update.UpdateInfo
 import com.pulsestream.app.ui.components.CrashReportDialog
 import com.pulsestream.app.ui.components.LocalPosterStyle
-import com.pulsestream.app.ui.components.liquidGlass
+import com.pulsestream.app.ui.glass.LiquidGlassFrostedBar
+import com.pulsestream.app.ui.glass.LiquidGlassStyle
+import com.pulsestream.app.ui.glass.LocalAvioGlassBackdrop
+import com.pulsestream.app.ui.glass.SolidGlassBar
+import com.pulsestream.app.ui.glass.avioBackdropSource
+import com.pulsestream.app.ui.glass.isLiquidGlassSupported
+import com.pulsestream.app.ui.glass.rememberAvioBackdrop
 import com.pulsestream.app.ui.components.posterStyleFrom
 import com.pulsestream.app.ui.components.UpdatePrompt
 import com.pulsestream.app.ui.nav.Routes
@@ -893,17 +893,13 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
         val showBottomBar = tabs.any { it.route == currentDestination?.route }
         // Scroll-aware nav: compact (icons only) when scrolling down, like Nuvio.
         var compactNav by remember { mutableStateOf(false) }
-        // Real frosted-glass backdrop (v0.12.20): the page content is
-        // recorded once into a graphics layer, then a second layer
-        // replays it with a RenderEffect blur; the dock draws that
-        // blurred copy behind itself (clipped to the capsule, aligned
-        // by root positions). Needs Android 12+ (RenderEffect); older
-        // phones keep the darker solid tint instead.
-        val blurSupported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
-        val contentLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
-        val blurLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
-        var contentOriginPx by remember { mutableStateOf(Offset.Zero) }
-        var dockOriginPx by remember { mutableStateOf(Offset.Zero) }
+        // Nuvio-style liquid glass (Kyant Backdrop): the page content is
+        // recorded once into the backdrop's graphics layer; the dock, the
+        // player controls and the pills sample it with blur + lens
+        // refraction. Replaces the old dock-only blurLayer (v0.12.20).
+        // Below Android 12 (no RenderEffect) the glass surfaces fall
+        // back to a flat tint instead.
+        val glassBackdrop = rememberAvioBackdrop()
         val nestedScrollConnection = remember {
             object : NestedScrollConnection {
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -938,22 +934,13 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                     .fillMaxSize()
                     .background(LocalPalette.current.background)
                     .padding(top = shellStatusTop)
-                    .onGloballyPositioned { contentOriginPx = it.positionInRoot() }
-                    .drawWithContent {
-                        if (!blurSupported || !showBottomBar) {
-                            drawContent()
-                        } else {
-                            contentLayer.record { this@drawWithContent.drawContent() }
-                            drawLayer(contentLayer)
-                            val r = 22.dp.toPx()
-                            blurLayer.renderEffect = androidx.compose.ui.graphics.BlurEffect(
-                                r, r, androidx.compose.ui.graphics.TileMode.Clamp
-                            )
-                            blurLayer.record { drawLayer(contentLayer) }
-                        }
-                    }
+                    .avioBackdropSource(glassBackdrop)
             ) {
-                PulseNavGraph(navController, repository, listsRepository, onThemeChanged, trailerMini, collectionRepository = collectionRepository, favoritePeopleRepository = favoritePeopleRepository, streamBadgeSettings = streamBadgeSettings, profilesRepository = profilesRepository, isTv = isTv)
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalAvioGlassBackdrop provides glassBackdrop
+                ) {
+                    PulseNavGraph(navController, repository, listsRepository, onThemeChanged, trailerMini, collectionRepository = collectionRepository, favoritePeopleRepository = favoritePeopleRepository, streamBadgeSettings = streamBadgeSettings, profilesRepository = profilesRepository, isTv = isTv)
+                }
             }
         // Floating dock (v0.12.10, owner's order): no longer a
         // Scaffold bottomBar — the reserved solid strip at the
@@ -1030,31 +1017,31 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                     // never this pill — it is the dead screen space
                     // BELOW the capsule, fixed in v0.12.15 by seating
                     // the dock at the very bottom edge.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .width(capsuleWidth)
-                            .height(capsuleHeight)
-                            .clip(RoundedCornerShape(50))
-                            .onGloballyPositioned { dockOriginPx = it.positionInRoot() }
-                            .drawBehind {
-                                if (blurSupported) {
-                                    val d = dockOriginPx - contentOriginPx
-                                    translate(-d.x, -d.y) {
-                                        drawLayer(blurLayer)
-                                    }
-                                }
-                            }
-                            // Dark tint over the blur keeps white icons/labels
-                            // readable on bright posters; heavier when no blur.
-                            .background(
-                                // Normal mode (Sample A): the backing flips
-                                // to white glass and the dock icons go dark.
-                                if (LocalPalette.current.light) Color.White.copy(alpha = 0.82f)
-                                else Color.Black.copy(alpha = if (blurSupported) 0.20f else 0.48f),
-                                RoundedCornerShape(50)
-                            )
-                    )
+                    // Nuvio-style liquid-glass dock: Kyant backdrop with
+                    // blur + lens refraction + vibrancy + edge highlight
+                    // (floatingBar defaults: blur 10dp, refraction 20/20,
+                    // tint 0.4). Below Android 12 (no RenderEffect) the
+                    // solid fallback is used instead.
+                    if (isLiquidGlassSupported()) {
+                        LiquidGlassFrostedBar(
+                            backdrop = glassBackdrop,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .width(capsuleWidth)
+                                .height(capsuleHeight),
+                            glowStrength = 1f,
+                            // Liquid material (Nuvio default): blur + lens
+                            // refraction. Frosted would be blur-only.
+                            style = LiquidGlassStyle.Default,
+                        )
+                    } else {
+                        SolidGlassBar(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .width(capsuleWidth)
+                                .height(capsuleHeight),
+                        )
+                    }
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = Color.Transparent,
@@ -1064,13 +1051,11 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                             .height(capsuleHeight)
                     ) {
                         Row(
-                            // Liquid-glass dock: sheen + accent glow + specular rim.
-                            // v0.12.7 (owner's order): LIGHT tinted glass
-                            // with blur — darken nearly gone (0.03), frost
-                            // up (0.12) — over the fitted black backing,
-                            // so the buttons show properly. Other glass untouched.
+                            // The glass now comes from the LiquidGlassFrostedBar
+                            // behind this row (blur + lens + tint + edge); the
+                            // old static liquidGlass fill is removed so the
+                            // dock is not double-glazed.
                             modifier = Modifier
-                                .liquidGlass(RoundedCornerShape(50), frost = 0.12f, darken = 0.03f)
                                 .fillMaxSize()
                                 .padding(horizontal = 6.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
