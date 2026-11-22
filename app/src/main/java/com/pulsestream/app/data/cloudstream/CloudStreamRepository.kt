@@ -862,28 +862,43 @@ object CloudStreamRepository {
             require(loadedListCount > 0) { "CloudStream repository plugin lists could not be loaded" }
             return manifest to CloudStreamRepositoryParser.mergePluginLists(lists)
         }
-        // StreamX guard: some repos (cs-kraptor) publish only a plugins.json
-        // list and no repo.json manifest. Treat the URL itself as the list
-        // and synthesize a manifest around it, persisting the resolved URL
-        // so refresh keeps working.
-        val fallbackPlugins = runCatching {
-            val payload = httpGetText(manifestUrl)
-            CloudStreamRepositoryParser.parsePluginList(manifestUrl, manifestUrl, payload)
-        }.onFailure { error ->
-            Log.w(TAG, "CloudStream plugin-list fallback failed url=$manifestUrl", error)
-        }.getOrNull().orEmpty()
+        // StreamX guard: some repos publish only a plugins.json list and no
+        // repo.json manifest. Treat the URL itself as the list, and also try
+        // the sibling plugins.json next to a repo.json URL, then synthesize
+        // a manifest around whichever URL loaded — persisting the resolved
+        // URL so refresh keeps working. (Live check 2026-11-22: cs-kraptor
+        // does have a repo.json; this guard is for repos that do not.)
+        val listCandidates = buildList {
+            add(manifestUrl)
+            val manifestPath = manifestUrl.substringBefore('?')
+            if (manifestPath.endsWith("/repo.json", ignoreCase = true)) {
+                add(manifestPath.dropLast("/repo.json".length) + "/plugins.json")
+            }
+        }.distinct()
+        var resolvedListUrl: String? = null
+        val fallbackPlugins = listCandidates.firstNotNullOfOrNull { candidate ->
+            runCatching {
+                val payload = httpGetText(candidate)
+                CloudStreamRepositoryParser.parsePluginList(candidate, candidate, payload)
+                    .takeIf { it.isNotEmpty() }
+                    ?.also { resolvedListUrl = candidate }
+            }.onFailure { error ->
+                Log.w(TAG, "CloudStream plugin-list fallback failed url=$candidate", error)
+            }.getOrNull()
+        }.orEmpty()
         require(fallbackPlugins.isNotEmpty()) {
             lastManifestError?.message ?: "CloudStream repository manifest could not be loaded"
         }
-        val fallbackName = manifestUrl.substringBefore('?').substringAfterLast('/')
+        val resolvedUrl = resolvedListUrl ?: manifestUrl
+        val fallbackName = resolvedUrl.substringBefore('?').substringAfterLast('/')
             .removeSuffix(".json").takeIf { it.isNotBlank() } ?: "CloudStream"
         val fallbackManifest = CloudStreamRepositoryManifest(
-            sourceUrl = manifestUrl,
+            sourceUrl = resolvedUrl,
             name = fallbackName,
             description = null,
             iconUrl = null,
             manifestVersion = 1,
-            pluginListUrls = listOf(manifestUrl),
+            pluginListUrls = listOf(resolvedUrl),
         )
         return fallbackManifest to fallbackPlugins
     }
