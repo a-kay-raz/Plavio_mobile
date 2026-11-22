@@ -2113,15 +2113,15 @@ private fun CwLandscapeCard(
                 .align(Alignment.TopStart)
                 .padding(metrics.badgeInset)
         )
-        // Visible remove button (Avio requirement): top-end.
+        // Visible remove button (Avio requirement): top-end, bare × —
+        // the rounded black overlay behind it is removed (owner's order
+        // 2026-11-22), so only the white × shows on the card.
         IconButton(
             onClick = onRemove,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(6.dp)
                 .size(28.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.Black.copy(alpha = 0.65f))
         ) {
             Icon(
                 Icons.Filled.Close,
