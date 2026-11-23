@@ -1014,7 +1014,7 @@ private fun SmartChip(
             .clickable(role = Role.RadioButton) { onClick() }
             .semantics { this.selected = selected }
             .tvFocusRing(RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 7.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(
             text = label,
@@ -1038,7 +1038,7 @@ private fun SmartFilterGroup(
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.Bold,
         color = TextPrimary,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
     )
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1094,7 +1094,7 @@ fun SmartStreamSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1128,7 +1128,7 @@ fun SmartStreamSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = TextPrimary,
-                    modifier = Modifier.padding(top = 12.dp)
+                    modifier = Modifier.padding(top = 8.dp)
                 )
                 val topReasons = best.reasons.take(2)
                 if (topReasons.isNotEmpty()) {
@@ -1144,7 +1144,7 @@ fun SmartStreamSheet(
                 text = "Showing $shownCount of ${streams.size} streams",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextSecondary,
-                modifier = Modifier.padding(top = 12.dp)
+                modifier = Modifier.padding(top = 8.dp)
             )
 
             Text(
@@ -1152,7 +1152,7 @@ fun SmartStreamSheet(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
-                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1178,7 +1178,7 @@ fun SmartStreamSheet(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
-                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1264,7 +1264,7 @@ fun SmartStreamSheet(
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
-                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1281,7 +1281,7 @@ fun SmartStreamSheet(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -1310,7 +1310,7 @@ fun SmartStreamSheet(
                     onCheckedChange = { settings.smartFilterHideLowQuality = it; bump() }
                 )
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
