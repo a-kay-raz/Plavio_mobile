@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -3390,8 +3391,12 @@ private fun RatingsSheet(
         dragHandle = null,
         containerColor = LocalPalette.current.background
     ) {
+        // Text padding matches the sources panel / Smart Streams sheet
+        // (user 2026-11-23): 16dp sides, 8dp top and bottom — the old
+        // 20dp sides with no top padding left the title cramped at the
+        // sheet edge and the text sitting further in than the panel's.
         Column(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
                 "Ratings",
@@ -3449,8 +3454,11 @@ private fun RatingsSheet(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+            // The 48dp star buttons inset their 32dp icons by 8dp, so the
+            // row is shifted 8dp left to put the first star's visual edge
+            // on the text edge (sources panel alignment).
             Row(
-                Modifier.padding(vertical = 8.dp),
+                Modifier.padding(vertical = 8.dp).offset(x = (-8).dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 (1..5).forEach { star ->
@@ -3469,7 +3477,13 @@ private fun RatingsSheet(
                 }
             }
             if (userStars != null) {
-                TextButton(onClick = { onRate(null) }) {
+                // No TextButton side padding: the label must sit on the
+                // text edge, not 12dp in from it (the default content
+                // padding). Vertical padding kept for the touch area.
+                TextButton(
+                    onClick = { onRate(null) },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp)
+                ) {
                     Text("Clear rating", color = TextSecondary)
                 }
             }
