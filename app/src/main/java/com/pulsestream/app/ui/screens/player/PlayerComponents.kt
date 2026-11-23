@@ -333,15 +333,16 @@ internal fun LegacySeekBar(
             disabledActiveTrackColor = Color.White,
             disabledInactiveTrackColor = Color.Transparent
         ),
-        // Nuvio playhead: a white vertical line (not the default round
-        // thumb) — the same look as Nuvio's seek bar.
+        // Nuvio playhead: a vertical line in the accent colour (not the
+        // default round thumb) — the official app's thumb is gold, not
+        // white (pixel-checked on the official screenshot).
         thumb = {
             Box(
                 Modifier
                     .width(4.dp)
                     .height(20.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (enabled) Color.White else Color.White.copy(alpha = 0.6f))
+                    .background(if (enabled) accent else accent.copy(alpha = 0.6f))
             )
         },
         track = {
@@ -351,26 +352,32 @@ internal fun LegacySeekBar(
             // PlayerProgressTrack, without depending on the experimental
             // SliderDefaults.Track overload.
             Canvas(Modifier.fillMaxSize()) {
-                val trackH = 6.dp.toPx()
+                val trackH = 12.dp.toPx()
                 val cy = size.height / 2f
                 val baseColor = if (enabled) Color.White.copy(alpha = 0.20f)
                 else Color.White.copy(alpha = 0.28f)
                 val playedColor = if (enabled) accent else Color.White
+                // The playhead leaves a gap in the played/buffered
+                // segments around the thumb (like Nuvio's
+                // SliderDefaults.Track): the gold thumb sits in a clear
+                // band instead of under the played segment.
+                val thumbGapPx = 4.dp.toPx()
+                val fracX = size.width * frac
                 drawRoundRect(
                     color = baseColor,
                     topLeft = Offset(0f, cy - trackH / 2f),
                     size = Size(size.width, trackH),
                     cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
                 )
-                if (enabled && bufferedFrac > frac) {
+                if (enabled && size.width * bufferedFrac > fracX + thumbGapPx) {
                     drawRoundRect(
                         color = Color.White.copy(alpha = 0.40f),
-                        topLeft = Offset(size.width * frac, cy - trackH / 2f),
-                        size = Size(size.width * (bufferedFrac - frac), trackH),
+                        topLeft = Offset(fracX + thumbGapPx, cy - trackH / 2f),
+                        size = Size(size.width * bufferedFrac - (fracX + thumbGapPx), trackH),
                         cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
                     )
                 }
-                if (frac > 0f) {
+                if (fracX - thumbGapPx > 0f) {
                     // Nuvio PlayerProgressTrack: the played segment is an
                     // accent GRADIENT (not solid) — accent at the start,
                     // lightened toward the playhead. (playedColor is White
@@ -378,12 +385,12 @@ internal fun LegacySeekBar(
                     val playedBrush = Brush.horizontalGradient(
                         colors = listOf(playedColor, lerp(playedColor, Color.White, 0.35f)),
                         startX = 0f,
-                        endX = size.width * frac
+                        endX = fracX - thumbGapPx
                     )
                     drawRoundRect(
                         brush = playedBrush,
                         topLeft = Offset(0f, cy - trackH / 2f),
-                        size = Size(size.width * frac, trackH),
+                        size = Size(fracX - thumbGapPx, trackH),
                         cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
                     )
                 }
@@ -391,7 +398,7 @@ internal fun LegacySeekBar(
                 // ticks straddling the track at each chapter start.
                 if (chapterFractions.isNotEmpty()) {
                     val tickW = 2.dp.toPx()
-                    val tickH = 14.dp.toPx()
+                    val tickH = 16.dp.toPx()
                     chapterFractions.forEach { fraction ->
                         val x = (size.width * fraction).coerceIn(0f, size.width - tickW)
                         drawRoundRect(

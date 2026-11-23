@@ -2599,13 +2599,18 @@ fun PlayerScreen(
                 if (event == null) {
                     // Threshold reached with the finger still down and no
                     // drag in progress: engage the speed hold at the Hold
-                    // speed setting (default 2x).
-                    holdEngaged = true
-                    prevSpeed = player.playbackParameters.speed
-                    slideBaseX = accX
-                    state.holdSpeedStep = settings.holdSpeedValue
-                    runCatching { player.setPlaybackSpeed(settings.holdSpeedValue) }
-                    state.holdSpeedActive = true
+                    // speed setting (default 2x) — unless this gesture
+                    // already became a pinch (two fingers down). A slow
+                    // pinch held still used to hit this timeout mid-pinch
+                    // and flip to 2x, and the speed then stuck there.
+                    if (!pinchInterrupted) {
+                        holdEngaged = true
+                        prevSpeed = player.playbackParameters.speed
+                        slideBaseX = accX
+                        state.holdSpeedStep = settings.holdSpeedValue
+                        runCatching { player.setPlaybackSpeed(settings.holdSpeedValue) }
+                        state.holdSpeedActive = true
+                    }
                     continue
                 }
                 val change = event.changes.firstOrNull { it.id == down.id } ?: continue
@@ -2749,6 +2754,15 @@ fun PlayerScreen(
                 }
             }
 
+            // Safety net: a hold that engaged before this gesture became a
+            // pinch is already restored by the pinch branch — but if one is
+            // still engaged when a pinched gesture ends, restore the speed
+            // here instead of leaving 2x stuck (the pinch path settles
+            // nothing).
+            if (pinchInterrupted && holdEngaged) {
+                state.holdSpeedActive = false
+                runCatching { player.setPlaybackSpeed(prevSpeed) }
+            }
             // Gesture finished — settle the outcome. A pinch-interrupted
             // gesture settles nothing (Nuvio interruptedByPinch).
             if (!pinchInterrupted) when {
@@ -4224,7 +4238,7 @@ fun PlayerScreen(
                         isTv = isTv
                     )
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(top = 4.dp),
+                        Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -4642,15 +4656,8 @@ fun PlayerScreen(
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.SPEED -> {
                                         SpeedMenuButton(
-                                            speed = state.speed,                                            menuOpen = state.speedMenuOpen,
-                                            onOpenMenu = { state.speedMenuOpen = true },
-                                            onDismissMenu = { state.speedMenuOpen = false },
-                                            onSpeedSelected = { s ->
-                                                state.speed = s
-                                                player.setPlaybackSpeed(s)
-                                                state.speedMenuOpen = false
-                                                pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
-                                            }
+                                            speed = state.speed,
+                                            onClick = { state.speedMenuOpen = true }
                                         )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.SOURCES -> {
@@ -4739,7 +4746,7 @@ fun PlayerScreen(
                         // on the left (tap opens the Chapters panel), the
                         // "Ends at" time on the right.
                         Row(
-                            Modifier.fillMaxWidth().offset(y = (-19).dp).padding(horizontal = 12.dp),
+                            Modifier.fillMaxWidth().offset(y = (-19).dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
@@ -4786,7 +4793,7 @@ fun PlayerScreen(
                             LegacySeekBar(
                                 positionMs = state.positionMs,                                durationMs = state.durationMs,                                bufferedMs = state.bufferedMs,                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                                 onSeek = { player.seekTo(it) },
-                                modifier = Modifier.offset(y = (-13).dp).padding(bottom = 8.dp),
+                                modifier = Modifier.offset(y = (-13).dp).padding(bottom = 12.dp),
                                 isTv = isTv,
                                 onSeekDelta = { seekByWithFeedback(it) },
                                 onFocusChanged = { state.seekbarFocused = it },
@@ -4802,7 +4809,7 @@ fun PlayerScreen(
                         // once the pill grew wide.
                         Column(Modifier.fillMaxWidth()) {
                             Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -4813,7 +4820,7 @@ fun PlayerScreen(
                                     onClick = { state.showRemainingTime = !state.showRemainingTime }
                                 )
                             }
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(16.dp))
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 actionPill()
                             }
@@ -6012,6 +6019,58 @@ fun PlayerScreen(
         // In-player Quality picker (Nuvio PlayerQualityPanel): a CENTERED
         // glass dialog (not a bottom card) with a Close button, bordered
         // option rows ("Selected" on the right, "Currently playing" /
+        // Playback-speed dialog (centered, same pattern as Quality): the
+        // old speed Popup sat above the pill button and covered the seekbar
+        // and the time pills, because it is ~270dp tall and the gap above
+        // the pill is only ~60dp. A centered dialog cannot overlap them.
+        if (state.speedMenuOpen) {
+            com.pulsestream.app.ui.screens.player.PlayerCenteredDialog(
+                onDismiss = { state.speedMenuOpen = false }
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Playback speed",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.pulsestream.app.ui.screens.player.PlayerDialogCloseButton(
+                            onClick = { state.speedMenuOpen = false }
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(bottom = 2.dp)
+                    ) {
+                        items(SPEEDS.sortedDescending()) { s ->
+                            com.pulsestream.app.ui.screens.player.QualityOptionRow(
+                                title = speedLabel(s),
+                                subtitle = if (s == 1f) "Normal" else null,
+                                selected = s == state.speed,
+                                onClick = {
+                                    state.speed = s
+                                    player.setPlaybackSpeed(s)
+                                    state.speedMenuOpen = false
+                                    pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // "Recommended compatible quality" subtitles). Auto first, then
         // one row per distinct quality, best first. Picking one switches
         // to a stream of that quality at the current position.
