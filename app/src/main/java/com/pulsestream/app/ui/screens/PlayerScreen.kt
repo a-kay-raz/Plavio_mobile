@@ -2583,11 +2583,20 @@ fun PlayerScreen(
             var upChange: androidx.compose.ui.input.pointer.PointerInputChange? = null
 
             while (upChange == null) {
-                val event = if (!holdEngaged && dragMode == -1 && settings.touchGesturesEnabled) {
+                val event = if (!holdEngaged && dragMode == -1 && settings.touchGesturesEnabled && !secondFingerDown) {
                     // Still a tap/hold candidate: wake up at the hold
                     // threshold even if no further pointer event arrives.
                     // (Gestures off: block on the next event instead — the
                     // threshold must not spin the loop.)
+                    //
+                    // A second finger down takes the blocking await
+                    // instead: with two fingers the hold never engages,
+                    // so a reached threshold would return null WITHOUT
+                    // suspending and the loop would spin on the Main
+                    // thread forever (UI freeze / ANR — the 2-finger-hold
+                    // crash, user 2026-11-23; the pinch crash was this
+                    // too, not the zoom: every pinch holds two fingers
+                    // down past the threshold).
                     val remaining = (downTime + holdThresholdMs - lastEventMs).coerceAtLeast(0L)
                     if (remaining > 0L) {
                         withTimeoutOrNull(remaining) { awaitPointerEvent() }
