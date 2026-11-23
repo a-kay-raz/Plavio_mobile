@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main player video surface: PlayerView in Media3 1.4.1 has no
+     setVideoSurfaceType / setVideoTextureView — the surface type comes
+     from this layout's app:surface_type, so the surface is a
+     TextureView. A TextureView renders into the view hierarchy
+     (unlike SurfaceView's separate surface), so its frames are
+     captured by the glass backdrop recording and the video shows
+     blurred behind the player glass. It also makes the pinch-zoom
+     graphicsLayer scale actually move the video, which a SurfaceView
+     ignores (its surface is a separate layer). -->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

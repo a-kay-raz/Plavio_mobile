@@ -12,6 +12,7 @@ import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -3546,7 +3547,13 @@ fun PlayerScreen(
         Box(Modifier.fillMaxSize().then(if (inPip) Modifier else Modifier.videoGestures())) {
             AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).also { pv ->
+                    // TextureView surface (R.layout.player_view): the video
+                    // renders into the view hierarchy, so the glass backdrop
+                    // recording captures its frames and the video shows
+                    // blurred behind the player glass. A SurfaceView (the
+                    // PlayerView(ctx) default) is a separate surface the
+                    // backdrop cannot see.
+                    (LayoutInflater.from(ctx).inflate(R.layout.player_view, null, false) as PlayerView).also { pv ->
                         pv.player = player
                         // Step 38: route cues through the SDH filter when the
                         // toggle is on — the delegate is the PlayerView's own
