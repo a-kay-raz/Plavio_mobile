@@ -98,10 +98,11 @@ internal fun PlayerSourcesContent(
     // Nuvio PlayerSourcesPanel layout: fixed header + content label +
     // provider filter on top, the stream list scrolls below (weight 1f).
     // No banner — Nuvio's Sources panel has no artwork header.
-    // Header is kept tight (16dp padding, 8dp gaps) so the links list
-    // gets as much room as possible in landscape.
+    // Padding/size matches the Quality panel (PlayerCenteredDialog
+    // content): 20dp horizontal / 18dp vertical outer padding, titleSmall
+    // header, 16dp gap below the header, 6dp list spacing.
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp)
+        modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -109,15 +110,15 @@ internal fun PlayerSourcesContent(
         ) {
             Text(
                 text = "Sources",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 maxLines = 1,
-                modifier = Modifier.weight(1f).padding(end = 12.dp)
+                modifier = Modifier.weight(1f)
             )
             PlayerDialogCloseButton(onClick = onClose)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(16.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
@@ -162,11 +163,11 @@ internal fun PlayerSourcesContent(
             Spacer(Modifier.height(8.dp))
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f).testTag("player-source-list"),
-                contentPadding = PaddingValues(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(bottom = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (browser.filtered.isEmpty()) item {
-                    Text("No sources match these filters.", color = TextSecondary, modifier = Modifier.padding(16.dp))
+                    Text("No sources match these filters.", color = TextSecondary)
                 }
                 streamListItems(streams = browser.filtered, onPick = onPick, selectedUrl = selectedUrl,
                     // Step 35: hide the download button when the setting is off.
