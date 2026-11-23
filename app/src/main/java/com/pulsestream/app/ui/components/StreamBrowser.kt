@@ -67,8 +67,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import coil.compose.AsyncImage
 import com.pulsestream.app.data.SettingsStore
 import com.pulsestream.app.data.SmartSortMode
@@ -1085,10 +1087,15 @@ fun SmartStreamSheet(
         onChanged()
     }
 
-    // Nuvio-style bottom glass panel (PlayerOverlayPanel) — not a flat
-    // Material3 ModalBottomSheet.
-    com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
-        onDismiss = onDismiss
+    // Original flat bottom sheet (user 2026-11-23): back to the Step 42
+    // Material3 ModalBottomSheet, not the Nuvio glass PlayerOverlayPanel.
+    // The options inside stay exactly as they are.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = null,
+        containerColor = Color(0xFF14141F)
     ) {
         Column(
             modifier = Modifier
