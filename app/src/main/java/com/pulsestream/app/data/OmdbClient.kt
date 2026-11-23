@@ -67,4 +67,34 @@ object OmdbClient {
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { emptyList() }
         }
+
+    /**
+     * Per-episode IMDb ratings for a whole season, one HTTP call
+     * (Nuvio OmdbEpisodeRatingsService): `?i=<imdbId>&Season=<n>`.
+     * Returns episode number -> rating (0..10); "N/A" and non-positive
+     * values are dropped. Empty on any failure (bad key, offline,
+     * unknown id) — the caller then shows TMDB-only rows.
+     */
+    suspend fun fetchSeasonRatings(apiKey: String, imdbId: String, season: Int): Map<Int, Double> =
+        withContext(Dispatchers.IO) {
+            if (apiKey.isBlank() || imdbId.isBlank() || season <= 0) return@withContext emptyMap()
+            try {
+                val response = BoundedHttp.get(
+                    "$BASE?apikey=$apiKey&i=$imdbId&Season=$season",
+                    headers = mapOf("Accept" to "application/json")
+                )
+                val root = json.parseToJsonElement(response).jsonObject
+                if (root["Response"]?.jsonPrimitive?.contentOrNull != "True") {
+                    return@withContext emptyMap()
+                }
+                root["Episodes"]?.jsonArray?.mapNotNull { element ->
+                    val obj = element.jsonObject
+                    val episode = obj["Episode"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                    val rating = obj["imdbRating"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+                    if (episode == null || episode <= 0 || rating == null || rating <= 0.0) null
+                    else episode to rating
+                }?.toMap() ?: emptyMap()
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { emptyMap() }
+        }
 }

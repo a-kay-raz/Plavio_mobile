@@ -705,7 +705,7 @@ private fun DetailContent(
     // Episode browser (Nuvio DetailEpisodeNavigator): search, sort,
     // Go-To, season view mode, blur-unwatched.
     var episodeQuery by rememberSaveable { mutableStateOf("") }
-    var episodeSort by rememberSaveable { mutableStateOf("oldest") } // oldest | newest | airdate | unwatched
+    var episodeSort by rememberSaveable { mutableStateOf("oldest") } // oldest | newest | airdate | unwatched | highest
     var seasonViewMode by remember { mutableStateOf(settings.seasonViewMode) }
     var episodeActionVideo by remember { mutableStateOf<Video?>(null) }
     var seasonActionSeason by remember { mutableStateOf<Int?>(null) }
@@ -821,6 +821,22 @@ private fun DetailContent(
     val episodeEnrichment = remember(tmdbSeasonEpisodes) {
         tmdbSeasonEpisodes.associateBy { it.episode }
     }
+    // OMDb episode ratings (Nuvio OmdbEpisodeRatingsService): one call
+    // per season returns every episode's IMDb rating. Key-gated: no OMDb
+    // key, or a non-IMDb meta id, means no call at all — rows stay
+    // TMDB-only. Cached per season for this Detail visit.
+    var omdbEpisodeRatings by remember {
+        mutableStateOf<Map<Int, Map<Int, Double>>>(emptyMap())
+    }
+    LaunchedEffect(meta.id, meta.type, vm.selectedSeason) {
+        val season = vm.selectedSeason ?: return@LaunchedEffect
+        if (meta.type != "series" || omdbEpisodeRatings.containsKey(season)) return@LaunchedEffect
+        val imdbId = meta.id.takeIf { it.startsWith("tt") } ?: return@LaunchedEffect
+        val key = settings.omdbApiKey ?: return@LaunchedEffect
+        omdbEpisodeRatings = omdbEpisodeRatings + (season to runCatching {
+            com.pulsestream.app.data.OmdbClient.fetchSeasonRatings(key, imdbId, season)
+        }.getOrDefault(emptyMap()))
+    }
     // TMDB cast enrichment (Credits module): photos + character names
     // for the cast rail. The meta addon serves names only in keyless
     // mode, so without this the rail is photo-less (the "▶" glyphs).
@@ -851,7 +867,7 @@ private fun DetailContent(
     }
     // Hoisted out of the LazyColumn DSL: the filter+sort used to re-run
     // on every recomposition of the (stream-driven) content lambda.
-    val episodes = remember(meta.videos, vm.selectedSeason, episodeQuery, episodeSort, watchedKeys) {
+    val episodes = remember(meta.videos, vm.selectedSeason, episodeQuery, episodeSort, watchedKeys, episodeEnrichment, omdbEpisodeRatings) {
         val base = meta.videos.filter { it.season == vm.selectedSeason }
         val filtered = if (episodeQuery.isBlank()) base else {
             val q = episodeQuery.trim().lowercase().replace(" ", "")
@@ -864,6 +880,14 @@ private fun DetailContent(
         when (episodeSort) {
             "newest" -> filtered.sortedWith(compareByDescending<Video> { it.episode }.thenByDescending { it.title })
             "airdate" -> filtered.sortedByDescending { it.released.orEmpty() }
+            "highest" -> filtered.sortedByDescending { video ->
+                // Nuvio HighestRated: IMDb, then TMDB, then -1 for unrated.
+                // (Avio has no per-episode user rating to fall back to.)
+                omdbEpisodeRatings[video.season]?.get(video.episode)
+                    ?: episodeEnrichment[video.episode]?.voteAverage
+                        ?.takeIf { settings.tmdbUseEpisodeRatings }
+                    ?: -1.0
+            }
             "unwatched" -> filtered.sortedWith(
                 compareBy(
                     { com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, it.season, it.episode) in watchedKeys },
@@ -2090,6 +2114,7 @@ private fun DetailContent(
                         runtime = enrichedRuntime,
                         progress = episodeProgress(video),
                         tmdbRating = enrichedRating,
+                        imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
                         onClick = { vm.playEpisode(video, fromStart = isWatched) },
                         onLongClick = { episodeActionVideo = video },
                         onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
@@ -2136,6 +2161,7 @@ private fun DetailContent(
                                 runtime = enrichedRuntime,
                                 progress = episodeProgress(video),
                                 tmdbRating = enrichedRating,
+                                imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
                                 onClick = { vm.playEpisode(video, fromStart = isWatched) },
                                 onLongClick = { episodeActionVideo = video },
                                 onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
@@ -3042,8 +3068,7 @@ private fun DetailContent(
     }
 
     // Sort dialog (Nuvio EpisodeSortOrder): oldest/newest first,
-    // newest aired, unwatched first. Highest-rated is not offered —
-    // per-episode ratings don't exist in the meta.
+    // newest aired, unwatched first, highest rated (IMDb, then TMDB).
     if (sortOpen) {
         AlertDialog(
             onDismissRequest = { sortOpen = false },
@@ -3055,7 +3080,8 @@ private fun DetailContent(
                         "oldest" to "Oldest first",
                         "newest" to "Newest first",
                         "airdate" to "Newest aired",
-                        "unwatched" to "Unwatched first"
+                        "unwatched" to "Unwatched first",
+                        "highest" to "Highest rated"
                     ).forEach { (value, label) ->
                         Row(
                             modifier = Modifier
@@ -4347,6 +4373,8 @@ private fun EpisodeCardA(
     progress: Float? = null,
     /** TMDB episode rating (Episode Ratings module), null when off/unavailable. */
     tmdbRating: Double? = null,
+    /** IMDb episode rating (OMDb season fetch), null when no key/unavailable. */
+    imdbRating: Double? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
@@ -4471,6 +4499,7 @@ private fun EpisodeCardA(
                     val metaLine = listOfNotNull(
                         formatEpisodeDate(video.released).takeIf { it.isNotBlank() },
                         runtime,
+                        imdbRating?.let { "IMDb %.1f".format(it) },
                         tmdbRating?.let { "★ %.1f".format(it) }
                     ).joinToString("  •  ")
                     if (metaLine.isNotBlank()) {
@@ -4721,6 +4750,8 @@ private fun EpisodeListCard(
     progress: Float? = null,
     /** TMDB episode rating (Episode Ratings module), null when off/unavailable. */
     tmdbRating: Double? = null,
+    /** IMDb episode rating (OMDb season fetch), null when no key/unavailable. */
+    imdbRating: Double? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
@@ -4830,6 +4861,7 @@ private fun EpisodeListCard(
                     val metaLine = listOfNotNull(
                         formatEpisodeDate(video.released).takeIf { it.isNotBlank() },
                         runtime,
+                        imdbRating?.let { "IMDb %.1f".format(it) },
                         tmdbRating?.let { "★ %.1f".format(it) }
                     ).joinToString("  •  ")
                     if (metaLine.isNotBlank()) {
