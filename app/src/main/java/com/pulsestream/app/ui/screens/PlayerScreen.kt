@@ -2592,7 +2592,17 @@ fun PlayerScreen(
                     // (Gestures off: block on the next event instead — the
                     // threshold must not spin the loop.)
                     val remaining = (downTime + holdThresholdMs - lastEventMs).coerceAtLeast(0L)
-                    withTimeoutOrNull(remaining) { awaitPointerEvent() }
+                    if (remaining > 0L) {
+                        withTimeoutOrNull(remaining) { awaitPointerEvent() }
+                    } else {
+                        // Threshold already reached (the last event arrived
+                        // at/past it): treat the timeout as fired. Never
+                        // withTimeoutOrNull(0) — a 0ms timeout races the
+                        // event dispatch and double-resumes the
+                        // continuation (IllegalStateException: Already
+                        // resumed — crash, PlayerScreen.kt:2595).
+                        null
+                    }
                 } else {
                     awaitPointerEvent()
                 }
