@@ -58,7 +58,7 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material3.Icon
-import com.pulsestream.app.ui.components.liquidGlass
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.tv.tvFocusRing
@@ -99,7 +99,11 @@ internal fun TrackRow(
 internal fun TimeChip(text: String, onClick: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .liquidGlass(RoundedCornerShape(50))
+            .ambientLiquidGlass(
+                shape = RoundedCornerShape(50),
+                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                fallback = LocalPalette.current.panel,
+            )
             .then(if (onClick != null) Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick) else Modifier)
     ) {
         Text(
@@ -146,7 +150,11 @@ internal fun PlayerHeaderButton(
     Box(
         modifier
             .size(36.dp)
-            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+            .ambientLiquidGlass(
+                shape = CircleShape,
+                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                fallback = LocalPalette.current.panel,
+            )
             .clip(CircleShape)
             .clickable(onClick = onClick)
             .tvFocusRing(CircleShape),
@@ -168,7 +176,11 @@ internal fun CenterControlButton(
 ) {
     Box(
         modifier
-            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+            .ambientLiquidGlass(
+                shape = CircleShape,
+                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                fallback = LocalPalette.current.panel,
+            )
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick)
             .tvFocusRing(CircleShape)
@@ -191,7 +203,11 @@ internal fun CenterControlButton(
 ) {
     Box(
         modifier
-            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+            .ambientLiquidGlass(
+                shape = CircleShape,
+                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                fallback = LocalPalette.current.panel,
+            )
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick)
             .tvFocusRing(CircleShape)

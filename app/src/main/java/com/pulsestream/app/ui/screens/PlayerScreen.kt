@@ -256,7 +256,6 @@ import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.DotsLoadingIndicator
 import com.pulsestream.app.ui.components.SafePosterImage
-import com.pulsestream.app.ui.components.liquidGlass
 import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.components.StreamCard
 import com.pulsestream.app.ui.components.StreamList
@@ -3769,7 +3768,11 @@ fun PlayerScreen(
             ) {
                 Box(
                     Modifier
-                        .liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(24.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = LocalPalette.current.panel,
+                        )
                         .graphicsLayer {
                             scaleX = indScale.value
                             scaleY = indScale.value
@@ -3868,7 +3871,11 @@ fun PlayerScreen(
                 contentAlignment = Alignment.TopCenter
             ) {
                 Box(
-                    Modifier.liquidGlass(RoundedCornerShape(24.dp), frost = 0.12f, darken = 0.03f)
+                    Modifier.ambientLiquidGlass(
+                        shape = RoundedCornerShape(24.dp),
+                        tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                        fallback = LocalPalette.current.panel,
+                    )
                 ) {
                     Row(
                         Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -3912,7 +3919,11 @@ fun PlayerScreen(
                             Modifier
                                 .widthIn(max = 320.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .liquidGlass(RoundedCornerShape(16.dp), frost = 0.12f, darken = 0.03f)
+                                .ambientLiquidGlass(
+                                    shape = RoundedCornerShape(16.dp),
+                                    tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                                    fallback = LocalPalette.current.panel,
+                                )
                                 .clickable {
                                     state.autoSkippedSegments = state.autoSkippedSegments + seg
                                     player.seekTo(seg.endMs + 400)
@@ -4110,7 +4121,11 @@ fun PlayerScreen(
                     Box(
                         Modifier
                             .size(72.dp)
-                            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f),
+                            .ambientLiquidGlass(
+                                shape = CircleShape,
+                                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                                fallback = LocalPalette.current.panel,
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -4385,7 +4400,11 @@ fun PlayerScreen(
                     }
                     Box(
                         modifier = Modifier
-                            .liquidGlass(CircleShape, frost = 0.12f, darken = 0.03f)
+                            .ambientLiquidGlass(
+                                shape = CircleShape,
+                                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                                fallback = LocalPalette.current.panel,
+                            )
                             .clip(CircleShape)
                             .clickable(onClick = { togglePlay() })
                             .focusRequester(playPauseFocus)
