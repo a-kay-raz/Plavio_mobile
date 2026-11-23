@@ -6,7 +6,6 @@ import java.net.URLEncoder
 
 object Routes {
     const val SPLASH = "splash"
-    const val ONBOARDING = "onboarding"
     const val HOME = "home"
     const val LIVE = "live"
     const val LIVE_TV_SETTINGS = "live_tv_settings"
@@ -26,7 +25,6 @@ object Routes {
     const val HOME_CATALOGS = "home_catalogs"
     const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"
     const val ACCOUNT = "account"
-    const val BACKUP = "backup"
     const val PLAYBACK_SETTINGS = "playback_settings"
     const val SUBTITLE_SETTINGS = "subtitle_settings"
     const val APPEARANCE_SETTINGS = "appearance_settings"

@@ -149,7 +149,6 @@ import com.aviostream.app.ui.components.UpdatePrompt
 import com.aviostream.app.ui.nav.Routes
 import com.aviostream.app.ui.screens.LiveScreen
 import com.aviostream.app.ui.screens.LiveTvSettingsScreen
-import com.aviostream.app.ui.screens.OnboardingScreen
 import com.aviostream.app.ui.screens.SplashScreen
 import com.aviostream.app.ui.screens.SettingsScreen
 import com.aviostream.app.ui.screens.AccountScreen
@@ -193,7 +192,6 @@ import com.aviostream.app.ui.screens.ContentDiscoverySettingsScreen
 import com.aviostream.app.ui.screens.NotificationsSettingsScreen
 import com.aviostream.app.ui.screens.ListsScreen
 import com.aviostream.app.ui.screens.ListDetailScreen
-import com.aviostream.app.ui.screens.BackupScreen
 import com.aviostream.app.ui.screens.MediaServersScreen
 import com.aviostream.app.ui.screens.ServerLibraryScreen
 import com.aviostream.app.ui.screens.IntegrationsScreen
@@ -782,7 +780,7 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
     LaunchedEffect(pendingBundle, pendingManifestUrl, currentDestination) {
         val route = currentDestination?.route
         if ((pendingBundle != null || pendingManifestUrl != null) && route != null &&
-            route != Routes.SPLASH && route != Routes.ONBOARDING
+            route != Routes.SPLASH
         ) {
             navController.navigate(Routes.ADDONS) {
                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -793,14 +791,14 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
     }
 
     // Notification tap (episode alert): MainActivity stashed a detail route
-    // via handleNotificationRoute. Navigate once past splash/onboarding,
+    // via handleNotificationRoute. Navigate once past splash,
     // then clear so it fires exactly once.
     val pendingRoute by NotificationNav.pendingRoute.collectAsState()
     LaunchedEffect(pendingRoute, currentDestination) {
         val route = pendingRoute
         val dest = currentDestination?.route
         if (route != null && dest != null &&
-            dest != Routes.SPLASH && dest != Routes.ONBOARDING
+            dest != Routes.SPLASH
         ) {
             NotificationNav.pendingRoute.value = null
             navController.navigate(route) {
@@ -811,10 +809,10 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
 
     if (isTv) {
         // TV: bottom-center nav bar (replaced the old left rail). The bar is
-        // hidden on splash/onboarding/player, same as the rail was. Content
+        // hidden on splash/player, same as the rail was. Content
         // gets bottom padding so the bar never covers anything; the bar is
         // drawn below the content in a Column, not overlaid.
-        val barHiddenRoutes = setOf(Routes.SPLASH, Routes.ONBOARDING, Routes.PLAYER)
+        val barHiddenRoutes = setOf(Routes.SPLASH, Routes.PLAYER)
         val destRoutes = currentDestination?.hierarchy?.mapNotNull { it.route }.orEmpty()
         val showBar = destRoutes.none { it in barHiddenRoutes }
         val barFocus = remember { FocusRequester() }
@@ -1359,16 +1357,6 @@ private fun AvioNavGraph(
                 }
             )
         }
-        composable(Routes.ONBOARDING) {
-            OnboardingScreen(
-                repository = repository,
-                onDone = {
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                    }
-                }
-            )
-        }
         composable(Routes.HOME) {
             HomeScreen(
                 repository = repository,
@@ -1381,8 +1369,6 @@ private fun AvioNavGraph(
                     repository.pendingPlayback?.let { playRequest(it) }
                 },
                 onGoToAddons = { navController.navigate(Routes.ADDONS) },
-                onGoToWatchlist = { navController.navigate(Routes.WATCHLIST) },
-                onGoToLists = { navController.navigate(Routes.LISTS) },
                 onOpenCatalog = { row ->
                     repository.pendingCatalog = row
                     navController.navigate(
@@ -1396,7 +1382,6 @@ private fun AvioNavGraph(
                 onOpenServerLibrary = { serverId, libraryId ->
                     navController.navigate(Routes.serverLibrary(serverId, libraryId))
                 },
-                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
             )
         }
         composable(Routes.LIVE) {

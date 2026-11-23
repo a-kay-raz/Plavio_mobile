@@ -9,9 +9,8 @@ import kotlinx.coroutines.launch
 /**
  * Single scrobbling pipeline for the player.
  *
- * Replaces the per-service TraktScrobbler/SimklScrobbler pair: the player
- * calls [tick] once per poll and [shutdown] on dispose, and this fans every
- * scrobble event out to all [providers] that are currently enabled.
+ * The player calls [tick] once per poll and [shutdown] on dispose, and this
+ * fans every scrobble event out to all [providers] that are currently enabled.
  *
  * Behavior (unchanged from the old per-service drivers):
  * - stream/episode switch -> stop old, start new

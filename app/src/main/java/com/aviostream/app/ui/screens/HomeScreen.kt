@@ -378,13 +378,10 @@ fun HomeScreen(
     onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
     onResumePlayback: () -> Unit,
     onGoToAddons: () -> Unit,
-    onGoToWatchlist: () -> Unit,
-    onGoToLists: () -> Unit,
     onOpenCatalog: (row: CatalogRow) -> Unit,
     onOpenCollectionFolder: (folderId: String) -> Unit = {},
     onPlayServerItem: (PlaybackRequest) -> Unit = {},
     onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit = { _, _ -> },
-    onGoToDownloads: () -> Unit = {},
 ) {
     val vm: HomeViewModel = viewModel(factory = vmFactory { HomeViewModel(repository) })
 

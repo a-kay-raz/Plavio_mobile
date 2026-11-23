@@ -269,16 +269,6 @@ object SimklSyncEngine {
         refreshDiagnostics(settings, loadSnapshot(settings), queue.size)
     }
 
-    /** Queue a list-status move (plantowatch / watching / completed / hold / dropped). */
-    fun enqueueListMove(settings: SettingsStore, type: String, imdbId: String, title: String, to: String) {
-        if (settings.simklToken.isNullOrBlank()) return
-        if (!imdbId.startsWith("tt")) return
-        val queue = loadMutations(settings).toMutableList()
-        queue.removeAll { it.kind == "list_move" && it.type == type && it.imdbId == imdbId }
-        queue += SimklMutation(kind = "list_move", type = type, imdbId = imdbId, title = title, status = to)
-        saveMutations(settings, queue)
-        refreshDiagnostics(settings, loadSnapshot(settings), queue.size)
-    }
 
     // ------------------------------------------------------------------
     // Synchronize
