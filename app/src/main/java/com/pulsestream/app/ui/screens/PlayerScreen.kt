@@ -3912,8 +3912,13 @@ fun PlayerScreen(
         // Skip intro / recap / outro button (Nuvio SkipIntroButton):
         // glass 16dp, SkipNext 20dp + label, 3dp progress bar for the
         // 10s auto-hide, dismissible with the X. Hidden while an end
-        // card owns the slot (Play now does the same job).
-        if (!endCardVisible) {
+        // card owns the slot (Play now does the same job) and while a
+        // player error is showing — the button is meaningless when
+        // playback failed, and at BottomEnd + 170dp up it lands on top
+        // of the centered error text and the Retry / Next source
+        // buttons (reported 2026-11-23: Skip intro pill overlapping
+        // the error screen).
+        if (!endCardVisible && state.playerError == null) {
             state.activeSegment?.let { seg ->
                 if (!state.skipDismissed && (!state.skipAutoHidden || state.showControls)) {
                     Box(
