@@ -708,6 +708,7 @@ private fun DetailContent(
     var episodeSort by rememberSaveable { mutableStateOf("oldest") } // oldest | newest | airdate | unwatched
     var seasonViewMode by remember { mutableStateOf(settings.seasonViewMode) }
     var episodeActionVideo by remember { mutableStateOf<Video?>(null) }
+    var seasonActionSeason by remember { mutableStateOf<Int?>(null) }
     var goToOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
     val episodesRailState = rememberLazyListState()
@@ -1800,7 +1801,10 @@ private fun DetailContent(
                                         if (isSel) LocalPalette.current.accent.copy(alpha = 0.15f)
                                         else Color.White.copy(alpha = 0.06f)
                                     )
-                                    .clickable { vm.selectSeason(season, meta) }
+                                    .combinedClickable(
+                                        onClick = { vm.selectSeason(season, meta) },
+                                        onLongClick = { seasonActionSeason = season }
+                                    )
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1829,7 +1833,10 @@ private fun DetailContent(
                         val palette = LocalPalette.current
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(92.dp).clickable { vm.selectSeason(season, meta) }
+                            modifier = Modifier.width(92.dp).combinedClickable(
+                                onClick = { vm.selectSeason(season, meta) },
+                                onLongClick = { seasonActionSeason = season }
+                            )
                         ) {
                             Box(
                                 modifier = Modifier
@@ -2898,6 +2905,65 @@ private fun DetailContent(
                         fullPageSourceOpen = true
                     }
                 )
+            }
+        }
+    }
+
+    // Season watched action sheet (Nuvio SeasonWatchedActionSheet):
+    // long-press a season row/poster. Mark the season watched/unwatched,
+    // or mark all previous seasons watched. Rate season is not offered:
+    // Avio stores user stars per title only, and writing a season rating
+    // into the title's stars would corrupt it.
+    seasonActionSeason?.let { season ->
+        val seasonVideos = meta.videos.filter { it.season == season }
+        val allWatched = seasonVideos.isNotEmpty() && seasonVideos.all {
+            com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, it.season, it.episode) in watchedKeys
+        }
+        // Earlier seasons with a released episode still unwatched.
+        val previousUnwatched = meta.videos.filter { other ->
+            other.season < season && other.episode > 0 &&
+                isEpisodeReleased(other) &&
+                com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, other.season, other.episode) !in watchedKeys
+        }
+        ModalBottomSheet(
+            onDismissRequest = { seasonActionSeason = null },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = LocalPalette.current.background
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+            ) {
+                Text(
+                    if (season == 0) "Specials" else "Season $season",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                EpisodeActionRow(
+                    label = if (allWatched) "Mark season unwatched" else "Mark season watched",
+                    icon = if (allWatched) Icons.Filled.PlaylistRemove else Icons.Filled.PlaylistAddCheck,
+                    onClick = {
+                        seasonActionSeason = null
+                        scope.launch {
+                            repository.setSeasonWatched(meta.id, season, meta.videos, !allWatched)
+                        }
+                    }
+                )
+                if (previousUnwatched.isNotEmpty()) {
+                    EpisodeActionRow(
+                        label = "Mark previous seasons watched",
+                        icon = Icons.Filled.DoneAll,
+                        onClick = {
+                            seasonActionSeason = null
+                            scope.launch {
+                                for (prev in previousUnwatched) {
+                                    repository.setEpisodeWatched(meta.id, prev.season, prev.episode, true)
+                                }
+                            }
+                        }
+                    )
+                }
             }
         }
     }
