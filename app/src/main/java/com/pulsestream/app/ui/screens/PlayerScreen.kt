@@ -24,7 +24,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -345,7 +347,7 @@ private fun isSheetUp(
  * (Aspect / Speed / Subs / Audio / Sources / Episodes), edge volume pill,
  * and a controls lock — with all of Pulse's gesture strengths kept.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PlayerScreen(
     repository: StreamRepository,
@@ -6149,6 +6151,10 @@ fun PlayerScreen(
                     items(eps, key = { it.id }) { video ->
                         val selected = video.id == state.currentRequest.videoId
                         val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(state.currentRequest.metaId, video.season, video.episode) in panelWatchedKeys
+                        // Nuvio EpisodeRow: Top-aligned, 16dp radius,
+                        // surfaceCard bg, current = 2dp accent border.
+                        // Tap plays; LONG-PRESS opens this episode's
+                        // streams link (same panel as the ⋮ button).
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -6161,9 +6167,12 @@ fun PlayerScreen(
                                         shape = RoundedCornerShape(16.dp)
                                     ) else Modifier
                                 )
-                                .clickable { playEpisode(video) }
+                                .combinedClickable(
+                                    onClick = { playEpisode(video) },
+                                    onLongClick = { state.episodeStreamsVideo = video }
+                                )
                                 .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.Top
                         ) {
                             Box(
                                 Modifier.size(130.dp, 90.dp).clip(RoundedCornerShape(12.dp))
@@ -6182,11 +6191,12 @@ fun PlayerScreen(
                                         style = MaterialTheme.typography.labelMedium
                                     )
                                 }
-                                // Episode-code chip, bottom-start.
+                                // Episode-code chip, bottom-start (Nuvio:
+                                // 8dp outer padding, 6dp radius, Black 0.75).
                                 Box(
                                     Modifier
                                         .align(Alignment.BottomStart)
-                                        .padding(6.dp)
+                                        .padding(8.dp)
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(Color.Black.copy(alpha = 0.75f))
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -6201,7 +6211,7 @@ fun PlayerScreen(
                                     Box(
                                         Modifier
                                             .align(Alignment.TopEnd)
-                                            .padding(6.dp)
+                                            .padding(8.dp)
                                             .size(22.dp)
                                             .clip(androidx.compose.foundation.shape.CircleShape)
                                             .background(LocalPalette.current.accent),
@@ -6217,7 +6227,10 @@ fun PlayerScreen(
                                 }
                             }
                             Spacer(Modifier.width(14.dp))
-                            Column(Modifier.weight(1f)) {
+                            Column(
+                                Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 Text(
                                     video.title,
                                     color = TextPrimary,
@@ -6230,8 +6243,7 @@ fun PlayerScreen(
                                     Text(
                                         airDate,
                                         color = Color(0xFF969CA3),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(top = 4.dp)
+                                        style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                                 if (!video.overview.isNullOrBlank()) {
@@ -6240,8 +6252,7 @@ fun PlayerScreen(
                                         color = TextSecondary,
                                         style = MaterialTheme.typography.bodySmall,
                                         maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 4.dp)
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
