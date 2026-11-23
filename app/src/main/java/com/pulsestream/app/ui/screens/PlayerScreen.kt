@@ -3315,7 +3315,10 @@ fun PlayerScreen(
         activity?.requestedOrientation = if (initialRequest.sourceName == "YouTube")
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         else
-            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            // SENSOR_LANDSCAPE (not LANDSCAPE): both landscape directions
+            // follow the sensor, so the video flips when the phone is
+            // turned the other way. LANDSCAPE locks to one side only.
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         val window = activity?.window
         if (window != null) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -4348,7 +4351,9 @@ fun PlayerScreen(
                                             activity?.requestedOrientation = if (state.isPortrait)
                                                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                                             else
-                                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                                // SENSOR_LANDSCAPE: both landscape
+                                                // directions follow the sensor.
+                                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                                         }
                                     )
                                 }
