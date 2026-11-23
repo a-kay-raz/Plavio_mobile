@@ -4525,19 +4525,33 @@ fun PlayerScreen(
                         settings.shuffleEpisodes
                     )
                 } else null
+                // Bottom action pill: when extra options appear the icons
+                // must NOT shrink — instead the row slides (scrolls)
+                // horizontally. BoxWithConstraints caps the pill at the
+                // available width so the inner Row can scroll; with few
+                // buttons the pill still wraps its content and stays
+                // centered, like Nuvio's.
                 val actionPill: @Composable () -> Unit = {
                     val palette = LocalPalette.current
-                    Box(
-                        Modifier.playerLiquidGlass(
-                            shape = RoundedCornerShape(24.dp),
-                            refractionHeight = 10.dp,
-                            refractionAmount = 14.dp,
-                        )
+                    BoxWithConstraints(
+                        Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Box(
+                            Modifier
+                                .widthIn(max = maxWidth)
+                                .playerLiquidGlass(
+                                    shape = RoundedCornerShape(24.dp),
+                                    refractionHeight = 10.dp,
+                                    refractionAmount = 14.dp,
+                                )
                         ) {
+                            Row(
+                                Modifier
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                             // Step 63: pill buttons follow the user's toolbar
                             // layout (order + visibility) — each button keeps
                             // its own availability gate.
@@ -4660,6 +4674,7 @@ fun PlayerScreen(
                             }
                         }
                     }
+                }
                 }
 
                 // ---- Bottom: end-time row, seek bar, time pills + action
