@@ -4561,7 +4561,7 @@ fun PlayerScreen(
                                         if (settings.pipEnabled) {
                                             PillBarButton(
                                                 icon = Icons.Filled.PictureInPicture,
-                                                label = "Picture-in-picture",
+                                                label = "PiP",
                                                 onClick = { enterPip() }
                                             )
                                         }

@@ -21,7 +21,7 @@ package com.pulsestream.app.data
  * unknown/missing button falls back to visible in its default spot.
  */
 enum class PlayerBottomButton(val storageId: String, val label: String) {
-    PIP("pip", "Picture-in-picture"),
+    PIP("pip", "PiP"),
     QUALITY("quality", "Quality"),
     SUBTITLES("subtitles", "Subtitles"),
     AUDIO("audio", "Audio tracks"),
