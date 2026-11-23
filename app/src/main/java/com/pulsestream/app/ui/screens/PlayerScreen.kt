@@ -477,6 +477,22 @@ fun PlayerScreen(
                     state.healOnFormatError?.invoke(error)
                     return
                 }
+                // Audio self-heal: a surround track fails on a stereo-only
+                // phone when the AudioTrack cannot take multichannel PCM
+                // (MediaCodecAudioRenderer, e.g. 6ch 48kHz raw). If downmix
+                // is off, turn it on and rebuild the SAME source once.
+                // Downmix-on by default (SettingsStore) prevents this; this
+                // covers a stored off value or a device that still fails.
+                // (state.downmixOn mirrors downmixConfig.enabled; the config
+                // itself is declared after this listener, so it cannot be
+                // referenced here.)
+                val isAudioOutputError = error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+                if (isAudioOutputError && !state.downmixOn && !state.downmixFailoverAttempted) {
+                    state.downmixFailoverAttempted = true
+                    state.retryWithDownmix?.invoke()
+                    return
+                }
                 // Auto-failover: generic playback tries 3 sources; mobile Live
                 // uses its separate bounded forward-only policy.
                 // Also covers decoder errors (e.g. 4K on phones that can't decode it).
@@ -997,6 +1013,36 @@ fun PlayerScreen(
                     state.playerError = error.message?.takeIf { it.isNotBlank() }
                         ?: "Playback failed (code ${error.errorCode})"
                 }
+            }
+        }
+    }
+    // Audio self-heal: a surround (multichannel) track can fail on a
+    // stereo-only phone (MediaCodecAudioRenderer / AudioTrack init, e.g.
+    // 6ch 48kHz raw PCM). Rebuild the SAME source once with downmix on.
+    // The new player reads downmixConfig.enabled when its
+    // DownmixAudioProcessor configures, so the 6ch mix becomes stereo
+    // before it reaches the AudioTrack. (setDownmixEnabled is called here,
+    // not in onPlayerError, because it is declared after that listener.)
+    state.retryWithDownmix = {
+        setDownmixEnabled(true)
+        val req = latestRequest.value
+        val old = latestPlayer.value
+        ioScope.launch {
+            withContext(Dispatchers.Main) {
+                if (disposed.get() || latestRequest.value != req || latestPlayer.value !== old) return@withContext
+                val playWhenReady = old.playWhenReady
+                val position = old.currentPosition
+                val playbackSpeed = old.playbackParameters.speed
+                val fresh = buildExo(req, state.resolvedSubs)
+                    .also { it.addListener(guardedPlayerListener()) }
+                state.playerView?.player = null
+                old.release()
+                player = fresh
+                state.playerError = null
+                fresh.setPlaybackSpeed(playbackSpeed)
+                fresh.seekTo(position)
+                fresh.prepare()
+                fresh.playWhenReady = playWhenReady
             }
         }
     }
@@ -1812,6 +1858,7 @@ fun PlayerScreen(
                     if (gen != replaceGen.get() || disposed.get()) return@withContext
                     state.playerError = null
                     state.mimeHealAttempted = false
+                    state.downmixFailoverAttempted = false
                     if (oldReq.type != newReq.type || oldReq.videoId != newReq.videoId || oldReq.liveChannel != newReq.liveChannel) {
                         state.streamsJob?.cancel()
                         state.availableStreams = com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
@@ -3114,6 +3161,7 @@ fun PlayerScreen(
             rebuilt.setPlaybackSpeed(state.speed)
             player = rebuilt
             state.mimeHealAttempted = false
+            state.downmixFailoverAttempted = false
             state.currentRequest = req
             rebuiltForFreshResumeUrl = true
         }

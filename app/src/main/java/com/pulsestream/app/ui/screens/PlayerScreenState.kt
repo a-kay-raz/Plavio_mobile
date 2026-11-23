@@ -65,6 +65,14 @@ internal class PlayerScreenState(
      * self-heal path. Indirection avoids forward-reference issues.
      */
     var healOnFormatError: ((PlaybackException) -> Unit)? by mutableStateOf(null)
+    /** Audio self-heal: retry once with downmix on after an audio-output error. */
+    var downmixFailoverAttempted by mutableStateOf(false)
+    /**
+     * Set after the local helpers below are declared; invoked by errorListener
+     * for the audio-downmix retry. Indirection avoids forward-reference issues
+     * (same pattern as healOnFormatError).
+     */
+    var retryWithDownmix: (() -> Unit)? by mutableStateOf(null)
     /**
      * Set after the local helpers below are declared; invoked by errorListener
      * for the auto-failover path. Indirection avoids forward-reference issues

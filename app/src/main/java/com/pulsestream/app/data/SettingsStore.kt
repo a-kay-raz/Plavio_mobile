@@ -969,7 +969,9 @@ class SettingsStore(
         get() = prefs.getBoolean(KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER, true)
         set(value) = prefs.edit().putBoolean(KEY_SEND_SKIP_SEGMENTS_TO_EXTERNAL_PLAYER, value).apply()
 
-    /** Step 66: downmix surround to stereo/mono (default off). */
+    /** Step 66: downmix surround to stereo/mono (default off — the user
+     *  toggles it himself; if a surround track fails on a stereo-only
+     *  phone, PlayerScreen's audio self-heal turns it on and retries). */
     var downmixEnabled: Boolean
         get() = prefs.getBoolean(KEY_DOWNMIX_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_DOWNMIX_ENABLED, value).apply()
