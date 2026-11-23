@@ -8,7 +8,9 @@ import kotlin.math.roundToInt
  *
  * floatingBar = the dock / floating bar glass.
  * selectionLens = the selected-tab lens that slides under the active tab.
- * These are Nuvio's exact defaults — blur, refraction, tint.
+ * Values started as Nuvio's exact defaults; the floatingBar numbers
+ * were strengthened for a more glassy look (more blur, more refraction,
+ * thinner tint, chromatic + depth on).
  */
 
 data class LiquidGlassEffectSettings(
@@ -68,21 +70,25 @@ internal fun LiquidGlassEffectSettings.shouldCaptureFloatingBar(): Boolean =
     affectFloatingBar && hasActiveRefraction()
 
 object LiquidGlassEffectDefaults {
+    // Avio's "more glassy" values — stronger than Nuvio's exact
+    // defaults (which were blur 10dp, refraction 20/20, tint 0.4,
+    // chromatic + depth off). More blur, more lens bend, thinner tint,
+    // chromatic fringing + depth on: the glass reads clearly.
     val floatingBar = LiquidGlassEffectSettings(
         cornerRadiusPercent = 50f,
-        blurRadiusDp = 10f,
-        refractionHeightDp = 20f,
-        refractionAmountDp = 20f,
-        chromaticAberration = false,
-        depthEffect = false,
-        tintOpacity = 0.4f,
+        blurRadiusDp = 20f,
+        refractionHeightDp = 32f,
+        refractionAmountDp = 32f,
+        chromaticAberration = true,
+        depthEffect = true,
+        tintOpacity = 0.25f,
     )
     val selectionLens = LiquidGlassEffectSettings(
         cornerRadiusPercent = 50f,
         blurRadiusDp = 0f,
-        refractionHeightDp = 12f,
-        refractionAmountDp = 20f,
-        chromaticAberration = false,
+        refractionHeightDp = 20f,
+        refractionAmountDp = 28f,
+        chromaticAberration = true,
         depthEffect = true,
         tintOpacity = 0f,
         affectTabIcons = true,

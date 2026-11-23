@@ -3128,7 +3128,7 @@ private fun CloudStreamProviderSelectorHeader(
                 modifier = Modifier
                     .ambientLiquidGlass(
                         shape = RoundedCornerShape(20.dp),
-                        tint = palette.panel.copy(alpha = 0.4f),
+                        tint = palette.panel.copy(alpha = 0.25f),
                         fallback = palette.panel.copy(alpha = 0.92f),
                     )
                     .border(1.2.dp, palette.accent, RoundedCornerShape(20.dp))

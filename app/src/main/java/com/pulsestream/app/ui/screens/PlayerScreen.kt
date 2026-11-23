@@ -4399,7 +4399,7 @@ fun PlayerScreen(
                     Box(
                         Modifier.ambientLiquidGlass(
                             shape = RoundedCornerShape(24.dp),
-                            tint = palette.panel.copy(alpha = 0.4f),
+                            tint = palette.panel.copy(alpha = 0.25f),
                             fallback = palette.panel,
                         )
                     ) {

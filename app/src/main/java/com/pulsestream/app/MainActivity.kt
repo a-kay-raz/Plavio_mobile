@@ -1019,9 +1019,9 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
                     // the dock at the very bottom edge.
                     // Nuvio-style liquid-glass dock: Kyant backdrop with
                     // blur + lens refraction + vibrancy + edge highlight
-                    // (floatingBar defaults: blur 10dp, refraction 20/20,
-                    // tint 0.4). Below Android 12 (no RenderEffect) the
-                    // solid fallback is used instead.
+                    // ("more glassy" values: blur 20dp, refraction 32/32,
+                    // tint 0.25, chromatic + depth on). Below Android 12
+                    // (no RenderEffect) the solid fallback is used instead.
                     if (isLiquidGlassSupported()) {
                         LiquidGlassFrostedBar(
                             backdrop = glassBackdrop,

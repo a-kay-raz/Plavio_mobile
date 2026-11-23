@@ -260,6 +260,8 @@ internal fun Modifier.liquidGlassSurface(
     blurRadius: Dp,
     refractionHeight: Dp = 0.dp,
     refractionAmount: Dp = refractionHeight,
+    depthEffect: Boolean = true,
+    chromaticAberration: Boolean = true,
     withVibrancy: Boolean = true,
     withHighlight: Boolean = true,
     withShadow: Boolean = false,
@@ -280,6 +282,8 @@ internal fun Modifier.liquidGlassSurface(
                     lens(
                         refractionHeight = refractionHeight.toPx().coerceAtMost(size.minDimension / 2f),
                         refractionAmount = refractionAmount.toPx(),
+                        depthEffect = depthEffect,
+                        chromaticAberration = chromaticAberration,
                     )
                 }
                 if (backdropOpacity < 1f) opacity(backdropOpacity.coerceIn(0f, 1f))
@@ -319,18 +323,22 @@ internal fun isAmbientLiquidGlassActive(): Boolean {
 
 /**
  * Glass that samples the ambient backdrop provided at the root.
- * Nuvio's defaults: blur 16dp, refraction 10dp / 16dp, vibrancy +
- * highlight on. When the backdrop is not ready (or the theme has
- * frosted glass off) it falls back to the flat [fallback] fill.
+ * Avio's "more glassy" defaults (strengthened from Nuvio's blur 16dp,
+ * refraction 10dp / 16dp): blur 24dp, refraction 20dp / 28dp, with
+ * depth + chromatic aberration on. When the backdrop is not ready (or
+ * the theme has frosted glass off) it falls back to the flat [fallback]
+ * fill.
  */
 @Composable
 fun Modifier.ambientLiquidGlass(
     shape: Shape,
     tint: Color,
     fallback: Color,
-    blurRadius: Dp = 16.dp,
-    refractionHeight: Dp = 10.dp,
-    refractionAmount: Dp = refractionHeight * 1.6f,
+    blurRadius: Dp = 24.dp,
+    refractionHeight: Dp = 20.dp,
+    refractionAmount: Dp = refractionHeight * 1.4f,
+    depthEffect: Boolean = true,
+    chromaticAberration: Boolean = true,
     withVibrancy: Boolean = true,
     withHighlight: Boolean = true,
     withShadow: Boolean = false,
@@ -356,6 +364,8 @@ fun Modifier.ambientLiquidGlass(
         blurRadius = blurRadius,
         refractionHeight = refractionHeight,
         refractionAmount = refractionAmount,
+        depthEffect = depthEffect,
+        chromaticAberration = chromaticAberration,
         withVibrancy = withVibrancy,
         withHighlight = withHighlight,
         withShadow = withShadow,
