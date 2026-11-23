@@ -1868,6 +1868,15 @@ fun PlayerScreen(
                     if (gen != replaceGen.get() || disposed.get()) return@withContext
                     state.playerError = null
                     state.mimeHealAttempted = false
+                    // Audio setting reset (user: reset on source failure):
+                    // if the previous source's audio failure auto-enabled
+                    // downmix (self-heal), turn it back OFF for the new
+                    // source — every source is tried with normal settings
+                    // first. A downmix the user turned on by hand is
+                    // untouched (the flag is only true after a self-heal).
+                    if (state.downmixFailoverAttempted) {
+                        setDownmixEnabled(false)
+                    }
                     state.downmixFailoverAttempted = false
                     if (oldReq.type != newReq.type || oldReq.videoId != newReq.videoId || oldReq.liveChannel != newReq.liveChannel) {
                         state.streamsJob?.cancel()
@@ -3171,6 +3180,9 @@ fun PlayerScreen(
             rebuilt.setPlaybackSpeed(state.speed)
             player = rebuilt
             state.mimeHealAttempted = false
+            if (state.downmixFailoverAttempted) {
+                setDownmixEnabled(false)
+            }
             state.downmixFailoverAttempted = false
             state.currentRequest = req
             rebuiltForFreshResumeUrl = true
