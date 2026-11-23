@@ -4781,8 +4781,10 @@ fun PlayerScreen(
                             }
                         }
                         // Step 59: the seek-preview bubble floats above
-                        // the bar while scrubbing; the bar itself is
-                        // unchanged (22dp tall, same offset).
+                        // the bar while scrubbing. The bar sits at the
+                        // Box top (no offset, 4dp gap to the time row) —
+                        // the old -13dp offset + 12dp padding lifted it
+                        // ~21dp above Nuvio's spot.
                         Box(Modifier.fillMaxWidth()) {
                             SeekPreviewOverlay(
                                 controller = seekPreviewController,
@@ -4792,7 +4794,7 @@ fun PlayerScreen(
                             LegacySeekBar(
                                 positionMs = state.positionMs,                                durationMs = state.durationMs,                                bufferedMs = state.bufferedMs,                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                                 onSeek = { player.seekTo(it) },
-                                modifier = Modifier.offset(y = (-13).dp).padding(bottom = 12.dp),
+                                modifier = Modifier.padding(bottom = 4.dp),
                                 isTv = isTv,
                                 onSeekDelta = { seekByWithFeedback(it) },
                                 onFocusChanged = { state.seekbarFocused = it },
