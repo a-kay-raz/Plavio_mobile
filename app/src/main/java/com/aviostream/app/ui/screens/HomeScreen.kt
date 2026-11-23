@@ -762,7 +762,6 @@ fun HomeScreen(
                                         ContinueWatchingCard(
                                             item,
                                             style = settings.continueWatchingStyle,
-                                            watchedThresholdPercent = settings.watchedThresholdPercent,
                                             onRemove = {
                                                 scope.launch {
                                                     repository.deleteSavedPosition(item.key)
@@ -2020,17 +2019,16 @@ private fun ReleaseRadarCard(
 private fun ContinueWatchingCard(
     item: PlaybackState,
     style: String = "card",
-    watchedThresholdPercent: Int = 90,
     onRemove: () -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    // Nuvio blurUnwatchedEpisodes: an episode thumb blurs 18dp while the
-    // episode is unwatched (below the watched threshold).
+    // No spoiler blur here (user 2026-11-23): every item in this row is
+    // already started or next-up in a series being watched, so blurring
+    // its thumb only hides what the row is for. The spoiler blur lives
+    // in the Detail episode list, where it is setting-gated.
     val isEpisode = item.season > 0 || item.episode > 0
-    val isWatched = item.durationMs > 0 &&
-        item.positionMs * 100L >= item.durationMs * watchedThresholdPercent
-    val blurThumb = isEpisode && !isWatched
+    val blurThumb = false
     // W10: custom poster source (shape = "landscape" — CW thumbs are wide)
     // resolves against the playback video id; falls back to the stored art.
     val posterStyle = LocalPosterStyle.current
