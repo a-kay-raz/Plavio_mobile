@@ -63,7 +63,9 @@ class NoHardwareDolbySelector : MediaCodecSelector {
  *
  * Step 66: when a [DownmixConfig] is supplied, the audio sink carries a
  * [DownmixAudioProcessor] that mixes surround PCM down to stereo/mono.
- * The sink is otherwise the stock DefaultAudioSink (float output on).
+ * The sink is otherwise the stock DefaultAudioSink (float output off —
+ * float output disables audio processing, which would drop the downmix
+ * processor from the sink chain).
  */
 @UnstableApi
 class AvioAudioRenderersFactory(
@@ -79,13 +81,21 @@ class AvioAudioRenderersFactory(
     // Media3 1.4.1 has no DefaultRenderersFactory.setAudioSink — the sink is
     // built by the protected buildAudioSink(), so the downmix processor is
     // attached there (same DefaultAudioSink settings as the stock build).
+    // Float output is forced OFF (the passed-in flag is ignored): Media3
+    // disables audio processing — the custom AudioProcessor chain — when
+    // float output is on (DefaultAudioSink.configure takes the float branch
+    // and never adds audioProcessorChain), so a float sink would silently
+    // drop the DownmixAudioProcessor and a 5.1 track would reach the
+    // AudioTrack as 6ch and fail (5001) — including on the downmix retry,
+    // which would then fail identically. The factory default is already
+    // false; this locks the invariant in.
     override fun buildAudioSink(
         context: Context,
         enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink? {
         val builder = DefaultAudioSink.Builder(context)
-            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableFloatOutput(false)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
         if (downmixConfig != null) {
             builder.setAudioProcessors(arrayOf(DownmixAudioProcessor(downmixConfig)))

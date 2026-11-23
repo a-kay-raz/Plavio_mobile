@@ -483,29 +483,31 @@ fun PlayerScreen(
                 }
                 // Audio self-heal: a surround track fails on a stereo-only
                 // phone when the AudioTrack cannot take multichannel PCM
-                // (MediaCodecAudioRenderer, e.g. 6ch 48kHz raw). If downmix
-                // is off, turn it on and rebuild the SAME source once.
-                // Downmix-on by default (SettingsStore) prevents this; this
-                // covers a stored off value or a device that still fails.
-                // (state.downmixOn mirrors downmixConfig.enabled; the config
-                // itself is declared after this listener, so it cannot be
-                // referenced here.)
+                // (FfmpegAudioRenderer / MediaCodecAudioRenderer, e.g. 6ch
+                // 48kHz raw -> 5001 AudioTrack init failed). If downmix is
+                // off, turn it on and rebuild the SAME source once. Downmix
+                // defaults OFF (SettingsStore), so this is the safety net
+                // for every 5.1 source. (state.downmixOn mirrors
+                // downmixConfig.enabled; the config itself is declared after
+                // this listener, so it cannot be referenced here.)
                 //
-                // Also covers an AUDIO decoder init failure (4001): the
-                // FFmpeg renderer rejects a multichannel format outright
-                // (format_supported=NO_UNSUPPORTED_TYPE, e.g. Dolby
-                // Digital Plus 5.1) when the AudioSink cannot take 6ch —
-                // the sink only accepts 6ch once downmix is on, so the
-                // renderer never even reaches the AudioTrack failure
-                // above. The message names the audio renderer
-                // (FfmpegAudioRenderer / MediaCodecAudioRenderer), which
-                // separates it from a VIDEO decoder failure (4K the phone
-                // cannot decode) — downmix must not fire for video.
+                // Also covers an AUDIO decoder init failure (4001) and a
+                // format that exceeds the device's audio capabilities / is
+                // reported unsupported (4004/4005) when the message names an
+                // audio renderer (FfmpegAudioRenderer /
+                // MediaCodecAudioRenderer): a multichannel format can surface
+                // as any of these, and the message is what separates it from
+                // a VIDEO decoder failure (4K the phone cannot decode) —
+                // downmix must not fire for video.
                 val isAudioOutputError = error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
                 val isAudioDecoderError = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED &&
                     (error.message?.contains("AudioRenderer") == true)
-                if ((isAudioOutputError || isAudioDecoderError) && !state.downmixOn && !state.downmixFailoverAttempted) {
+                val isAudioFormatError =
+                    (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
+                        error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) &&
+                    (error.message?.contains("AudioRenderer") == true)
+                if ((isAudioOutputError || isAudioDecoderError || isAudioFormatError) && !state.downmixOn && !state.downmixFailoverAttempted) {
                     state.downmixFailoverAttempted = true
                     state.retryWithDownmix?.invoke()
                     return
@@ -1853,7 +1855,7 @@ fun PlayerScreen(
     val replaceGen = remember { AtomicInteger(0) }
 
     /** Rebuilds the ExoPlayer around a new stream, preserving position. */
-    fun replaceStream(newReq: PlaybackRequest, startAtMs: Long, autoplay: Boolean) {
+    fun replaceStream(newReq: PlaybackRequest, startAtMs: Long, autoplay: Boolean, preserveAudioHeal: Boolean = false) {
         if (disposed.get()) return
         preemptPendingLiveFallback()
         val gen = replaceGen.incrementAndGet()
@@ -1892,10 +1894,15 @@ fun PlayerScreen(
                     // source — every source is tried with normal settings
                     // first. A downmix the user turned on by hand is
                     // untouched (the flag is only true after a self-heal).
-                    if (state.downmixFailoverAttempted) {
-                        setDownmixEnabled(false)
+                    // A same-source Retry keeps the heal (preserveAudioHeal):
+                    // the source just proved it needs downmix, so retrying
+                    // without it would fail the same way again.
+                    if (!preserveAudioHeal) {
+                        if (state.downmixFailoverAttempted) {
+                            setDownmixEnabled(false)
+                        }
+                        state.downmixFailoverAttempted = false
                     }
-                    state.downmixFailoverAttempted = false
                     if (oldReq.type != newReq.type || oldReq.videoId != newReq.videoId || oldReq.liveChannel != newReq.liveChannel) {
                         state.streamsJob?.cancel()
                         state.availableStreams = com.pulsestream.app.ui.screens.player.mergePlayerSourceSet(
@@ -2213,7 +2220,10 @@ fun PlayerScreen(
         replaceStream(
             state.currentRequest,
             startAtMs = player.currentPosition.coerceAtLeast(0L),
-            autoplay = true
+            autoplay = true,
+            // Same source, not a source change: keep a self-heal downmix
+            // that is already on, or the retry fails the same way again.
+            preserveAudioHeal = true
         )
     }
 

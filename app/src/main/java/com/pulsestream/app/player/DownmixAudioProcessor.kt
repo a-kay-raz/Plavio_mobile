@@ -1,9 +1,11 @@
 package com.pulsestream.app.player
 
+import android.media.AudioTrack
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessor.AudioFormat
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.pow
@@ -50,6 +52,29 @@ class DownmixAudioProcessor(
     private val config: DownmixConfig,
 ) : AudioProcessor {
 
+    companion object {
+        /**
+         * True when this device can create an AudioTrack for [channels]-channel
+         * PCM at [sampleRate] — i.e. the system can size a buffer for that
+         * channel config. When it cannot (ERROR_BAD_VALUE), the sink's
+         * AudioTrack creation for the same config fails with 5001
+         * (AudioTrack init failed), so the track must be downmixed first.
+         * (android.media.AudioFormat is used fully qualified here because
+         * this file already imports AudioProcessor.AudioFormat.)
+         */
+        fun deviceSupportsMultichannelPcm(channels: Int, sampleRate: Int, encoding: Int): Boolean {
+            val androidEncoding = when (encoding) {
+                C.ENCODING_PCM_16BIT -> android.media.AudioFormat.ENCODING_PCM_16BIT
+                C.ENCODING_PCM_FLOAT -> android.media.AudioFormat.ENCODING_PCM_FLOAT
+                else -> return true // Not a PCM form we mix; never force a downmix for it.
+            }
+            val channelConfig = Util.getAudioTrackChannelConfig(channels)
+            if (channelConfig == android.media.AudioFormat.CHANNEL_INVALID) return false
+            return AudioTrack.getMinBufferSize(sampleRate, channelConfig, androidEncoding) !=
+                AudioTrack.ERROR_BAD_VALUE
+        }
+    }
+
     private var inputAudioFormat: AudioFormat = AudioFormat.NOT_SET
     private var outputFormat: AudioFormat = AudioFormat.NOT_SET
     private var outputBuffer: ByteBuffer = AudioProcessor.EMPTY_BUFFER
@@ -79,11 +104,22 @@ class DownmixAudioProcessor(
         val channels = inputAudioFormat.channelCount
         val encoding = inputAudioFormat.encoding
         val supported = encoding == C.ENCODING_PCM_16BIT || encoding == C.ENCODING_PCM_FLOAT
-        mixActive = config.enabled &&
-            supported &&
+        // Proactive downmix (5.1 fix): even with downmix OFF, a >2ch track
+        // the device cannot output as PCM must be mixed to stereo here —
+        // otherwise the sink hands 6ch to the AudioTrack, its creation
+        // fails (5001), and the error screen appears. The device check
+        // mirrors the AudioTrack the sink is about to create: if the
+        // system cannot even size a buffer for this channel config, the
+        // track cannot be created. Devices that CAN output multichannel
+        // (HDMI/AVR) are untouched — the check returns true and only the
+        // user's downmix setting applies.
+        val deviceCannotOutputMultichannel = supported && channels >= 3 &&
+            !deviceSupportsMultichannelPcm(channels, inputAudioFormat.sampleRate, encoding)
+        mixActive = supported &&
             channels >= 3 &&
             config.targetChannels in 1..2 &&
-            config.targetChannels < channels
+            config.targetChannels < channels &&
+            (config.enabled || deviceCannotOutputMultichannel)
         inChannels = channels
         outChannels = if (mixActive) config.targetChannels else channels
         bytesPerSample = if (encoding == C.ENCODING_PCM_FLOAT) 4 else 2
