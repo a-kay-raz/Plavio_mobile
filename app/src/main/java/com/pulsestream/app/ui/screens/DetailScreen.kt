@@ -2166,7 +2166,8 @@ private fun DetailContent(
                         progress = episodeProgress(video),
                         tmdbRating = enrichedRating,
                         imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
-                        onClick = { manuallyPickedVideo = video; vm.selectEpisode(video); fullPageSourceOpen = true },
+                        onClick = { manuallyPickedVideo = video; vm.selectEpisode(video) },
+                        onDoubleClick = { manuallyPickedVideo = video; vm.selectEpisode(video); fullPageSourceOpen = true },
                         onLongClick = { episodeActionVideo = video },
                         onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                         onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) },
@@ -2213,7 +2214,8 @@ private fun DetailContent(
                                 progress = episodeProgress(video),
                                 tmdbRating = enrichedRating,
                                 imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
-                                onClick = { manuallyPickedVideo = video; vm.selectEpisode(video); fullPageSourceOpen = true },
+                                onClick = { manuallyPickedVideo = video; vm.selectEpisode(video) },
+                                onDoubleClick = { manuallyPickedVideo = video; vm.selectEpisode(video); fullPageSourceOpen = true },
                                 onLongClick = { episodeActionVideo = video },
                                 onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                                 onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
@@ -4428,6 +4430,7 @@ private fun EpisodeCardA(
     /** IMDb episode rating (OMDb season fetch), null when no key/unavailable. */
     imdbRating: Double? = null,
     onClick: () -> Unit,
+    onDoubleClick: () -> Unit = {},
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
     onHide: () -> Unit
@@ -4443,7 +4446,7 @@ private fun EpisodeCardA(
                 RoundedCornerShape(18.dp)
             )
             .cardDepth(RoundedCornerShape(18.dp), CardDepthSurface.EpisodeCards)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = onClick, onDoubleClick = onDoubleClick, onLongClick = onLongClick)
     ) {
         Box(Modifier.fillMaxWidth().height(132.dp)) {
             if (!hideDetails && video.thumbnail != null) {
@@ -4805,6 +4808,7 @@ private fun EpisodeListCard(
     /** IMDb episode rating (OMDb season fetch), null when no key/unavailable. */
     imdbRating: Double? = null,
     onClick: () -> Unit,
+    onDoubleClick: () -> Unit = {},
     onLongClick: () -> Unit = {},
     onReveal: () -> Unit,
     onHide: () -> Unit,
@@ -4822,7 +4826,7 @@ private fun EpisodeListCard(
                 RoundedCornerShape(18.dp)
             )
             .cardDepth(RoundedCornerShape(18.dp), CardDepthSurface.EpisodeCards)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = onClick, onDoubleClick = onDoubleClick, onLongClick = onLongClick)
     ) {
         Row(Modifier.fillMaxSize()) {
             Box(
