@@ -45,14 +45,13 @@ object DebugLog {
      * "FfmpegAudioRenderer error, ..., format_supported=NO_UNSUPPORTED_TYPE",
      * which the vendored FfmpegAudioRenderer only returns when
      * FfmpegLibrary.isAvailable() is false -- i.e. libffmpegJNI.so did not
-     * load (the bundled .so was 4 KiB-aligned; 16 KiB-page devices cannot
-     * load it). These lines let one Diagnostics report settle it: if the
-     * lib is available on a 16 KiB device, the 16K re-layout
-     * (scripts/patch-ffmpeg-16k.py) worked; if it is still unavailable,
-     * the .so is not the whole story. The getMinBufferSize line answers
-     * whether this device can even create a 5.1 AudioTrack (a negative
-     * result means it cannot, which would have defeated the earlier
-     * downmix fix's proactive check too).
+     * load. The bundled .so was 4 KiB-aligned, so 16 KiB-page devices
+     * (Android 15+) cannot load it -- but the user's phone is Android 14
+     * (4 KiB pages), so that is NOT the cause here. The load-error line
+     * below captures the linker's reason directly, which is what settles
+     * it. The getMinBufferSize line answers whether this device can even
+     * create a 5.1 AudioTrack (a negative result means it cannot, which
+     * would have defeated the earlier downmix fix's proactive check too).
      */
     @OptIn(UnstableApi::class)
     private fun audioCodecDiagnostics(): String = buildString {
@@ -60,6 +59,14 @@ object DebugLog {
         val available = runCatching { FfmpegLibrary.isAvailable() }.getOrElse { false }
         appendLine("FFmpeg native lib available: $available")
         appendLine("FFmpeg version: ${runCatching { FfmpegLibrary.getVersion() }.getOrNull() ?: "(none)"}")
+        appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+        if (!available) {
+            // The LibraryLoader swallows the load failure, so retry the load
+            // directly to capture the linker's reason (missing .so, missing
+            // symbol, ...). A second load after a success is a harmless no-op.
+            val loadError = runCatching { System.loadLibrary("ffmpegJNI") }.exceptionOrNull()
+            appendLine("FFmpeg load error: ${loadError?.message ?: "(none — load succeeded on retry)"}")
+        }
         val pageSize = runCatching { Os.sysconf(OsConstants._SC_PAGESIZE) }.getOrNull()
         appendLine("Device page size: ${pageSize?.let { "$it bytes" } ?: "(unknown)"}")
         val minBuffer51 = runCatching {
