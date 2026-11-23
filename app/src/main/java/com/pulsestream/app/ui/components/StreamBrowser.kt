@@ -847,6 +847,21 @@ private fun CompactStreamCard(
                 color = TextPrimary,
                 lineHeight = 19.sp
             )
+            // Addon name (Nuvio StreamCard shows the addon logo + name):
+            // always shown, so the user can see which addon each link is
+            // from even when the filename already mentions it (display
+            // .provider hides it in that case, which is why it was
+            // invisible). Accent so it reads as the source, not the title.
+            val providerLabel = stream.sourceName?.takeIf { it.isNotBlank() } ?: stream.addonKey()
+            if (providerLabel.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = providerLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.accent
+                )
+            }
             if (description != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(

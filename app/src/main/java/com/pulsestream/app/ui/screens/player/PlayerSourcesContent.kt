@@ -98,8 +98,10 @@ internal fun PlayerSourcesContent(
     // Nuvio PlayerSourcesPanel layout: fixed header + content label +
     // provider filter on top, the stream list scrolls below (weight 1f).
     // No banner — Nuvio's Sources panel has no artwork header.
+    // Header is kept tight (16dp padding, 8dp gaps) so the links list
+    // gets as much room as possible in landscape.
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp)
+        modifier = modifier.fillMaxSize().padding(16.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -115,7 +117,7 @@ internal fun PlayerSourcesContent(
             )
             PlayerDialogCloseButton(onClick = onClose)
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
@@ -123,33 +125,44 @@ internal fun PlayerSourcesContent(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         if (streams.isNotEmpty()) {
-            AddonTabs(browser)
-            Spacer(Modifier.height(16.dp))
+            // Provider tabs ALWAYS show (compact = true): without it,
+            // AddonTabs hides itself when there are <= 2 tabs — with a
+            // single addon that means no tab at all, so the user can't
+            // see which addon the links are from. Compact = Nuvio
+            // AddonFilterChip style.
+            AddonTabs(browser, compact = true)
+            Spacer(Modifier.height(8.dp))
             QualityPills(browser)
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("${browser.filtered.size} sources", style = MaterialTheme.typography.labelSmall,
                     color = TextSecondary)
                 Spacer(Modifier.weight(1f))
                 if (store != null) {
-                    TextButton(onClick = { smartSheetOpen = true }) {
+                    TextButton(
+                        onClick = { smartSheetOpen = true },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) {
                         Text(if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart")
                     }
                 }
-                TextButton(onClick = { pinSheetOpen = true }) {
+                TextButton(
+                    onClick = { pinSheetOpen = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
                     Icon(Icons.Filled.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Pin sources")
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f).testTag("player-source-list"),
-                contentPadding = PaddingValues(start = 8.dp, top = 14.dp, end = 8.dp, bottom = 8.dp),
+                contentPadding = PaddingValues(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (browser.filtered.isEmpty()) item {
