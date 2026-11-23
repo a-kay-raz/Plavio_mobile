@@ -100,6 +100,17 @@ class AvioBackdrop internal constructor(
     internal val graphicsLayer: GraphicsLayer,
 ) : Backdrop, LiquidGlassBackdropHost {
 
+    /**
+     * When true, the source node draws the content to screen but does not
+     * re-record it into the backdrop layer. Set by the player while the
+     * video is pinch-zoomed (videoZoom != 1f): recording the scaled 4K
+     * TextureView is what force-stops the app past ~1.2x (native graphics
+     * crash, no Java trace). The glass keeps showing the last recorded
+     * frame until the zoom is back to 1x and recording resumes.
+     * Main thread only.
+     */
+    var suspendRecording: Boolean = false
+
     override val isCoordinatesDependent: Boolean = true
 
     internal var sourceCoordinates: LayoutCoordinates? by mutableStateOf(null)
@@ -181,6 +192,10 @@ private class AvioBackdropSourceNode(
 
     override fun ContentDrawScope.draw() {
         drawContent()
+        // Frozen while the player video is zoomed (see suspendRecording):
+        // drawing the scaled 4K TextureView into the recording layer
+        // force-stops the app past ~1.2x. The glass keeps the last frame.
+        if (backdrop.suspendRecording) return
         val nodeDensity = requireDensity()
         val contentScope = this
         backdrop.graphicsLayer.record {

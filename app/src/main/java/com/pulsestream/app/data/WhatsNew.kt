@@ -23,7 +23,7 @@ object WhatsNew {
         "Debrid — Real-Debrid, Premiumize and TorBox for cached streams.",
         "Profiles — local multi-profile with optional PIN, each with its own library.",
         "Library — Saved and Downloaded views, filters, sorting and collections.",
-        "Player — skip seconds, swipe gestures, hold-to-speed, audio boost and subtitle sync.",
+        "Player — skip seconds, swipe gestures, pinch zoom, hold-to-speed, audio boost and subtitle sync.",
         "Cast with profile photos and character names on the details page.",
         "Cinemeta is now the default metadata source, with TMDB enrichment.",
     )
