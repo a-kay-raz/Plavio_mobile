@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -3944,6 +3945,13 @@ fun PlayerScreen(
                         Column(
                             Modifier
                                 .widthIn(max = 320.dp)
+                                // Size to the Row's content width: without
+                                // this, the 3dp progress bar's fillMaxWidth()
+                                // stretches the whole pill to the 320dp cap,
+                                // leaving a wide empty glass slab with the
+                                // content huddled on the left (owner's
+                                // on-device report: Skip button mis-padded).
+                                .width(IntrinsicSize.Max)
                                 .clip(RoundedCornerShape(16.dp))
                                 .playerLiquidGlass(
                                     shape = RoundedCornerShape(16.dp),
