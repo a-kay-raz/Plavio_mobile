@@ -145,6 +145,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
@@ -3938,7 +3939,7 @@ fun PlayerScreen(
             state.activeSegment?.let { seg ->
                 if (!state.skipDismissed && (!state.skipAutoHidden || state.showControls)) {
                     Box(
-                        Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
+                        Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp).zIndex(1f),
                         contentAlignment = Alignment.BottomEnd
                     ) {
                         Column(
@@ -4001,7 +4002,7 @@ fun PlayerScreen(
         // Cancel stops the auto-advance for this episode.
         state.nextEpisodeCard?.let { next ->
             Box(
-                Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp),
+                Modifier.fillMaxSize().padding(end = 24.dp, bottom = 170.dp).zIndex(1f),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 Column(
@@ -4070,7 +4071,7 @@ fun PlayerScreen(
         // controls brings it back.
         if (state.movieRecs.isNotEmpty() && !state.movieRecsDismissed && !state.movieRecsAutoHidden) {
             Box(
-                Modifier.fillMaxSize().padding(bottom = 170.dp),
+                Modifier.fillMaxSize().padding(bottom = 170.dp).zIndex(1f),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Column(
