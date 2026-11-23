@@ -993,12 +993,37 @@ private fun DetailContent(
         val date = runCatching { LocalDate.parse(raw.take(10)) }.getOrNull() ?: return true
         return !date.isAfter(LocalDate.now())
     }
-    val seriesPrimaryAction: SeriesPrimaryAction? = remember(meta, continueWatching, watchedKeys, watchedAt) {
+    // Furthest watched episode for this title, and when it was marked
+    // (Nuvio SeriesContinuity.latestCompletedEpisode). Shared by the
+    // primary action below and the manual-pick label.
+    val latestWatchedPair = remember(meta, watchedKeys) {
+        com.pulsestream.app.data.NextUpResolver.latestWatchedBySeries(watchedKeys)[meta.id]
+    }
+    val latestWatchedAt = remember(meta, latestWatchedPair, watchedAt) {
+        latestWatchedPair?.let { (season, episode) ->
+            watchedAt[com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, season, episode)]
+        }
+    }
+    // Ordered main episodes (specials excluded), for the primary action
+    // and the next-up lookup.
+    val orderedSeriesVideos = remember(meta) {
+        if (meta.type != "series") emptyList()
+        else meta.videos
+            .filter { it.season > 0 && it.episode > 0 }
+            .sortedWith(compareBy({ it.season }, { it.episode }))
+    }
+    // First released episode after the furthest watched one.
+    val nextUpVideo = remember(meta, latestWatchedPair) {
+        latestWatchedPair?.let { (season, episode) ->
+            orderedSeriesVideos.firstOrNull {
+                (it.season > season || (it.season == season && it.episode > episode)) &&
+                    isEpisodeReleased(it)
+            }
+        }
+    }
+    val seriesPrimaryAction: SeriesPrimaryAction? = remember(meta, continueWatching, latestWatchedPair, latestWatchedAt, nextUpVideo) {
         if (meta.type != "series") null
         else {
-            val ordered = meta.videos
-                .filter { it.season > 0 && it.episode > 0 }
-                .sortedWith(compareBy({ it.season }, { it.episode }))
             val resumeEntry = continueWatching
                 .filter { entry ->
                     entry.season > 0 && entry.episode > 0 && entry.positionMs > 0 &&
@@ -1012,13 +1037,8 @@ private fun DetailContent(
             val resumeVideo = resumeEntry?.let { entry ->
                 meta.videos.firstOrNull { it.season == entry.season && it.episode == entry.episode }
             }
-            val latestWatched = com.pulsestream.app.data.NextUpResolver
-                .latestWatchedBySeries(watchedKeys)[meta.id]
-            val latestWatchedAt = latestWatched?.let { (season, episode) ->
-                watchedAt[com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, season, episode)]
-            }
             if (resumeVideo != null && resumeEntry != null &&
-                (latestWatched == null || latestWatchedAt == null ||
+                (latestWatchedPair == null || latestWatchedAt == null ||
                     resumeEntry.updatedAt > latestWatchedAt)
             ) {
                 SeriesPrimaryAction(
@@ -1026,20 +1046,44 @@ private fun DetailContent(
                     "Resume S${resumeVideo.season} E${resumeVideo.episode}",
                     true
                 )
+            } else if (nextUpVideo != null) {
+                SeriesPrimaryAction(nextUpVideo, "Next Up • S${nextUpVideo.season} E${nextUpVideo.episode}", false)
             } else {
-                val nextUp = latestWatched?.let { (season, episode) ->
-                    ordered.firstOrNull {
-                        (it.season > season || (it.season == season && it.episode > episode)) &&
-                            isEpisodeReleased(it)
-                    }
-                }
-                if (nextUp != null) {
-                    SeriesPrimaryAction(nextUp, "Next Up • S${nextUp.season} E${nextUp.episode}", false)
-                } else {
-                    val first = ordered.firstOrNull { isEpisodeReleased(it) }
-                    first?.let { SeriesPrimaryAction(it, "Play S${it.season} E${it.episode}", false) }
-                }
+                val first = orderedSeriesVideos.firstOrNull { isEpisodeReleased(it) }
+                first?.let { SeriesPrimaryAction(it, "Play S${it.season} E${it.episode}", false) }
             }
+        }
+    }
+    // The episode the user just tapped (Nuvio: tapping an episode opens
+    // its links box, and the Play capsule names the episode being
+    // played). Continuity is the default; a manual tap overrides it
+    // until the title changes. Set by the episode card taps below.
+    var manuallyPickedVideo by remember(meta.id) { mutableStateOf<Video?>(null) }
+    // Label for any episode under the same rule Nuvio labels it with:
+    // Resume when it has unfinished progress newer than the latest
+    // watched mark, Next Up when it is the next episode after the
+    // furthest watched one, else Play.
+    fun labelForEpisode(video: Video): String {
+        val entry = continueWatching
+            .filter { entry ->
+                entry.season == video.season && entry.episode == video.episode &&
+                    entry.positionMs > 0 &&
+                    (entry.durationMs <= 0 || entry.positionMs < entry.durationMs)
+            }
+            .filter { entry ->
+                entry.videoId.contains(meta.id) || entry.key.contains(meta.id) ||
+                    entry.imdbId == meta.id
+            }
+            .maxByOrNull { it.updatedAt }
+        return if (entry != null &&
+            (latestWatchedPair == null || latestWatchedAt == null ||
+                entry.updatedAt > latestWatchedAt)
+        ) {
+            "Resume S${video.season} E${video.episode}"
+        } else if (nextUpVideo?.id == video.id) {
+            "Next Up • S${video.season} E${video.episode}"
+        } else {
+            "Play S${video.season} E${video.episode}"
         }
     }
     // Primary-action auto-select: open on the episode the Play button
@@ -1306,19 +1350,23 @@ private fun DetailContent(
             val resumeState = continueWatching.find { it.videoId == meta.id || it.key.contains(meta.id) }
             val hasResume = resumeState != null && resumeState.positionMs > 0 && resumeState.durationMs > 0
             val resumeProgress = if (hasResume) resumeState!!.positionMs.toFloat() / resumeState!!.durationMs else 0f
-            // Dynamic Play label (Nuvio seriesPrimaryAction): Resume >
-            // Next Up > Play first released; movies keep the old labels.
+            // Dynamic Play label: the episode the user just tapped
+            // (Resume/Next Up/Play for it), else the continuity primary
+            // action (Nuvio seriesPrimaryAction); movies keep the old
+            // labels.
+            val pickedVideo = manuallyPickedVideo
             val playText = when {
+                pickedVideo != null -> labelForEpisode(pickedVideo)
                 seriesPrimaryAction != null -> seriesPrimaryAction.label
                 hasResume -> "Continue Watching"
                 else -> "Watch Now"
             }
-            // Play button: full width capsule. Tap = play the primary
-            // episode (selecting it first when it differs), long-press =
-            // open sources.
+            // Play button: full width capsule. Tap = play the picked or
+            // primary episode (selecting it first when it differs),
+            // long-press = open sources.
             PlayButton(
                 onClick = {
-                    val target = seriesPrimaryAction?.video
+                    val target = manuallyPickedVideo ?: seriesPrimaryAction?.video
                     if (target != null && target.id != vm.selectedVideo?.id) vm.playEpisode(target)
                     else vm.onPlayPressed()
                 },
@@ -2118,7 +2166,7 @@ private fun DetailContent(
                         progress = episodeProgress(video),
                         tmdbRating = enrichedRating,
                         imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
-                        onClick = { vm.selectEpisode(video); fullPageSourceOpen = true },
+                        onClick = { manuallyPickedVideo = video; vm.selectEpisode(video); fullPageSourceOpen = true },
                         onLongClick = { episodeActionVideo = video },
                         onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                         onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) },
@@ -2165,7 +2213,7 @@ private fun DetailContent(
                                 progress = episodeProgress(video),
                                 tmdbRating = enrichedRating,
                                 imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
-                                onClick = { vm.selectEpisode(video); fullPageSourceOpen = true },
+                                onClick = { manuallyPickedVideo = video; vm.selectEpisode(video); fullPageSourceOpen = true },
                                 onLongClick = { episodeActionVideo = video },
                                 onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                                 onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
@@ -2930,6 +2978,7 @@ private fun DetailContent(
                     icon = Icons.Filled.PlayArrow,
                     onClick = {
                         episodeActionVideo = null
+                        manuallyPickedVideo = video
                         vm.selectEpisode(video)
                         fullPageSourceOpen = true
                     }
