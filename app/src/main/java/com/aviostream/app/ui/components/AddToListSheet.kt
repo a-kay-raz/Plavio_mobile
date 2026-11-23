@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aviostream.app.data.CustomListsRepository
+import com.aviostream.app.data.db.CollectionFolder
 import com.aviostream.app.data.db.CustomList
 import com.aviostream.app.ui.theme.LocalPalette
 import com.aviostream.app.ui.theme.TextPrimary
@@ -56,6 +58,11 @@ fun AddToListSheet(
     poster: String?,
     // Step 47: release year (0 = unknown) for the Library Saved sort.
     year: Int = 0,
+    // Step 51: folders containing this title (resolved by the caller) —
+    // tap opens the folder's titles. Empty when the title is in no
+    // folder, in which case this section stays hidden.
+    containingFolders: List<CollectionFolder> = emptyList(),
+    onOpenCollectionFolder: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -121,6 +128,47 @@ fun AddToListSheet(
             }
 
             Spacer(Modifier.height(8.dp))
+            // Step 51: collections — the folders this title already
+            // belongs to. Tap one to open its titles as a full grid
+            // (same destination Home rows open).
+            if (containingFolders.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Collections",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(4.dp))
+                containingFolders.forEach { folder ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenCollectionFolder(folder.id) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = folder.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Open folder",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
             if (creating) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(

@@ -201,6 +201,9 @@ import com.aviostream.app.data.RelatedSection
 import com.aviostream.app.data.StreamItem
 import com.aviostream.app.data.StreamProber
 import com.aviostream.app.data.CustomListsRepository
+import com.aviostream.app.data.CollectionRepository
+import com.aviostream.app.data.CollectionSourceResolver
+import com.aviostream.app.data.db.CollectionFolder
 import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.Subtitle
 import com.aviostream.app.data.Video
@@ -234,10 +237,12 @@ import com.aviostream.app.ui.tv.rememberIsTv
 import com.aviostream.app.ui.tv.tvFocusRing
 import com.aviostream.app.ui.tv.tvSheetFocus
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -578,7 +583,11 @@ fun DetailScreen(
     onPlay: () -> Unit,
     onPlayTrailer: (PlaybackRequest) -> Unit = {},
     onOpenActor: (Int, String) -> Unit = { _, _ -> },
-    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit = { _, _, _ -> }
+    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit = { _, _, _ -> },
+    // Step 51: collections — null on call sites without a collection
+    // store; the Add-to-list sheet then shows no Collections section.
+    collectionRepository: CollectionRepository? = null,
+    onOpenCollectionFolder: (String) -> Unit = {}
 ) {
     val vm: DetailViewModel = viewModel(factory = vmFactory { DetailViewModel(repository) })
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -627,7 +636,9 @@ fun DetailScreen(
                 onPlay = onPlay,
                 onPlayTrailer = onPlayTrailer,
                 onOpenActor = onOpenActor,
-                onOpenDetail = onOpenDetail
+                onOpenDetail = onOpenDetail,
+                collectionRepository = collectionRepository,
+                onOpenCollectionFolder = onOpenCollectionFolder
             )
         }
     }
@@ -700,7 +711,9 @@ private fun DetailContent(
     onPlay: () -> Unit,
     onPlayTrailer: (PlaybackRequest) -> Unit = {},
     onOpenActor: (Int, String) -> Unit = { _, _ -> },
-    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit
+    onOpenDetail: (addonId: String, type: String, metaId: String) -> Unit,
+    collectionRepository: CollectionRepository? = null,
+    onOpenCollectionFolder: (String) -> Unit = {}
 ) {
     val isSeries = meta.type == "series" && meta.videos.isNotEmpty()
     val seasons = rememberSeasonList(meta)
@@ -907,6 +920,36 @@ private fun DetailContent(
     val watchItem by repository.observeWatchlistItem(watchKey).collectAsState(initial = null)
     // "Add to list" bottom sheet state
     var showAddToList by remember { mutableStateOf(false) }
+    // Step 51: folders containing this title — resolved only while the
+    // Add-to-list sheet is open (each folder's sources resolve over the
+    // network, so this never runs on Detail open). A folder contains the
+    // title when any of its resolved titles matches this meta id, its
+    // IMDb id, or its TMDB id ("tmdb:movie|tv:<id>", the id TMDB-sourced
+    // folder previews carry).
+    var containingFolders by remember(meta.id) { mutableStateOf<List<CollectionFolder>>(emptyList()) }
+    LaunchedEffect(showAddToList, meta.id, meta.type, tmdbId) {
+        if (!showAddToList) return@LaunchedEffect
+        val repo = collectionRepository ?: return@LaunchedEffect
+        val candidates = buildSet {
+            add(meta.id)
+            meta.id.substringBefore(":").takeIf { it.startsWith("tt") }?.let { add(it) }
+            tmdbId?.let { add("tmdb:${if (meta.type == "series") "tv" else meta.type}:$it") }
+        }
+        containingFolders = runCatching {
+            val collections = repo.collections.first()
+            val folders = collections.flatMap { repo.getFolders(it.id) }
+            folders.map { folder ->
+                scope.async {
+                    val sources = repo.getSources(folder.id)
+                    val titles = if (sources.isEmpty()) emptyList()
+                    else CollectionSourceResolver.resolveFolder(repository, sources)
+                    folder.takeIf {
+                        titles.any { it.type == meta.type && it.id in candidates }
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }.getOrDefault(emptyList())
+    }
     // Shared stream-browser state: addon tabs + filtered list stay in sync as
     // sources stream in progressively.
     val allStreams = (vm.streamsState as? StreamsUiState.Content)?.streams ?: emptyList()
@@ -2883,6 +2926,15 @@ private fun DetailContent(
             poster = meta.poster,
             // Step 47: release year for the Library Saved sort.
             year = com.aviostream.app.data.parseReleaseYear(meta.releaseInfo),
+            // Step 51: folders containing this title — tap opens the
+            // folder's titles (same destination Home rows open). The
+            // sheet dismisses first so back returns to Detail, not the
+            // sheet.
+            containingFolders = containingFolders,
+            onOpenCollectionFolder = { folderId ->
+                showAddToList = false
+                onOpenCollectionFolder(folderId)
+            },
             onDismiss = { showAddToList = false }
         )
     }

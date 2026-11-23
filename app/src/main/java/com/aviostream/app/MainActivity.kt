@@ -1792,6 +1792,11 @@ private fun AvioNavGraph(
                 },
                 onOpenActor = { personId, personName ->
                     navController.navigate(Routes.actor(personId, personName))
+                },
+                // Step 51: collections — same destination Home rows open.
+                collectionRepository = collectionRepository,
+                onOpenCollectionFolder = { folderId ->
+                    navController.navigate(Routes.collectionFolder(folderId))
                 }
             )
         }
