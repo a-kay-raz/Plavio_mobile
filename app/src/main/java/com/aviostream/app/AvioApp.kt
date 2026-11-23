@@ -7,6 +7,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.aviostream.app.data.AppIcon
 import com.aviostream.app.data.ProfileStore
 import com.aviostream.app.data.SettingsStore
 import com.aviostream.app.data.StremioApi
@@ -107,6 +108,12 @@ class AvioApp : Application(), ImageLoaderFactory {
             ?: error("Profiles migration did not set an active profile")
         profileDatabase = ProfileStore.openProfileDatabase(this, activeProfileId)
         settings = SettingsStore(this, ProfileStore.profilePrefsName(activeProfileId))
+        // Step 70: re-apply the stored launcher icon on every cold start.
+        // The picker only applies it on tap, so after a reinstall/restore
+        // the launcher reverted to the default icon while the setting
+        // still said black/white. Guarded — a PackageManager failure must
+        // never stop the app from opening.
+        runCatching { AppIcon.apply(this, settings.appIcon) }
         repository = StreamRepository(db, profileDatabase, StremioApi(), settings)
         // Sentry crash reports (his order 2026-10-23): ON by default with a
         // Settings opt-out. Initialized on a background thread, off the
