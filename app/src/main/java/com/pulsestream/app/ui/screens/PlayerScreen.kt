@@ -4188,14 +4188,21 @@ fun PlayerScreen(
         }
 
         // Pause metadata overlay (Nuvio PauseMetadataOverlay): while
-        // paused, the title/episode/provider show big over a gradient,
-        // under the transport controls so they stay usable. Hidden until
-        // playback has actually started, on error, and in PiP.
+        // paused, the title/episode/provider/description show big over a
+        // gradient, under the transport controls so they stay usable.
+        // Hidden until playback has actually started, on error, and in PiP.
+        // Description is the current episode's overview (series only —
+        // movies carry no overview in the request).
         if (!state.isPlaying && hasStartedPlayback && state.playerError == null && !inPip) {
+            val pauseDescription = if (!req.isMovie) {
+                req.episodes.firstOrNull { it.season == req.season && it.episode == req.episode }?.overview
+            } else null
             PauseMetadataOverlay(
                 title = headerTitle,
-                episodeLine = episodeLine,
-                providerName = sourceNameText
+                episodeCode = if (!req.isMovie) "S${req.season} E${req.episode}" else null,
+                episodeTitle = req.episodeTitle,
+                providerName = sourceNameText,
+                description = pauseDescription
             )
         }
 
@@ -4504,7 +4511,7 @@ fun PlayerScreen(
                                         if (settings.pipEnabled) {
                                             PillBarButton(
                                                 icon = Icons.Filled.PictureInPicture,
-                                                label = "PiP",
+                                                label = "Picture-in-picture",
                                                 onClick = { enterPip() }
                                             )
                                         }
@@ -4552,7 +4559,7 @@ fun PlayerScreen(
                                         if (next != null) {
                                             PillBarButton(
                                                 icon = Icons.Filled.SkipNext,
-                                                label = "Next ep",
+                                                label = "Next episode",
                                                 onClick = {
                                                     // Cancel the auto-advance countdown so it
                                                     // doesn't re-play the same episode after

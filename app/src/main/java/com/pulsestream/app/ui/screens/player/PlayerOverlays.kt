@@ -220,15 +220,20 @@ fun PlayerDeviceStatusStrip(
 
 /**
  * Pause metadata overlay (Nuvio PauseMetadataOverlay): a left-to-right
- * gradient with "You're watching" + big title + episode line + provider,
- * bottom-anchored above the bottom controls. Drawn under the transport
- * controls so they stay usable.
+ * gradient with "You're watching" + big title + episode code / provider +
+ * episode title + description, bottom-anchored above the bottom controls.
+ * Drawn under the transport controls so they stay usable. Title 32sp
+ * ExtraBold (2 lines); episode code or provider 16sp 0xFFCCCCCC;
+ * episode title 28sp; description 16sp/24sp 0xFFD6D6D6, max 3 lines,
+ * 0.62 width. Padding 20dp sides, 40dp top, 120dp bottom.
  */
 @Composable
 fun PauseMetadataOverlay(
     title: String,
-    episodeLine: String?,
+    episodeCode: String?,
+    episodeTitle: String?,
     providerName: String?,
+    description: String?,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -247,7 +252,7 @@ fun PauseMetadataOverlay(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 150.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
             Text(
@@ -255,34 +260,51 @@ fun PauseMetadataOverlay(
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color(0xFFB8B8B8),
             )
+            Spacer(Modifier.height(12.dp))
             Text(
                 title,
                 color = Color.White,
-                fontSize = 28.sp,
-                lineHeight = 32.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 3,
+                fontSize = 32.sp,
+                lineHeight = 37.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp),
             )
-            if (episodeLine != null) {
+            // Episode code ("S1 E1") for series, else the provider name.
+            val codeOrProvider = episodeCode ?: providerName
+            if (!codeOrProvider.isNullOrBlank()) {
                 Text(
-                    episodeLine,
-                    color = Color.White.copy(alpha = 0.9f),
+                    codeOrProvider,
+                    color = Color(0xFFCCCCCC),
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            if (!providerName.isNullOrBlank()) {
+            if (!episodeTitle.isNullOrBlank()) {
                 Text(
-                    "via $providerName",
-                    color = Color.White.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
+                    episodeTitle,
+                    color = Color.White,
+                    fontSize = 28.sp,
+                    lineHeight = 32.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            if (!description.isNullOrBlank()) {
+                Text(
+                    description,
+                    color = Color(0xFFD6D6D6),
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth(0.62f)
+                        .padding(top = 16.dp),
                 )
             }
         }

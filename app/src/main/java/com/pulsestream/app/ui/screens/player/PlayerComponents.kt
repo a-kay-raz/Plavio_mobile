@@ -35,8 +35,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -100,7 +102,7 @@ internal fun TimeChip(text: String, onClick: (() -> Unit)? = null, modifier: Mod
     Box(
         modifier = modifier
             .ambientLiquidGlass(
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(12.dp),
                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                 fallback = LocalPalette.current.panel,
             )
@@ -165,7 +167,7 @@ internal fun PlayerHeaderButton(
 }
 
 /** Nuvio legacy center transport button (skip back/forward): glass circle,
- * 10dp padding, 34dp white icon. */
+ * 10dp padding, 26dp white icon (46dp circle — Nuvio phone tier). */
 @Composable
 internal fun CenterControlButton(
     icon: ImageVector,
@@ -187,7 +189,7 @@ internal fun CenterControlButton(
             .padding(10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, label, tint = Color.White, modifier = Modifier.size(34.dp))
+        Icon(icon, label, tint = Color.White, modifier = Modifier.size(26.dp))
     }
 }
 
@@ -222,7 +224,7 @@ internal fun CenterControlButton(
  * icons; any other value (15s) draws a mirrored Replay arrow with the
  * number overlaid. */
 @Composable
-internal fun SkipStepIcon(seconds: Int, forward: Boolean, size: Dp = 34.dp) {
+internal fun SkipStepIcon(seconds: Int, forward: Boolean, size: Dp = 26.dp) {
     val numbered = when (seconds) {
         5 -> if (forward) Icons.Filled.Forward5 else Icons.Filled.Replay5
         10 -> if (forward) Icons.Filled.Forward10 else Icons.Filled.Replay10
@@ -364,8 +366,17 @@ internal fun LegacySeekBar(
                     )
                 }
                 if (frac > 0f) {
+                    // Nuvio PlayerProgressTrack: the played segment is an
+                    // accent GRADIENT (not solid) — accent at the start,
+                    // lightened toward the playhead. (playedColor is White
+                    // when disabled, so the gradient stays white there.)
+                    val playedBrush = Brush.horizontalGradient(
+                        colors = listOf(playedColor, lerp(playedColor, Color.White, 0.35f)),
+                        startX = 0f,
+                        endX = size.width * frac
+                    )
                     drawRoundRect(
-                        color = playedColor,
+                        brush = playedBrush,
                         topLeft = Offset(0f, cy - trackH / 2f),
                         size = Size(size.width * frac, trackH),
                         cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
