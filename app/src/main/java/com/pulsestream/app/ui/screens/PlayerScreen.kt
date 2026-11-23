@@ -4707,20 +4707,28 @@ fun PlayerScreen(
                                 onScrub = { state.scrubPositionMs = it }
                             )
                         }
-                        // Time pills on the outer edges (lined up with the
-                        // seek bar's ends), action pill in the middle.
-                        Box(Modifier.fillMaxWidth()) {
-                            TimeChip(
-                                formatMs(state.positionMs),
-                                modifier = Modifier.align(Alignment.TopStart).offset(y = (-17).dp)
-                            )
-                            TimeChip(
-                                if (state.showRemainingTime) formatRemainingMs(state.positionMs, state.durationMs)
-                                else formatMs(state.durationMs),
-                                onClick = { state.showRemainingTime = !state.showRemainingTime },
-                                modifier = Modifier.align(Alignment.TopEnd).offset(y = (-17).dp)
-                            )
-                            Box(Modifier.align(Alignment.TopCenter)) {
+                        // Time pills on their own row (left = current,
+                        // right = total/remaining), action pill on its own
+                        // row below — stacked like Nuvio, so a wide action
+                        // pill (many buttons) can never overlap the time
+                        // pills. They used to share one Box at the same
+                        // offset, which is why the timing layout overlapped
+                        // once the pill grew wide.
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TimeChip(formatMs(state.positionMs))
+                                TimeChip(
+                                    if (state.showRemainingTime) formatRemainingMs(state.positionMs, state.durationMs)
+                                    else formatMs(state.durationMs),
+                                    onClick = { state.showRemainingTime = !state.showRemainingTime }
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 actionPill()
                             }
                         }

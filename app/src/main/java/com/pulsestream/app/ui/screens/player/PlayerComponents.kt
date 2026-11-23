@@ -326,6 +326,17 @@ internal fun LegacySeekBar(
             disabledActiveTrackColor = Color.White,
             disabledInactiveTrackColor = Color.Transparent
         ),
+        // Nuvio playhead: a white vertical line (not the default round
+        // thumb) — the same look as Nuvio's seek bar.
+        thumb = {
+            Box(
+                Modifier
+                    .width(4.dp)
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (enabled) Color.White else Color.White.copy(alpha = 0.6f))
+            )
+        },
         track = {
             // The whole track is drawn by hand (base + buffered + played)
             // so the buffered segment stays visible between the played head
@@ -333,7 +344,7 @@ internal fun LegacySeekBar(
             // PlayerProgressTrack, without depending on the experimental
             // SliderDefaults.Track overload.
             Canvas(Modifier.fillMaxSize()) {
-                val trackH = 4.dp.toPx()
+                val trackH = 6.dp.toPx()
                 val cy = size.height / 2f
                 val baseColor = if (enabled) Color.White.copy(alpha = 0.20f)
                 else Color.White.copy(alpha = 0.28f)
@@ -364,7 +375,7 @@ internal fun LegacySeekBar(
                 // ticks straddling the track at each chapter start.
                 if (chapterFractions.isNotEmpty()) {
                     val tickW = 2.dp.toPx()
-                    val tickH = 10.dp.toPx()
+                    val tickH = 14.dp.toPx()
                     chapterFractions.forEach { fraction ->
                         val x = (size.width * fraction).coerceIn(0f, size.width - tickW)
                         drawRoundRect(
