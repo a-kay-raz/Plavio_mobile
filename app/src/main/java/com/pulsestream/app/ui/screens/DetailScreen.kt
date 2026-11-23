@@ -2330,16 +2330,21 @@ private fun DetailContent(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp + detailStatusDp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    // Top hero buttons are 36dp (user 2026-11-23: 25%
+                    // smaller than the 48dp default), icons 18dp.
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
+                        Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                     Spacer(Modifier.weight(1f))
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(36.dp)
                             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                             .combinedClickable(
                                 onClick = {
@@ -2354,33 +2359,42 @@ private fun DetailContent(
                         Icon(
                             if (watchItem != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                             contentDescription = if (watchItem != null) "Remove from watchlist" else "Add to watchlist",
-                            tint = Color.White
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Spacer(Modifier.width(8.dp))
                     // Hero trailer mute toggle: only while the trailer is
                     // playing in the hero.
                     if (trailerUrl != null && !heroTrailerFinished && heroTrailerReady) {
-                        IconButton(
-                            onClick = { toggleHeroMute() },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                .clickable(onClick = { toggleHeroMute() }),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 if (heroMuted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
                                 contentDescription = if (heroMuted) "Unmute trailer" else "Mute trailer",
-                                tint = Color.White
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                         Spacer(Modifier.width(8.dp))
                     }
-                    IconButton(
-                        onClick = { showAddToList = true },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .clickable(onClick = { showAddToList = true }),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Filled.PlaylistAdd,
                             contentDescription = "Add to list",
-                            tint = Color.White
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
