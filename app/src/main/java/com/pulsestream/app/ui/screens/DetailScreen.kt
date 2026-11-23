@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Bookmark
@@ -2799,8 +2800,10 @@ private fun DetailContent(
     }
 
     // Episode watched action sheet (Nuvio EpisodeWatchedActionSheet):
-    // long-press an episode card. Mark watched/unwatched for the episode
-    // or the whole season. Rate arrives with Step 28 (per-title stars).
+    // long-press an episode card. Mark watched/unwatched for the episode,
+    // for all released episodes before it, or for the whole season; or
+    // open the manual stream picker for this episode. Rate arrives with
+    // Step 28 (per-title stars).
     episodeActionVideo?.let { video ->
         val isWatched = com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, video.season, video.episode) in watchedKeys
         ModalBottomSheet(
@@ -2828,6 +2831,33 @@ private fun DetailContent(
                         }
                     }
                 )
+                // Mark previous (Nuvio EpisodeWatchedActionSheet): all
+                // released episodes before this one, in (season, episode)
+                // order. Shown only when such episodes exist; the label
+                // flips on whether they are all watched already.
+                val previousEpisodes = meta.videos.filter { other ->
+                    other.season > 0 && other.episode > 0 &&
+                        (other.season < video.season ||
+                            (other.season == video.season && other.episode < video.episode)) &&
+                        isEpisodeReleased(other)
+                }
+                if (previousEpisodes.isNotEmpty()) {
+                    val arePreviousWatched = previousEpisodes.all {
+                        com.pulsestream.app.data.WatchedMarks.episodeKey(meta.id, it.season, it.episode) in watchedKeys
+                    }
+                    EpisodeActionRow(
+                        label = if (arePreviousWatched) "Mark previous unwatched" else "Mark previous watched",
+                        icon = Icons.Filled.DoneAll,
+                        onClick = {
+                            episodeActionVideo = null
+                            scope.launch {
+                                for (prev in previousEpisodes) {
+                                    repository.setEpisodeWatched(meta.id, prev.season, prev.episode, !arePreviousWatched)
+                                }
+                            }
+                        }
+                    )
+                }
                 EpisodeActionRow(
                     label = "Mark season watched",
                     icon = Icons.Filled.PlaylistAddCheck,
@@ -2846,6 +2876,24 @@ private fun DetailContent(
                         scope.launch {
                             repository.setSeasonWatched(meta.id, video.season, meta.videos, false)
                         }
+                    }
+                )
+                // Play manually (Nuvio EpisodeWatchedActionSheet): open
+                // the manual stream picker for this episode. Nuvio shows
+                // this only when stream autoplay is effectively on; in
+                // Avio tapping Play always auto-plays a picked stream
+                // (ruled pick, or probed fastest when "Autoplay by rule"
+                // is off), so the manual override is always offered —
+                // the setting only chooses which stream auto-plays. The
+                // Watch Now long-press picker stays ungated for the same
+                // reason: it is Avio's only manual stream choice.
+                EpisodeActionRow(
+                    label = "Play manually",
+                    icon = Icons.Filled.PlayArrow,
+                    onClick = {
+                        episodeActionVideo = null
+                        vm.selectEpisode(video)
+                        fullPageSourceOpen = true
                     }
                 )
             }
