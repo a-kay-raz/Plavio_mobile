@@ -45,7 +45,7 @@ import androidx.media3.extractor.text.SubtitleParser
  */
 const val AUDIO_DELAY_MIN_MS = -60_000
 const val AUDIO_DELAY_MAX_MS = 60_000
-const val AUDIO_DELAY_STEP_MS = 100
+const val AUDIO_DELAY_STEP_MS = 25
 
 /** Wraps every source [delegate] creates in an [AudioDelayMediaSource]. */
 internal class AudioDelayMediaSourceFactory(

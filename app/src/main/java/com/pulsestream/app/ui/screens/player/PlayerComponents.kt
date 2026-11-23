@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Replay30
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material3.Icon
 import com.pulsestream.app.ui.glass.ambientLiquidGlass
@@ -480,5 +481,58 @@ internal fun PlayerDialogCloseButton(onClick: () -> Unit) {
             style = MaterialTheme.typography.labelLarge,
             color = Color(0xFFB8BEC5)
         )
+    }
+}
+
+/** Nuvio AudioTrackModal AudioTrackRow: 12dp radius, h12/v8 padding.
+ * Selected = FULL accent fill with onAccent text + a 20dp checkmark;
+ * unselected = transparent. Line 1 titleMedium (max 1); line 2 the
+ * language name (bodySmall, onAccent 0.82 / White 0.72) shown only
+ * when the language is non-blank and not "und". */
+@Composable
+internal fun AudioTrackRow(
+    label: String,
+    language: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = LocalPalette.current.accent
+    val onAccent = Color.Black
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) accent else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (selected) onAccent else Color.White,
+                maxLines = 1
+            )
+            val langName = language?.let { displayLanguage(it) }
+            if (!langName.isNullOrBlank() && language != "und" && langName != label) {
+                Text(
+                    langName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected) onAccent.copy(alpha = 0.82f) else Color.White.copy(alpha = 0.72f),
+                    maxLines = 1
+                )
+            }
+        }
+        if (selected) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Rounded.Check,
+                contentDescription = null,
+                tint = onAccent,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }

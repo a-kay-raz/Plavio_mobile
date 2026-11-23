@@ -107,7 +107,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -4926,90 +4925,88 @@ fun PlayerScreen(
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         item {
                             Text(
-                                "Audio",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
+                                "Audio Tracks",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = Color.White,
                                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                             )
+                        }
+                        // Tracks FIRST (Nuvio AudioTrackModal order) —
+                        // full accent fill + checkmark, not a RadioButton.
+                        item {
+                            com.pulsestream.app.ui.screens.player.AudioTrackRow(
+                                label = "Auto",
+                                language = null,
+                                selected = audioOpts.none { it.selected },
+                                onClick = { applyAudioSelection(null) },
+                                modifier = Modifier.focusRequester(firstRowFocus)
+                            )
+                        }
+                        items(audioOpts) { opt ->
+                            com.pulsestream.app.ui.screens.player.AudioTrackRow(
+                                label = opt.label,
+                                language = opt.language,
+                                selected = opt.selected,
+                                onClick = { applyAudioSelection(opt) }
+                            )
+                        }
+                        // Audio delay (Nuvio AudioDelaySection): a stepper,
+                        // 25ms steps, +/-60s. A positive delay means the
+                        // audio plays later than the video.
+                        item {
+                            Text(
+                                "Audio delay",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 8.dp)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                StyleStepper(
+                                    value = formatAudioDelay(state.audioDelayMs),
+                                    onMinus = { setAudioDelayMs(state.audioDelayMs - AUDIO_DELAY_STEP_MS) },
+                                    onPlus = { setAudioDelayMs(state.audioDelayMs + AUDIO_DELAY_STEP_MS) }
+                                )
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color.White.copy(alpha = 0.08f))
+                                        .clickable(enabled = state.audioDelayMs != 0) { setAudioDelayMs(0) }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "Reset",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (state.audioDelayMs != 0) Color.White else Color.White.copy(alpha = 0.38f)
+                                    )
+                                }
+                            }
                         }
                         // Amplification (Nuvio AudioAmplificationSection):
                         // a dB stepper on the existing LoudnessEnhancer —
                         // the value persists and applies on the next title.
-                        // Nuvio's "Keep for next videos" toggle is not
-                        // ported: in Avio a set boost always persists
-                        // (the plan's done-criteria is "setting +6 dB
-                        // persists", which the toggle would break by
-                        // default). Nuvio's CenterMix has no Avio
-                        // mechanism — no audio processor for it — so it
-                        // is skipped, not faked.
+                        // (Nuvio's "Keep for next videos" chip is not
+                        // ported: in Avio a set boost always persists.)
                         item {
                             Text(
                                 "Amplification",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextPrimary,
-                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
+                                modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 8.dp)
                             )
                             val boostDb = (state.volumeBoost * 10).roundToInt().coerceIn(0, 10)
                             StyleStepper(
                                 value = if (boostDb > 0) "+$boostDb dB" else "0 dB",
                                 onMinus = { setAudioBoostDb(boostDb - 1) },
                                 onPlus = { setAudioBoostDb(boostDb + 1) }
-                            )
-                            Text(
-                                "Boosts quiet audio above the system max volume.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
-                            )
-                        }
-                        item {
-                            Text(
-                                "Audio delay",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
-                            )
-                            // Step 65 (Nuvio AudioDelaySection): a slider
-                            // for lip-sync, +/-60s in 100ms steps, live —
-                            // the value applies at once and persists. A
-                            // positive delay means the audio plays later
-                            // than the video.
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Slider(
-                                    value = state.audioDelayMs.toFloat(),
-                                    onValueChange = { setAudioDelayMs(it.roundToInt()) },
-                                    valueRange = AUDIO_DELAY_MIN_MS.toFloat()..AUDIO_DELAY_MAX_MS.toFloat(),
-                                    steps = (AUDIO_DELAY_MAX_MS - AUDIO_DELAY_MIN_MS) / AUDIO_DELAY_STEP_MS - 1,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    formatAudioDelay(state.audioDelayMs),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary,
-                                    modifier = Modifier.widthIn(min = 64.dp),
-                                    textAlign = TextAlign.End
-                                )
-                                TextButton(
-                                    onClick = { setAudioDelayMs(0) },
-                                    enabled = state.audioDelayMs != 0
-                                ) {
-                                    Text("Reset")
-                                }
-                            }
-                            Text(
-                                "Shifts audio against the video. Positive = audio later.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
                             )
                         }
                         // Step 66 (Nuvio downmix + centre-mix): mix
@@ -5100,21 +5097,6 @@ fun PlayerScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary,
                                 modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
-                            )
-                        }
-                        item {
-                            TrackRow(
-                                label = "Auto",
-                                selected = audioOpts.none { it.selected },
-                                onClick = { applyAudioSelection(null) },
-                                modifier = Modifier.focusRequester(firstRowFocus)
-                            )
-                        }
-                        items(audioOpts) { opt ->
-                            TrackRow(
-                                label = opt.label,
-                                selected = opt.selected,
-                                onClick = { applyAudioSelection(opt) }
                             )
                         }
                     }

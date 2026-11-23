@@ -124,7 +124,9 @@ internal data class TrackOption(
     val group: TrackGroup,
     val trackIndex: Int,
     val label: String,
-    val selected: Boolean
+    val selected: Boolean,
+    /** Raw ISO language code (e.g. "ta") — the AudioTrackRow second line. */
+    val language: String? = null
 )
 
 internal fun trackLabel(format: Format, fallbackIndex: Int): String {
@@ -137,7 +139,8 @@ internal fun trackOptions(player: Player, type: Int): List<TrackOption> =
         .filter { it.type == type }
         .flatMapIndexed { gi, g ->
             (0 until g.length).map { i ->
-                TrackOption(g.mediaTrackGroup, i, trackLabel(g.getTrackFormat(i), gi), g.isSelected)
+                val format = g.getTrackFormat(i)
+                TrackOption(g.mediaTrackGroup, i, trackLabel(format, gi), g.isSelected, format.language)
             }
         }
 
