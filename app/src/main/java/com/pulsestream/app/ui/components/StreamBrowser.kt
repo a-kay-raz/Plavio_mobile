@@ -557,7 +557,7 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
             // = surfaceCard #222222 + 1dp #252A2A border, h16/v10.
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(if (compact) 20.dp else 50))
+                    .clip(RoundedCornerShape(if (compact) 20.dp else 50.dp))
                     .background(
                         if (selected && compact) palette.accent
                         else if (selected) palette.accent.copy(alpha = 0.22f)
@@ -569,11 +569,11 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
                         if (selected) palette.accent
                         else if (compact) Color(0xFF252A2A)
                         else GlassBorder,
-                        RoundedCornerShape(if (compact) 20.dp else 50)
+                        RoundedCornerShape(if (compact) 20.dp else 50.dp)
                     )
                     .clickable(role = Role.Tab) { state.onSelectTab(tab.key) }
                     .semantics { this.selected = selected }
-                    .tvFocusRing(RoundedCornerShape(if (compact) 20.dp else 50))
+                    .tvFocusRing(RoundedCornerShape(if (compact) 20.dp else 50.dp))
                     .padding(
                         horizontal = if (compact) 16.dp else 14.dp,
                         vertical = if (compact) 10.dp else 8.dp

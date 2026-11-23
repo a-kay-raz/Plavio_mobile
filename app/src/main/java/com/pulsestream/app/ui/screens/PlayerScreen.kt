@@ -256,6 +256,7 @@ import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.DotsLoadingIndicator
 import com.pulsestream.app.ui.components.SafePosterImage
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.screens.player.playerLiquidGlass
 import com.pulsestream.app.ui.components.StreamCard
 import com.pulsestream.app.ui.components.StreamList

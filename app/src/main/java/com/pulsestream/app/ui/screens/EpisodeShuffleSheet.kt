@@ -38,7 +38,6 @@ import com.pulsestream.app.ui.theme.TextSecondary
  * The picker lives with the caller (one session per Detail visit / player
  * request) so re-opens keep the no-repeat history.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EpisodeShuffleSheet(
     showName: String,
