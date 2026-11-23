@@ -346,6 +346,48 @@ object PlexClient {
         }
     }
 
+    /**
+     * GET /:/timeline (Nuvio PlexProvider.report): live playback state
+     * for Plex now-playing + resume. Params mirror Nuvio exactly —
+     * ratingKey, key=/library/metadata/{ratingKey}, state
+     * (playing/paused/stopped), time (ms), duration (ms, omitted when
+     * unknown), hasMDE=1 — token + session identifier as headers
+     * (X-Plex-Token / X-Plex-Session-Identifier). Best-effort, never
+     * throws; the session id is one playback session's id, minted by
+     * [PlexTimelineReporter] (Nuvio newPlaySession: 32 hex chars).
+     */
+    suspend fun reportTimeline(
+        server: MediaServer,
+        ratingKey: String,
+        state: String,
+        positionMs: Long,
+        durationMs: Long,
+        sessionId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val key = java.net.URLEncoder.encode("/library/metadata/$ratingKey", "UTF-8")
+            val durationParam =
+                if (durationMs > 0) "&duration=$durationMs" else ""
+            val req = Request.Builder()
+                .url(
+                    "${server.baseUrl}/:/timeline" +
+                        "?ratingKey=${java.net.URLEncoder.encode(ratingKey, "UTF-8")}" +
+                        "&key=$key&state=$state" +
+                        "&time=${positionMs.coerceAtLeast(0L)}" +
+                        durationParam +
+                        "&hasMDE=1"
+                )
+                .header("X-Plex-Token", server.accessToken)
+                .header("X-Plex-Session-Identifier", sessionId)
+                .header("Accept", "application/xml")
+                .get()
+                .build()
+            client.newCall(req).execute().use { it.isSuccessful }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun parseXml(text: String): org.w3c.dom.Document? = runCatching {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isNamespaceAware = false

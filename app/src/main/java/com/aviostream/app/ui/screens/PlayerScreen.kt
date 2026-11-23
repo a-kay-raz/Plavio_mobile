@@ -248,6 +248,7 @@ import com.aviostream.app.data.subtitleLangMatches
 import com.aviostream.app.data.subtitleTypeface
 import com.aviostream.app.data.simkl.SimklManager
 import com.aviostream.app.data.scrobble.ScrobbleManager
+import com.aviostream.app.data.servers.PlexTimelineReporter
 import com.aviostream.app.data.trakt.TraktManager
 import com.aviostream.app.data.buttonLabel
 import com.aviostream.app.data.buttonStartMs
@@ -1072,6 +1073,12 @@ fun PlayerScreen(
     val simkl = remember { SimklManager(settings) }
     val trakt = remember { TraktManager(settings) }
     val scrobbler = remember { ScrobbleManager(listOf(simkl, trakt), ioScope) }
+
+    // Plex live timeline (Nuvio PlexProvider.report + ServerPlayback):
+    // /:/timeline progress while a Plex title plays, so Plex shows
+    // now-playing and keeps the resume point live. Plex-only gating
+    // lives inside the reporter (videoId "server:{plex}:{ratingKey}").
+    val plexTimeline = remember { PlexTimelineReporter(settings::getMediaServers) }
 
     // PiP: drop the transport UI the moment the window floats (the system
     // draws its own PiP controls); restore the default on return.
@@ -3115,6 +3122,15 @@ fun PlayerScreen(
                     state.isPlaying,
                     c.playbackState == Player.STATE_ENDED
                 )
+                // Plex live timeline: same tick, Plex-gated inside
+                // (non-Plex videoIds are ignored).
+                plexTimeline.tick(
+                    state.currentRequest,
+                    state.positionMs,
+                    state.durationMs,
+                    state.isPlaying,
+                    c.playbackState == Player.STATE_ENDED
+                )
             }
             delay(if (isTv) 1000 else 500) // low-end TVs: half the recompositions
         }
@@ -3422,6 +3438,7 @@ fun PlayerScreen(
             preemptPendingLiveFallback()
             savePosition()
             scrobbler.shutdown()
+            plexTimeline.shutdown()
             // #9: kill late zap/episode/source-switch work. The scope itself
             // stays valid (the scrobblers above hold it); only its children
             // are cancelled. savePosition()'s save runs NonCancellable so it
