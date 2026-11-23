@@ -126,24 +126,21 @@ internal fun TimeChip(text: String, onClick: (() -> Unit)? = null, modifier: Mod
  * PlayerActionPillButton: horizontal icon + label, 18dp white icon,
  * 12dp/12dp padding, white labelSm text. */
 @Composable
-internal fun PillBarButton(icon: ImageVector, label: String, onClick: () -> Unit, enabled: Boolean = true) {
-    // Disabled = visible but greyed out (40% white): the button still shows
-    // in the pill — only the Player buttons layout toggle hides one fully.
-    val tint = Color.White.copy(alpha = if (enabled) 1f else 0.4f)
+internal fun PillBarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
         Modifier
             .clip(RoundedCornerShape(22.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(onClick = onClick)
             .tvFocusRing(RoundedCornerShape(22.dp))
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(icon, label, tint = tint, modifier = Modifier.size(18.dp))
+        Icon(icon, label, tint = Color.White, modifier = Modifier.size(18.dp))
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = tint,
+            color = Color.White,
             maxLines = 1
         )
     }
