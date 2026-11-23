@@ -92,6 +92,11 @@ class StreamRepository(
                 WatchedMarks.keys.value = keys.toSet()
             }
         }
+        repoScope.launch {
+            profileDb.watchedDao().observeAll().collect { records ->
+                WatchedMarks.watchedAt.value = records.associate { it.key to it.watchedAt }
+            }
+        }
     }
     val continueWatching: Flow<List<PlaybackState>> =
         profileDb.playbackDao().observeRecent().map { dedupePlaybackRows(it) }

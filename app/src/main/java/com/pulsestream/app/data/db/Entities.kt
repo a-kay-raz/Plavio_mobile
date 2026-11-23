@@ -393,6 +393,9 @@ interface WatchedDao {
     @Query("SELECT `key` FROM watched")
     fun observeKeys(): Flow<List<String>>
 
+    @Query("SELECT * FROM watched")
+    fun observeAll(): Flow<List<WatchedRecord>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(record: WatchedRecord)
 
