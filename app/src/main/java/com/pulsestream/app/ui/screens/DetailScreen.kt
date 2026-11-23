@@ -341,10 +341,13 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     }
 
     /**
-     * Play an episode at once (Nuvio onEpisodePlayClick): select it and
-     * auto-play its best stream once loaded (the pending-play path fires
-     * when the new streams arrive). Saved progress resumes unless the
-     * episode is already watched — a completed episode restarts from 0.
+     * Play an episode at once: select it and auto-play its best stream
+     * once loaded (the pending-play path fires when the new streams
+     * arrive). Saved progress resumes unless the episode is already
+     * watched — a completed episode restarts from 0. Used by the hero
+     * Play button and the shuffle sheet only; tapping an episode card
+     * opens its links box instead (the user's Nuvio opens the stream
+     * picker on tap — autoplay off — and Avio matches it directly).
      */
     fun playEpisode(video: Video, fromStart: Boolean = false) {
         pendingAutoPlay = true
@@ -2115,7 +2118,7 @@ private fun DetailContent(
                         progress = episodeProgress(video),
                         tmdbRating = enrichedRating,
                         imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
-                        onClick = { vm.playEpisode(video, fromStart = isWatched) },
+                        onClick = { vm.selectEpisode(video); fullPageSourceOpen = true },
                         onLongClick = { episodeActionVideo = video },
                         onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                         onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) },
@@ -2162,7 +2165,7 @@ private fun DetailContent(
                                 progress = episodeProgress(video),
                                 tmdbRating = enrichedRating,
                                 imdbRating = omdbEpisodeRatings[video.season]?.get(video.episode),
-                                onClick = { vm.playEpisode(video, fromStart = isWatched) },
+                                onClick = { vm.selectEpisode(video); fullPageSourceOpen = true },
                                 onLongClick = { episodeActionVideo = video },
                                 onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                                 onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
