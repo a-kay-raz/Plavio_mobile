@@ -4712,7 +4712,7 @@ fun PlayerScreen(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 13.dp)
                 ) {
                     if (state.currentRequest.isLive) {
                         Row(
@@ -4791,10 +4791,14 @@ fun PlayerScreen(
                             }
                         }
                         // Step 59: the seek-preview bubble floats above
-                        // the bar while scrubbing. The bar sits at the
-                        // Box top (no offset, 4dp gap to the time row) —
-                        // the old -13dp offset + 12dp padding lifted it
-                        // ~21dp above Nuvio's spot.
+                        // the bar while scrubbing. Bar sits at the Box top
+                        // with a 12dp gap to the time row — measured
+                        // against the official screenshot (track centre
+                        // ~102dp, timer ~69dp, pill ~36dp from the bottom):
+                        // the old -13dp offset + 12dp padding had lifted
+                        // the bar ~21dp too high, and the 16dp spacer
+                        // below the timer held the whole seekbar+timer
+                        // unit ~19dp too high.
                         Box(Modifier.fillMaxWidth()) {
                             SeekPreviewOverlay(
                                 controller = seekPreviewController,
@@ -4804,7 +4808,7 @@ fun PlayerScreen(
                             LegacySeekBar(
                                 positionMs = state.positionMs,                                durationMs = state.durationMs,                                bufferedMs = state.bufferedMs,                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
                                 onSeek = { player.seekTo(it) },
-                                modifier = Modifier.padding(bottom = 4.dp),
+                                modifier = Modifier.padding(bottom = 12.dp),
                                 isTv = isTv,
                                 onSeekDelta = { seekByWithFeedback(it) },
                                 onFocusChanged = { state.seekbarFocused = it },
@@ -4831,7 +4835,10 @@ fun PlayerScreen(
                                     onClick = { state.showRemainingTime = !state.showRemainingTime }
                                 )
                             }
-                            Spacer(Modifier.height(16.dp))
+                            // No spacer between the time row and the pill:
+                            // Nuvio's timer sits right on the pill's top
+                            // edge (its bottom edge even overlaps the pill
+                            // by ~2dp — different x, so no collision).
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 actionPill()
                             }
