@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -13,12 +14,21 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 
 /**
  * MediaCodec selector that excludes hardware decoders for audio codecs known to
- * lack hardware support on many devices (EAC3, AC3, DTS, TrueHD).
+ * lack hardware support on many devices (EAC3, AC3, DTS, TrueHD) — but only
+ * while the FFmpeg extension is available.
  *
  * By returning an empty list for these codecs, ExoPlayer is forced to use the
  * FFmpeg extension renderer (software decoding) instead of failing on MediaCodec.
  * This avoids the "no audio" silent failure on devices like OnePlus 13R that
  * lack Dolby/DTS hardware decoders.
+ *
+ * The exclusion is conditional on FfmpegLibrary.isAvailable(): when the FFmpeg
+ * native lib is missing or failed to load, excluding MediaCodec would
+ * guarantee failure (the FFmpeg renderer also refuses the track), so
+ * MediaCodec gets the track instead — a device that does have a software
+ * decoder for the codec then plays, and a device that has none reports the
+ * same unsupported result as before. When FFmpeg IS available, behaviour
+ * is unchanged (the OnePlus 13R case still goes to FFmpeg).
  */
 @UnstableApi
 class NoHardwareDolbySelector : MediaCodecSelector {
@@ -41,9 +51,12 @@ class NoHardwareDolbySelector : MediaCodecSelector {
         requiresSecureDecoder: Boolean,
         requiresTunnelingDecoder: Boolean
     ): List<MediaCodecInfo> {
-        // For Dolby/DTS codecs, return empty list to force FFmpeg software decoding.
-        // This prevents MediaCodec from being selected (and failing silently).
-        if (mimeType in SOFTWARE_ONLY_CODECS) {
+        // For Dolby/DTS codecs, return empty list to force FFmpeg software decoding
+        // — but only while FFmpeg is actually available. When it is not,
+        // MediaCodec gets a chance instead of a certain failure (see KDoc).
+        // This prevents MediaCodec from being selected (and failing silently)
+        // on devices that lack Dolby/DTS hardware decoders but have FFmpeg.
+        if (mimeType in SOFTWARE_ONLY_CODECS && FfmpegLibrary.isAvailable()) {
             return emptyList()
         }
         // For all other codecs, use default behavior.
@@ -59,7 +72,9 @@ class NoHardwareDolbySelector : MediaCodecSelector {
  * renderer and broke audio on some devices), this approach uses a custom
  * MediaCodecSelector to prevent MediaCodec from claiming these formats.
  * The standard FFmpeg extension renderer (added via EXTENSION_RENDERER_MODE_PREFER)
- * then handles them via software decoding.
+ * then handles them via software decoding. The exclusion only applies while
+ * FfmpegLibrary.isAvailable() — when FFmpeg is unavailable, MediaCodec gets
+ * the track instead of a certain failure.
  *
  * Step 66: when a [DownmixConfig] is supplied, the audio sink carries a
  * [DownmixAudioProcessor] that mixes surround PCM down to stereo/mono.

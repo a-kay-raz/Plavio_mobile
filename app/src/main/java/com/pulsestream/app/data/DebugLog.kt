@@ -9,9 +9,11 @@ import android.os.Process
 import android.system.Os
 import android.system.OsConstants
 import androidx.core.content.FileProvider
+import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import com.pulsestream.app.BuildConfig
+import com.pulsestream.app.player.DownmixAudioProcessor
 import java.io.File
 
 /**
@@ -41,17 +43,24 @@ object DebugLog {
     }
 
     /**
-     * 5.1 / FFmpeg audio facts (2026-11-23): 5.1 titles failed with
-     * "FfmpegAudioRenderer error, ..., format_supported=NO_UNSUPPORTED_TYPE",
-     * which the vendored FfmpegAudioRenderer only returns when
-     * FfmpegLibrary.isAvailable() is false -- i.e. libffmpegJNI.so did not
-     * load. The bundled .so was 4 KiB-aligned, so 16 KiB-page devices
-     * (Android 15+) cannot load it -- but the user's phone is Android 14
-     * (4 KiB pages), so that is NOT the cause here. The load-error line
-     * below captures the linker's reason directly, which is what settles
-     * it. The getMinBufferSize line answers whether this device can even
-     * create a 5.1 AudioTrack (a negative result means it cannot, which
-     * would have defeated the earlier downmix fix's proactive check too).
+     * 5.1 / FFmpeg audio facts (2026-11-23, corrected): 5.1 titles fail with
+     * "FfmpegAudioRenderer error, ..., format_supported=NO_UNSUPPORTED_TYPE".
+     * That format is the DECODER OUTPUT format (audio/raw 6ch/48kHz), not
+     * the track format, and NO_UNSUPPORTED_TYPE is Media3's string for
+     * FORMAT_UNSUPPORTED_SUBTYPE — a label recomputed for the error
+     * message, not the cause. The lib is NOT the problem: Diagnostics
+     * proves FfmpegLibrary.isAvailable() true (Lavc60.3.100) and the .so
+     * loads, and the user's phone is Android 14 (4 KiB pages), so the
+     * 16 KiB re-layout was never the fix here either. The failure is in
+     * the audio SINK after a successful decode: the AudioTrack cannot be
+     * created for 6ch PCM on this phone (5001). The getMinBufferSize
+     * line does NOT answer that — sizing only validates parameters
+     * (46128 bytes here) while creation goes through AudioFlinger/HAL.
+     * The probe line below is the check that predicts it: it tries to
+     * create a 6ch AudioTrack for real, which is what the downmix
+     * processor now does before passing multichannel PCM to the sink.
+     * The load-error line only runs when the lib is unavailable, and
+     * captures the linker's reason directly.
      */
     @OptIn(UnstableApi::class)
     private fun audioCodecDiagnostics(): String = buildString {
@@ -79,6 +88,13 @@ object DebugLog {
         appendLine(
             "AudioTrack 5.1/48kHz min buffer: " +
                 (minBuffer51?.let { if (it < 0) "unsupported (error $it)" else "$it bytes" } ?: "(unknown)")
+        )
+        val probe51 = runCatching {
+            DownmixAudioProcessor.deviceSupportsMultichannelPcm(6, 48_000, C.ENCODING_PCM_16BIT)
+        }.getOrNull()
+        appendLine(
+            "AudioTrack 5.1/48kHz probe (real creation): " +
+                (probe51?.let { if (it) "can create" else "CANNOT create — downmix engages" } ?: "(unknown)")
         )
     }
 

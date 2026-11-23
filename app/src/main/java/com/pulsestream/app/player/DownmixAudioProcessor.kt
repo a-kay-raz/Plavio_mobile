@@ -1,5 +1,6 @@
 package com.pulsestream.app.player
 
+import android.media.AudioAttributes
 import android.media.AudioTrack
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
@@ -8,6 +9,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.pow
 
 /** Centre-mix level range in dB (Nuvio CENTER_MIX_LEVEL_MIN/MAX_DB). */
@@ -54,24 +56,86 @@ class DownmixAudioProcessor(
 
     companion object {
         /**
+         * Cache of real AudioTrack-creation probes, keyed
+         * "channels|sampleRate|encoding" — one throwaway AudioTrack per
+         * config, so the probe runs once and the result is reused.
+         */
+        private val probeResults = ConcurrentHashMap<String, Boolean>()
+
+        /**
          * True when this device can create an AudioTrack for [channels]-channel
-         * PCM at [sampleRate] — i.e. the system can size a buffer for that
-         * channel config. When it cannot (ERROR_BAD_VALUE), the sink's
-         * AudioTrack creation for the same config fails with 5001
-         * (AudioTrack init failed), so the track must be downmixed first.
-         * (android.media.AudioFormat is used fully qualified here because
-         * this file already imports AudioProcessor.AudioFormat.)
+         * PCM at [sampleRate]. Sizing a buffer is NOT enough proof:
+         * AudioTrack.getMinBufferSize only validates the parameters, but
+         * creation goes through AudioFlinger/HAL and can still fail — on
+         * the user's realme RMX3371 (ColorOS) 6ch/48kHz sizes fine
+         * (46128 bytes) yet creation fails, and the sink then throws 5001
+         * (AudioTrack init failed) after a successful decode. So this
+         * actually creates a throwaway AudioTrack with the same config
+         * the sink is about to use (USAGE_MEDIA, same channel mask and
+         * sample rate) and reports whether it initialised. A failure here
+         * means the track must be downmixed first. (android.media.AudioFormat
+         * is used fully qualified here because this file already imports
+         * AudioProcessor.AudioFormat.)
          */
         fun deviceSupportsMultichannelPcm(channels: Int, sampleRate: Int, encoding: Int): Boolean {
+            if (encoding != C.ENCODING_PCM_16BIT && encoding != C.ENCODING_PCM_FLOAT) {
+                return true // Not a PCM form we mix; never force a downmix for it.
+            }
+            return canCreateMultichannelAudioTrack(channels, sampleRate, encoding)
+        }
+
+        /**
+         * Probe: build a throwaway AudioTrack for [channels]-channel PCM at
+         * [sampleRate] and return whether it reaches STATE_INITIALIZED.
+         * Any failure (bad size, illegal argument, uninitialised track)
+         * returns false — the safe direction, since a false result only
+         * downmixes to stereo, which still plays. Result is cached per
+         * config, so the probe costs one AudioTrack creation per config.
+         */
+        private fun canCreateMultichannelAudioTrack(channels: Int, sampleRate: Int, encoding: Int): Boolean {
+            val key = "$channels|$sampleRate|$encoding"
+            probeResults[key]?.let { return it }
             val androidEncoding = when (encoding) {
                 C.ENCODING_PCM_16BIT -> android.media.AudioFormat.ENCODING_PCM_16BIT
                 C.ENCODING_PCM_FLOAT -> android.media.AudioFormat.ENCODING_PCM_FLOAT
-                else -> return true // Not a PCM form we mix; never force a downmix for it.
+                else -> return true
             }
             val channelConfig = Util.getAudioTrackChannelConfig(channels)
-            if (channelConfig == android.media.AudioFormat.CHANNEL_INVALID) return false
-            return AudioTrack.getMinBufferSize(sampleRate, channelConfig, androidEncoding) !=
-                AudioTrack.ERROR_BAD_VALUE
+            if (channelConfig == android.media.AudioFormat.CHANNEL_INVALID) {
+                probeResults[key] = false
+                return false
+            }
+            val minBuffer = AudioTrack.getMinBufferSize(sampleRate, channelConfig, androidEncoding)
+            if (minBuffer < 0) {
+                probeResults[key] = false
+                return false
+            }
+            val ok = runCatching {
+                val track = AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        android.media.AudioFormat.Builder()
+                            .setEncoding(androidEncoding)
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(channelConfig)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(minBuffer.coerceAtLeast(1))
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+                try {
+                    track.state == AudioTrack.STATE_INITIALIZED
+                } finally {
+                    track.release()
+                }
+            }.getOrDefault(false)
+            probeResults[key] = ok
+            return ok
         }
     }
 
@@ -108,11 +172,12 @@ class DownmixAudioProcessor(
         // the device cannot output as PCM must be mixed to stereo here —
         // otherwise the sink hands 6ch to the AudioTrack, its creation
         // fails (5001), and the error screen appears. The device check
-        // mirrors the AudioTrack the sink is about to create: if the
-        // system cannot even size a buffer for this channel config, the
-        // track cannot be created. Devices that CAN output multichannel
-        // (HDMI/AVR) are untouched — the check returns true and only the
-        // user's downmix setting applies.
+        // actually creates a throwaway AudioTrack with the same config
+        // the sink is about to use: getMinBufferSize alone is not proof
+        // (realme RMX3371 sizes 6ch/48kHz fine at 46128 bytes, yet
+        // creation fails). Devices that CAN output multichannel (HDMI/AVR)
+        // are untouched — the probe succeeds and only the user's downmix
+        // setting applies.
         val deviceCannotOutputMultichannel = supported && channels >= 3 &&
             !deviceSupportsMultichannelPcm(channels, inputAudioFormat.sampleRate, encoding)
         mixActive = supported &&
