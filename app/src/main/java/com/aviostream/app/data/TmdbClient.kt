@@ -403,7 +403,7 @@ object TmdbClient {
         val apiKey = settings.tmdbApiKey?.takeIf { it.isNotBlank() } ?: return@withContext null
         try {
             val segment = if (mediaType == "tv") "tv" else "movie"
-            val url = "$BASE/$segment/$tmdbId?api_key=<redacted>&${langParam(settings)}"
+            val url = "$BASE/$segment/$tmdbId?api_key=$apiKey&${langParam(settings)}"
             val root = json.parseToJsonElement(
                 BoundedHttp.get(url, headers = mapOf("Accept" to "application/json"))
             ).jsonObject

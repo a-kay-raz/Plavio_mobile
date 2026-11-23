@@ -315,7 +315,7 @@ object PlexClient {
     fun streamUrl(server: MediaServer, item: ServerItem): String? {
         val partKey = item.contentId.substringAfter("|", "")
         if (partKey.isBlank()) return null
-        return "${server.baseUrl}$partKey?X-Plex-Token=<redacted>"
+        return "${server.baseUrl}$partKey?X-Plex-Token=${server.accessToken}"
     }
 
     fun imageUrl(server: MediaServer, thumb: String?): String? {
@@ -323,7 +323,7 @@ object PlexClient {
         val encoded = java.net.URLEncoder.encode(
             if (thumb.startsWith("http")) thumb else "${server.baseUrl}$thumb", "UTF-8"
         )
-        return "${server.baseUrl}/photo/:/transcode?url=$encoded&width=600&height=900&minSize=1&X-Plex-Token=<redacted>"
+        return "${server.baseUrl}/photo/:/transcode?url=$encoded&width=600&height=900&minSize=1&X-Plex-Token=${server.accessToken}"
     }
 
     /** GET /:/scrobble (played) or /:/unscrobble. */
@@ -336,7 +336,7 @@ object PlexClient {
         try {
             val action = if (played) "scrobble" else "unscrobble"
             val req = Request.Builder()
-                .url("${server.baseUrl}/:/$action?key=$ratingKey&identifier=com.plexapp.plugins.library&X-Plex-Token=<redacted>")
+                .url("${server.baseUrl}/:/$action?key=$ratingKey&identifier=com.plexapp.plugins.library&X-Plex-Token=${server.accessToken}")
                 .header("Accept", "application/xml")
                 .get()
                 .build()

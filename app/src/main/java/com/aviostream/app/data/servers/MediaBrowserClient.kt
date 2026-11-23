@@ -109,7 +109,7 @@ object MediaBrowserClient {
             val userId = server.userId ?: return@withContext emptyList()
             try {
                 val req = Request.Builder()
-                    .url("$base/Users/$userId/Views?api_key=<redacted>")
+                    .url("$base/Users/$userId/Views?api_key=${server.accessToken}")
                     .header("Accept", "application/json")
                     .get()
                     .build()
@@ -164,7 +164,7 @@ object MediaBrowserClient {
                 "&IncludeItemTypes=$includeTypes" +
                 "&Fields=Overview,ProductionYear,Genres,RunTimeTicks,UserData,MediaSources,Path,PrimaryImageAspectRatio" +
                 "&SortBy=$sortBy&SortOrder=Ascending" +
-                "&api_key=<redacted>"
+                "&api_key=${server.accessToken}"
             val req = Request.Builder()
                 .url(url)
                 .header("Accept", "application/json")
@@ -227,7 +227,7 @@ object MediaBrowserClient {
         return buildString {
             append(cleanBase(server.baseUrl))
             append("/Videos/").append(itemId).append("/stream")
-            append("?api_key=<redacted>")
+            append("?api_key=${server.accessToken}")
             append("&Static=true")
             if (mediaSourceId != null) append("&MediaSourceId=").append(encode(mediaSourceId))
         }
@@ -235,12 +235,12 @@ object MediaBrowserClient {
 
     fun imageUrl(server: MediaServer, itemId: String): String {
         val cleanId = itemId.substringBefore("|")
-        return "${cleanBase(server.baseUrl)}/Items/$cleanId/Images/Primary?api_key=<redacted>&maxWidth=600&quality=80"
+        return "${cleanBase(server.baseUrl)}/Items/$cleanId/Images/Primary?api_key=${server.accessToken}&maxWidth=600&quality=80"
     }
 
     private fun backdropUrl(server: MediaServer, itemId: String): String {
         val cleanId = itemId.substringBefore("|")
-        return "${cleanBase(server.baseUrl)}/Items/$cleanId/Images/Backdrop?api_key=<redacted>&maxWidth=1280&quality=80"
+        return "${cleanBase(server.baseUrl)}/Items/$cleanId/Images/Backdrop?api_key=${server.accessToken}&maxWidth=1280&quality=80"
     }
 
     /** POST/DELETE /Users/{userId}/PlayedItems/{itemId}. */
@@ -254,7 +254,7 @@ object MediaBrowserClient {
         val cleanId = itemId.substringBefore("|")
         try {
             val req = Request.Builder()
-                .url("$base/Users/$userId/PlayedItems/$cleanId?api_key=<redacted>")
+                .url("$base/Users/$userId/PlayedItems/$cleanId?api_key=${server.accessToken}")
                 .header("Accept", "application/json")
                 .let {
                     if (played) it.post(ByteArray(0).toRequestBody(null))
