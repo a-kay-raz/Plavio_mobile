@@ -18,7 +18,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -3748,27 +3747,20 @@ fun PlayerScreen(
         // brightness get an animated level bar; the volume indicator
         // changes colour at the extremes — soft red at mute (0),
         // amber in the boost zone (past 100).
-        // One show / one hide (owner's flicker report 2026-10-26):
-        // the entrance used to restart on EVERY new indicator value,
-        // so a volume/brightness swipe — a fresh value per move
-        // event — snapped the pill back to 82% / 0 alpha dozens of
-        // times a second. Now the pop-in runs only when the pill
-        // appears (alpha at rest); value changes update the content
-        // in place; the hide is a single debounced fade that starts
-        // 1s after the LAST poke, and a poke that lands mid-fade
-        // brings the pill straight back with no pop.
+        // Show instantly, hide with a fade (owner's report 2026-11-23):
+        // the old pop-in (alpha 0->1 + scale 0.82->1) made the glass
+        // box visible BEFORE the volume / brightness word + level was
+        // readable, so the pill looked empty and then filled in. Now
+        // the pill snaps to full opacity + scale the moment it appears,
+        // so the box and its text arrive together. A poke that lands
+        // mid-fade snaps it straight back to full opacity. The hide is
+        // a single debounced fade that starts 1s after the LAST poke.
         val indScale = remember { Animatable(1f) }
         val indAlpha = remember { Animatable(0f) }
         LaunchedEffect(state.indicatorTick) {
             if (state.indicator == null) return@LaunchedEffect
-            if (indAlpha.value <= 0f) {
-                indScale.snapTo(0.82f)
-                launch { indScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f)) }
-                indAlpha.animateTo(1f, tween(120))
-            } else if (indAlpha.value < 1f) {
-                launch { indScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f)) }
-                indAlpha.animateTo(1f, tween(80))
-            }
+            indScale.snapTo(1f)
+            indAlpha.snapTo(1f)
             delay(1000)
             indAlpha.animateTo(0f, tween(200))
             state.indicator = null
