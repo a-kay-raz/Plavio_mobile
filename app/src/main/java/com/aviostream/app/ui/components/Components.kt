@@ -685,7 +685,7 @@ fun DotsLoader(
             .width((dotCount * 20).dp)
             .height(26.dp)
     ) {
-        // Wave (owner's pick 2026-10-25, Sample B): a pulse of light starts
+        // Wave (owner's pick 2026-10-25, Sample B): a wave of light starts
         // at the CENTER dot and travels out to both edges and back. The old
         // left-to-right wave read as a tight blob — and the Home call site
         // squashed this 5-dot canvas into a 34.dp box, packing the dots.

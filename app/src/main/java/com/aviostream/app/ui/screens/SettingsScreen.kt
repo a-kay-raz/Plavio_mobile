@@ -558,11 +558,11 @@ fun SettingsScreen(
             )
         },
         SettingsEntry(sectionAdvanced, "Reduced motion",
-            "reduced motion animations accessibility pause hero slides pulses", hub = "advanced") {
+            "reduced motion animations accessibility pause hero slides shimmer", hub = "advanced") {
             SettingsToggleRow(
                 icon = Icons.Filled.Contrast,
                 title = "Reduced motion",
-                subtitle = "Pause automatic hero slides and decorative pulses; also respects Android animation settings.",
+                subtitle = "Pause automatic hero slides and decorative shimmer; also respects Android animation settings.",
                 checked = reducedMotion,
                 onCheckedChange = { com.aviostream.app.data.MotionPreferences.setReduced(context, it) },
                 compact = true
