@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -3603,6 +3604,23 @@ fun PlayerScreen(
                 .onFailure { runCatching { containerFocus.requestFocus() } }
         }
     }
+    // Pinch zoom (Nuvio setVideoZoom, ExoPlayer branch): scale the
+    // PlayerView's inner content frame (exo_content_frame, else the video
+    // surface itself) with a plain View scale. The old code scaled the
+    // whole AndroidView with a Compose graphicsLayer, which forced the
+    // TextureView into an offscreen hardware layer every frame — the app
+    // died mid-pinch, normal playback included, with no Java trace
+    // (native graphics crash). Nuvio scales the content frame and it
+    // does not crash; the subtitles stay unscaled too.
+    fun applyVideoZoom() {
+        val pv = state.playerView ?: return
+        val target = pv.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+            ?: pv.videoSurfaceView
+            ?: return
+        target.scaleX = state.videoZoom
+        target.scaleY = state.videoZoom
+    }
+    LaunchedEffect(state.videoZoom) { applyVideoZoom() }
     Box(tvKeys.fillMaxSize().background(Color.Black)
         .then(if (isTv) Modifier.onFocusChanged { state.rootHasFocus = it.hasFocus } else Modifier)
         .then(tvContainerModifier)) {
@@ -3645,13 +3663,11 @@ fun PlayerScreen(
                         attachSdhCueFilter(player, sv)
                     }
                     applySubtitleStyle(pv)
+                    applyVideoZoom()
                 },
-                // Pinch zoom (Nuvio setVideoZoom): scales the whole
-                // PlayerView surface 0.8–2.0x.
-                modifier = Modifier.fillMaxSize().graphicsLayer {
-                    scaleX = state.videoZoom
-                    scaleY = state.videoZoom
-                }
+                // Pinch zoom is applied by applyVideoZoom() (View scale on
+                // the content frame) — not a graphicsLayer on this view.
+                modifier = Modifier.fillMaxSize()
             )
         }
 
