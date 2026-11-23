@@ -46,7 +46,7 @@ import com.pulsestream.app.ui.theme.LocalPalette
  */
 
 private val LiquidGlassBarEdgeBrush = Brush.verticalGradient(
-    listOf(Color.White.copy(alpha = 0.27f), Color.White.copy(alpha = 0.02f)),
+    listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.05f)),
 )
 
 /**
@@ -171,7 +171,7 @@ fun LiquidGlassFrostedBar(
                 onDrawFront = {
                     // Keep the rim in this rendered child so the backdrop
                     // source captures the complete visible glass surface.
-                    val width = 0.75.dp.toPx()
+                    val width = 1.dp.toPx()
                     val cornerRadius = size.minDimension * (cornerRadiusPercent / 100f)
                     drawRoundRect(
                         brush = LiquidGlassBarEdgeBrush,

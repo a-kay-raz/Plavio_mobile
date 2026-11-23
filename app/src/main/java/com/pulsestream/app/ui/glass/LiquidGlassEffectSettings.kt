@@ -76,12 +76,12 @@ object LiquidGlassEffectDefaults {
     // chromatic fringing + depth on: the glass reads clearly.
     val floatingBar = LiquidGlassEffectSettings(
         cornerRadiusPercent = 50f,
-        blurRadiusDp = 20f,
+        blurRadiusDp = 28f,
         refractionHeightDp = 32f,
         refractionAmountDp = 32f,
         chromaticAberration = true,
         depthEffect = true,
-        tintOpacity = 0.25f,
+        tintOpacity = 0.10f,
     )
     val selectionLens = LiquidGlassEffectSettings(
         cornerRadiusPercent = 50f,
