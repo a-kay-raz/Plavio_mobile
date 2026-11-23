@@ -484,9 +484,22 @@ fun PlayerScreen(
                 // (state.downmixOn mirrors downmixConfig.enabled; the config
                 // itself is declared after this listener, so it cannot be
                 // referenced here.)
+                //
+                // Also covers an AUDIO decoder init failure (4001): the
+                // FFmpeg renderer rejects a multichannel format outright
+                // (format_supported=NO_UNSUPPORTED_TYPE, e.g. Dolby
+                // Digital Plus 5.1) when the AudioSink cannot take 6ch —
+                // the sink only accepts 6ch once downmix is on, so the
+                // renderer never even reaches the AudioTrack failure
+                // above. The message names the audio renderer
+                // (FfmpegAudioRenderer / MediaCodecAudioRenderer), which
+                // separates it from a VIDEO decoder failure (4K the phone
+                // cannot decode) — downmix must not fire for video.
                 val isAudioOutputError = error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
-                if (isAudioOutputError && !state.downmixOn && !state.downmixFailoverAttempted) {
+                val isAudioDecoderError = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED &&
+                    (error.message?.contains("AudioRenderer") == true)
+                if ((isAudioOutputError || isAudioDecoderError) && !state.downmixOn && !state.downmixFailoverAttempted) {
                     state.downmixFailoverAttempted = true
                     state.retryWithDownmix?.invoke()
                     return
