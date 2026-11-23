@@ -341,12 +341,14 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     }
 
     /**
-     * Shuffle sheet Play: select the episode and auto-play its best stream
-     * once loaded (the pending-play path fires when the new streams arrive).
+     * Play an episode at once (Nuvio onEpisodePlayClick): select it and
+     * auto-play its best stream once loaded (the pending-play path fires
+     * when the new streams arrive). Saved progress resumes unless the
+     * episode is already watched — a completed episode restarts from 0.
      */
-    fun playEpisode(video: Video) {
+    fun playEpisode(video: Video, fromStart: Boolean = false) {
         pendingAutoPlay = true
-        playFromStartRequest = false
+        playFromStartRequest = fromStart
         selectEpisode(video)
     }
 
@@ -2081,7 +2083,7 @@ private fun DetailContent(
                         runtime = enrichedRuntime,
                         progress = episodeProgress(video),
                         tmdbRating = enrichedRating,
-                        onClick = { vm.selectEpisode(video) },
+                        onClick = { vm.playEpisode(video, fromStart = isWatched) },
                         onLongClick = { episodeActionVideo = video },
                         onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                         onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) },
@@ -2127,7 +2129,7 @@ private fun DetailContent(
                                 runtime = enrichedRuntime,
                                 progress = episodeProgress(video),
                                 tmdbRating = enrichedRating,
-                                onClick = { vm.selectEpisode(video) },
+                                onClick = { vm.playEpisode(video, fromStart = isWatched) },
                                 onLongClick = { episodeActionVideo = video },
                                 onReveal = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, true) },
                                 onHide = { revealedEpisodeIds = browsingPrivacy.setEpisodeRevealed(episodeShowKey, video.id, false) }
