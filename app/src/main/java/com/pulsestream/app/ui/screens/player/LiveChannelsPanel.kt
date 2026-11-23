@@ -41,6 +41,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.pulsestream.app.data.TvChannelRef
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
+import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
@@ -88,9 +90,18 @@ fun LiveChannelsPanel(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(),
-        containerColor = Color(0xFF14141F)
+        containerColor = Color.Transparent
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .ambientLiquidGlass(
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                    fallback = Color(0xFF14141F),
+                )
+        ) {
             Text(
                 "Channels",
                 style = MaterialTheme.typography.titleLarge,

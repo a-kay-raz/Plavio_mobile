@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -51,6 +52,8 @@ import com.pulsestream.app.ui.components.pinnedStreamSourceKey
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
 import com.pulsestream.app.ui.components.streamListItems
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
+import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
@@ -222,8 +225,17 @@ internal fun PlayerSourcesContent(
             onDismissRequest = { pinSheetOpen = false },
             sheetState = pinSheetState,
             dragHandle = null,
-            containerColor = Color(0xFF14141F)
+            containerColor = Color.Transparent
         ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .ambientLiquidGlass(
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                        tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                        fallback = Color(0xFF14141F),
+                    )
+            ) {
             Text(
                 text = "Pin sources",
                 style = MaterialTheme.typography.titleMedium,
@@ -238,7 +250,7 @@ internal fun PlayerSourcesContent(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
             )
             LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                 contentPadding = PaddingValues(bottom = 32.dp)
             ) {
                 items(pinSources, key = { it.first }) { (key, label, count) ->
@@ -267,6 +279,7 @@ internal fun PlayerSourcesContent(
                         }
                     }
                 }
+            }
             }
         }
     }

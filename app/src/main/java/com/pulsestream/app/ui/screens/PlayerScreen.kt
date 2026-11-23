@@ -4803,10 +4803,16 @@ fun PlayerScreen(
             ModalBottomSheet(
                 onDismissRequest = { state.chaptersOpen = false },
                 sheetState = rememberModalBottomSheetState(),
-                containerColor = Color(0xFF14141F)
+                containerColor = Color.Transparent
             ) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = Color(0xFF14141F),
+                        ),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
                 ) {
                     item {
@@ -4890,10 +4896,16 @@ fun PlayerScreen(
                 ModalBottomSheet(
                     onDismissRequest = { state.tracksOpen = false },
                     sheetState = rememberModalBottomSheetState(),
-                    containerColor = Color(0xFF14141F)
+                    containerColor = Color.Transparent
                 ) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .ambientLiquidGlass(
+                                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                                fallback = Color(0xFF14141F),
+                            ),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
                     ) {
                         item {
@@ -5706,10 +5718,16 @@ fun PlayerScreen(
             ModalBottomSheet(
                 onDismissRequest = { state.subSearchOpen = false },
                 sheetState = rememberModalBottomSheetState(),
-                containerColor = Color(0xFF14141F)
+                containerColor = Color.Transparent
             ) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = Color(0xFF14141F),
+                        ),
                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)
                 ) {
                     item {
@@ -5776,7 +5794,7 @@ fun PlayerScreen(
                 onDismissRequest = { state.sourcesOpen = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 dragHandle = null,
-                containerColor = Color(0xFF14141F)
+                containerColor = Color.Transparent
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = state.currentRequest.title,
@@ -5787,7 +5805,14 @@ fun PlayerScreen(
                     onDownload = { state.downloadStream = it },
                     onRetry = { refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId) },
                     onClose = { state.sourcesOpen = false },
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.9f)
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = Color(0xFF14141F),
+                        ),
                     settings = repository.settings,
                     poster = state.currentRequest.poster,
                     isEpisode = state.currentRequest.type != "movie"
@@ -5804,10 +5829,16 @@ fun PlayerScreen(
                 onDismissRequest = { state.qualityOpen = false },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 dragHandle = null,
-                containerColor = Color(0xFF14141F)
+                containerColor = Color.Transparent
             ) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = Color(0xFF14141F),
+                        ),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
                 ) {
                     item {
@@ -5946,9 +5977,17 @@ fun PlayerScreen(
             ModalBottomSheet(
                 onDismissRequest = { state.episodesOpen = false },
                 sheetState = rememberModalBottomSheetState(),
-                containerColor = Color(0xFF14141F)
+                containerColor = Color.Transparent
             ) {
-                Column(Modifier.tvSheetFocus()) {
+                Column(
+                    Modifier
+                        .tvSheetFocus()
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = Color(0xFF14141F),
+                        )
+                ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Row(
                         Modifier.fillMaxWidth().padding(bottom = 12.dp),
@@ -6109,7 +6148,7 @@ fun PlayerScreen(
                 onDismissRequest = { state.episodeStreamsVideo = null },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 dragHandle = null,
-                containerColor = Color(0xFF14141F)
+                containerColor = Color.Transparent
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = "S${video.season}E${video.episode} · ${video.title}",
@@ -6122,7 +6161,14 @@ fun PlayerScreen(
                     onDownload = { state.downloadStream = it },
                     onRetry = { state.episodeStreamsTick++ },
                     onClose = { state.episodeStreamsVideo = null },
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.9f)
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                            fallback = Color(0xFF14141F),
+                        ),
                     settings = repository.settings,
                     poster = video.thumbnail ?: state.currentRequest.poster,
                     isEpisode = true
