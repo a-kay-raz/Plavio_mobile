@@ -4579,18 +4579,20 @@ fun PlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                             // Step 63: pill buttons follow the user's toolbar
-                            // layout (order + visibility) — each button keeps
-                            // its own availability gate.
+                            // layout (order + visibility) — the layout toggle
+                            // is the ONLY hide rule. A button with nothing
+                            // to do right now (no chapters, no next episode,
+                            // movie, not live, PiP off) still shows, greyed
+                            // out, instead of vanishing from the pill.
                             bottomButtonLayout.visibleButtons.forEach { button ->
                                 when (button) {
                                     com.pulsestream.app.data.PlayerBottomButton.PIP -> {
-                                        if (settings.pipEnabled) {
-                                            PillBarButton(
-                                                icon = Icons.Filled.PictureInPicture,
-                                                label = "PiP",
-                                                onClick = { enterPip() }
-                                            )
-                                        }
+                                        PillBarButton(
+                                            icon = Icons.Filled.PictureInPicture,
+                                            label = "PiP",
+                                            onClick = { enterPip() },
+                                            enabled = settings.pipEnabled
+                                        )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.QUALITY -> {
                                         PillBarButton(
@@ -4622,30 +4624,29 @@ fun PlayerScreen(
                                         )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.CHAPTERS -> {
-                                        if (state.chapters.isNotEmpty()) {
-                                            PillBarButton(
-                                                icon = Icons.Filled.List,
-                                                label = "Chapters",
-                                                onClick = { state.chaptersOpen = true }
-                                            )
-                                        }
+                                        PillBarButton(
+                                            icon = Icons.Filled.List,
+                                            label = "Chapters",
+                                            onClick = { state.chaptersOpen = true },
+                                            enabled = state.chapters.isNotEmpty()
+                                        )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.NEXT_EPISODE -> {
                                         val next = pillNextEpisode
-                                        if (next != null) {
-                                            PillBarButton(
-                                                icon = Icons.Filled.SkipNext,
-                                                label = "Next episode",
-                                                onClick = {
-                                                    // Cancel the auto-advance countdown so it
-                                                    // doesn't re-play the same episode after
-                                                    // the manual tap.
-                                                    state.nextEpisodeCard = null
-                                                    state.nextEpisodeCountdown = null
-                                                    playEpisode(next)
-                                                }
-                                            )
-                                        }
+                                        PillBarButton(
+                                            icon = Icons.Filled.SkipNext,
+                                            label = "Next episode",
+                                            onClick = {
+                                                val episode = next ?: return@PillBarButton
+                                                // Cancel the auto-advance countdown so it
+                                                // doesn't re-play the same episode after
+                                                // the manual tap.
+                                                state.nextEpisodeCard = null
+                                                state.nextEpisodeCountdown = null
+                                                playEpisode(episode)
+                                            },
+                                            enabled = next != null
+                                        )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.RESIZE -> {
                                         PillBarButton(
@@ -4672,22 +4673,20 @@ fun PlayerScreen(
                                         )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.EPISODES -> {
-                                        if (!req.isMovie && req.episodes.isNotEmpty()) {
-                                            PillBarButton(
-                                                icon = Icons.Filled.VideoLibrary,
-                                                label = "Episodes",
-                                                onClick = { state.episodesOpen = true }
-                                            )
-                                        }
+                                        PillBarButton(
+                                            icon = Icons.Filled.VideoLibrary,
+                                            label = "Episodes",
+                                            onClick = { state.episodesOpen = true },
+                                            enabled = !req.isMovie && req.episodes.isNotEmpty()
+                                        )
                                     }
                                     com.pulsestream.app.data.PlayerBottomButton.LIVE_CHANNELS -> {
-                                        if (state.currentRequest.isLive && canZap()) {
-                                            PillBarButton(
-                                                icon = Icons.Filled.Tv,
-                                                label = "Channels",
-                                                onClick = { state.channelsOpen = true }
-                                            )
-                                        }
+                                        PillBarButton(
+                                            icon = Icons.Filled.Tv,
+                                            label = "Channels",
+                                            onClick = { state.channelsOpen = true },
+                                            enabled = state.currentRequest.isLive && canZap()
+                                        )
                                     }
                                 }
                             }
