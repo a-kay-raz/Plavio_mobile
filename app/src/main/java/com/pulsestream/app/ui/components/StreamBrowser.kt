@@ -1016,7 +1016,7 @@ private fun SmartChip(
             .clickable(role = Role.RadioButton) { onClick() }
             .semantics { this.selected = selected }
             .tvFocusRing(RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 11.dp, vertical = 6.dp)
     ) {
         Text(
             text = label,
@@ -1043,8 +1043,8 @@ private fun SmartFilterGroup(
         modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
     )
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         options.forEach { option ->
             SmartChip(
@@ -1089,19 +1089,23 @@ fun SmartStreamSheet(
 
     // Original flat bottom sheet (user 2026-11-23): back to the Step 42
     // Material3 ModalBottomSheet, not the Nuvio glass PlayerOverlayPanel.
-    // The options inside stay exactly as they are.
+    // The options inside stay exactly as they are. Background + padding
+    // match the Detail sources panel (user 2026-11-23): palette
+    // background (#0D0D0D on Onyx) instead of the navy #14141F, 16dp
+    // sides like its labels, chips at the compact 11dp word padding.
+    val palette = LocalPalette.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         dragHandle = null,
-        containerColor = Color(0xFF14141F)
+        containerColor = palette.background
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1162,8 +1166,8 @@ fun SmartStreamSheet(
                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 listOf(
                     "best" to SmartSortMode.BEST_MATCH.label,
@@ -1188,8 +1192,8 @@ fun SmartStreamSheet(
                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 listOf("auto" to "Auto", "1080" to "1080p", "4k" to "4K").forEach { (value, label) ->
                     SmartChip(
@@ -1274,8 +1278,8 @@ fun SmartStreamSheet(
                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 listOf(0 to "No limit", 2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB")
                     .forEach { (value, label) ->
