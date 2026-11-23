@@ -1,8 +1,6 @@
 package com.pulsestream.app.ui.screens.player
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -46,7 +42,6 @@ import com.pulsestream.app.ui.components.AddonTabs
 import com.pulsestream.app.ui.components.QualityPills
 import com.pulsestream.app.ui.components.SmartStreamSheet
 import com.pulsestream.app.ui.components.pinnedStreamSourceKey
-import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
 import com.pulsestream.app.ui.components.streamListItems
 import com.pulsestream.app.ui.theme.TextPrimary
@@ -70,7 +65,6 @@ internal fun PlayerSourcesContent(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     settings: SettingsStore? = null,
-    poster: String? = null,
     isEpisode: Boolean = false
 ) {
     val browser = rememberStreamBrowserState(streams, settings, limitPerSource = false, isEpisode = isEpisode)
@@ -101,108 +95,82 @@ internal fun PlayerSourcesContent(
                     .thenByDescending { it.third }
             )
     }
-    LazyColumn(
-        modifier = modifier.fillMaxWidth().testTag("player-source-list"),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+    // Nuvio PlayerSourcesPanel layout: fixed header + content label +
+    // provider filter on top, the stream list scrolls below (weight 1f).
+    // No banner — Nuvio's Sources panel has no artwork header.
+    Column(
+        modifier = modifier.fillMaxSize().padding(24.dp)
     ) {
-        item {
-            // Full-width banner: artwork with a gradient into the sheet colour,
-            // title + source count at the bottom, close button top-right.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-            ) {
-                SafePosterImage(
-                    model = poster,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color(0xFF14141F).copy(alpha = 0.7f),
-                                    Color(0xFF14141F)
-                                )
-                            )
-                        )
-                )
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "${streams.size} sources available",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp)
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close sources", tint = TextPrimary)
-                }
-            }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Sources",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                maxLines = 1,
+                modifier = Modifier.weight(1f).padding(end = 12.dp)
+            )
+            PlayerDialogCloseButton(onClick = onClose)
         }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(16.dp))
         if (streams.isNotEmpty()) {
-            item { AddonTabs(browser) }
-            item { QualityPills(browser) }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("${browser.filtered.size} sources", style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary)
-                    Spacer(Modifier.weight(1f))
-                    if (store != null) {
-                        TextButton(onClick = { smartSheetOpen = true }) {
-                            Text(if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart")
-                        }
-                    }
-                    TextButton(onClick = { pinSheetOpen = true }) {
-                        Icon(Icons.Filled.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Pin sources")
+            AddonTabs(browser)
+            Spacer(Modifier.height(16.dp))
+            QualityPills(browser)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("${browser.filtered.size} sources", style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary)
+                Spacer(Modifier.weight(1f))
+                if (store != null) {
+                    TextButton(onClick = { smartSheetOpen = true }) {
+                        Text(if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart")
                     }
                 }
+                TextButton(onClick = { pinSheetOpen = true }) {
+                    Icon(Icons.Filled.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Pin sources")
+                }
             }
-            if (browser.filtered.isEmpty()) item {
-                Text("No sources match these filters.", color = TextSecondary, modifier = Modifier.padding(16.dp))
+            Spacer(Modifier.height(16.dp))
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f).testTag("player-source-list"),
+                contentPadding = PaddingValues(start = 8.dp, top = 14.dp, end = 8.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (browser.filtered.isEmpty()) item {
+                    Text("No sources match these filters.", color = TextSecondary, modifier = Modifier.padding(16.dp))
+                }
+                streamListItems(streams = browser.filtered, onPick = onPick, selectedUrl = selectedUrl,
+                    // Step 35: hide the download button when the setting is off.
+                    onDownload = if (settings?.showDownloadButton != false) onDownload else null, compact = true,
+                    // Step 44: debrid name/description templates rename debrid rows.
+                    settings = settings)
             }
-            streamListItems(streams = browser.filtered, onPick = onPick, selectedUrl = selectedUrl,
-                // Step 35: hide the download button when the setting is off.
-                onDownload = if (settings?.showDownloadButton != false) onDownload else null, compact = true,
-                // Step 44: debrid name/description templates rename debrid rows.
-                settings = settings)
         } else {
-            item {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (loading) {
-                        OrbitDots(modifier = Modifier.size(26.dp))
-                    } else {
-                        Text("No sources loaded for this title.", color = TextSecondary)
-                    }
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (loading) {
+                    OrbitDots(modifier = Modifier.size(26.dp))
+                } else {
+                    Text("No sources loaded for this title.", color = TextSecondary)
                 }
             }
-            if (!loading) item { TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Load sources") } }
+            if (!loading) TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Load sources") }
         }
     }
     if (smartSheetOpen && store != null) {

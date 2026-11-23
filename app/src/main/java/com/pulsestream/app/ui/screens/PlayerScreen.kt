@@ -94,7 +94,6 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material3.AlertDialog
 import com.pulsestream.app.ui.components.OrbitDots
 import com.pulsestream.app.ui.components.CustomPosterScreen
 import com.pulsestream.app.ui.components.PosterCard
@@ -4012,10 +4011,20 @@ fun PlayerScreen(
             ) {
                 Column(
                     Modifier
-                        .widthIn(max = 320.dp)
+                        .widthIn(max = 292.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        // Nuvio NextEpisodeCard glass: tint #191919 0.64,
+                        // fallback #191919 0.89, blur 20dp, refraction
+                        // 10/14dp, 1dp White 0.12 border — not flat dark.
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(16.dp),
+                            tint = Color(0xFF191919).copy(alpha = 0.64f),
+                            fallback = Color(0xFF191919).copy(alpha = 0.89f),
+                            blurRadius = 20.dp,
+                            refractionHeight = 10.dp,
+                            refractionAmount = 14.dp,
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4084,8 +4093,19 @@ fun PlayerScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        // Nuvio MovieRecommendationCard glass: same recipe
+                        // as the next-episode card (tint #191919 0.64,
+                        // fallback 0.89, blur 20dp, refraction 10/14dp,
+                        // 1dp White 0.12 border) — not flat dark.
+                        .ambientLiquidGlass(
+                            shape = RoundedCornerShape(16.dp),
+                            tint = Color(0xFF191919).copy(alpha = 0.64f),
+                            fallback = Color(0xFF191919).copy(alpha = 0.89f),
+                            blurRadius = 20.dp,
+                            refractionHeight = 10.dp,
+                            refractionAmount = 14.dp,
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4779,51 +4799,62 @@ fun PlayerScreen(
         // may not be able to play it. "Don't show again" persists.
         state.externalWarningReq?.let { warnReq ->
             val warnCtx = activity
-            AlertDialog(
-                onDismissRequest = { state.externalWarningReq = null },
-                title = { Text("Protected link") },
-                text = {
-                    Column {
-                        Text(
-                            "This source uses protected headers, which stay in Avio — " +
-                                "the other app may not be able to play this link.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
+            // Nuvio-style centered glass dialog (PlayerCenteredDialog) —
+            // not a flat Material3 AlertDialog.
+            com.pulsestream.app.ui.screens.player.PlayerCenteredDialog(
+                onDismiss = { state.externalWarningReq = null }
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Protected link",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Text(
+                        "This source uses protected headers, which stay in Avio — " +
+                            "the other app may not be able to play this link.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { state.externalWarningHide = !state.externalWarningHide }
+                    ) {
+                        Checkbox(
+                            checked = state.externalWarningHide,
+                            onCheckedChange = { state.externalWarningHide = it }
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { state.externalWarningHide = !state.externalWarningHide }
-                        ) {
-                            Checkbox(
-                                checked = state.externalWarningHide,
-                                onCheckedChange = { state.externalWarningHide = it }
-                            )
-                            Text(
-                                "Don't show again",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
-                            )
-                        }
+                        Text(
+                            "Don't show again",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary
+                        )
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (state.externalWarningHide && warnCtx != null) {
-                            ExternalPlayer.setWarningSuppressed(warnCtx, true)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { state.externalWarningReq = null }) {
+                            Text("Cancel", color = TextSecondary)
                         }
-                        state.externalWarningReq = null
-                        if (warnCtx != null) launchExternalPlayer(warnCtx, warnReq)
-                    }) {
-                        Text("Open anyway", color = LocalPalette.current.accent)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { state.externalWarningReq = null }) {
-                        Text("Cancel", color = TextSecondary)
+                        TextButton(onClick = {
+                            if (state.externalWarningHide && warnCtx != null) {
+                                ExternalPlayer.setWarningSuppressed(warnCtx, true)
+                            }
+                            state.externalWarningReq = null
+                            if (warnCtx != null) launchExternalPlayer(warnCtx, warnReq)
+                        }) {
+                            Text("Open anyway", color = LocalPalette.current.accent)
+                        }
                     }
                 }
-            )
+            }
         }
 
         // Resume prompt.
@@ -5206,6 +5237,9 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             // ---- Languages rail (200dp) ----
+                            // Nuvio's rails are bare columns — no card
+                            // background, radius or border; the rows sit
+                            // on the overlay scrim.
                             Column(Modifier.width(200.dp)) {
                                 Text(
                                     "Languages",
@@ -5217,12 +5251,6 @@ fun PlayerScreen(
                                     Modifier
                                         .fillMaxWidth()
                                         .height(railHeight)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                                        .border(
-                                            1.dp, Color.White.copy(alpha = 0.08f),
-                                            RoundedCornerShape(14.dp)
-                                        )
                                         .padding(10.dp)
                                 ) {
                                     LazyColumn(
@@ -5263,12 +5291,6 @@ fun PlayerScreen(
                                     Modifier
                                         .fillMaxWidth()
                                         .height(railHeight)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                                        .border(
-                                            1.dp, Color.White.copy(alpha = 0.08f),
-                                            RoundedCornerShape(14.dp)
-                                        )
                                         .padding(10.dp)
                                 ) {
                                     LazyColumn(
@@ -5415,12 +5437,6 @@ fun PlayerScreen(
                                     Modifier
                                         .fillMaxWidth()
                                         .height(railHeight)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                                        .border(
-                                            1.dp, Color.White.copy(alpha = 0.08f),
-                                            RoundedCornerShape(14.dp)
-                                        )
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                         .verticalScroll(rememberScrollState())
                                 ) {
@@ -5845,10 +5861,14 @@ fun PlayerScreen(
             }
         }
 
-        // In-player Sources (Design I): full-width banner + tabs + cards.
+        // In-player Sources (Nuvio PlayerSourcesPanel): a RIGHT-side
+        // glass panel (520dp, left corners 16dp, tint 0.72, scrim 0.34)
+        // — not a bottom card. Header + provider filter + stream rows
+        // live in PlayerSourcesContent.
         if (state.sourcesOpen) {
-            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
-                onDismiss = { state.sourcesOpen = false }
+            com.pulsestream.app.ui.screens.player.PlayerSidePanel(
+                onDismiss = { state.sourcesOpen = false },
+                widthDp = 520.dp
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = state.currentRequest.title,
@@ -5861,7 +5881,6 @@ fun PlayerScreen(
                     onClose = { state.sourcesOpen = false },
                     modifier = Modifier.fillMaxWidth(),
                     settings = repository.settings,
-                    poster = state.currentRequest.poster,
                     isEpisode = state.currentRequest.type != "movie"
                 )
             }
@@ -6253,10 +6272,12 @@ fun PlayerScreen(
 
         // Per-episode stream choice (Nuvio PlayerEpisodesPanel): the ⋮
         // button on an episode row opens this episode's streams; picking
-        // one plays that episode with that stream.
+        // one plays that episode with that stream. Same right-side panel
+        // as Sources (Nuvio's Episodes "Streams" sub-view).
         state.episodeStreamsVideo?.let { video ->
-            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
-                onDismiss = { state.episodeStreamsVideo = null }
+            com.pulsestream.app.ui.screens.player.PlayerSidePanel(
+                onDismiss = { state.episodeStreamsVideo = null },
+                widthDp = 520.dp
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = "S${video.season}E${video.episode} · ${video.title}",
@@ -6271,7 +6292,6 @@ fun PlayerScreen(
                     onClose = { state.episodeStreamsVideo = null },
                     modifier = Modifier.fillMaxWidth(),
                     settings = repository.settings,
-                    poster = video.thumbnail ?: state.currentRequest.poster,
                     isEpisode = true
                 )
             }

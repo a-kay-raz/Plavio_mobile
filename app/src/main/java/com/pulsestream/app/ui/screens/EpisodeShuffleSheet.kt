@@ -8,16 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,11 +52,10 @@ fun EpisodeShuffleSheet(
 ) {
     var includeWatchedState by remember { mutableStateOf(includeWatched) }
     var preview by remember { mutableStateOf(picker.pick(includeWatched)) }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = LocalPalette.current.background,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
+    // Nuvio-style bottom glass panel (PlayerOverlayPanel) — not a flat
+    // Material3 ModalBottomSheet.
+    com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+        onDismiss = onDismiss
     ) {
         Column(
             Modifier

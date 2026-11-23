@@ -2,14 +2,18 @@ package com.pulsestream.app.ui.screens.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,36 +40,37 @@ internal fun ResumePromptDialog(
     onResume: () -> Unit,
     onStartOver: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = {
-            // Tapping outside keeps their place and resumes.
-            onResume()
-        },
-        containerColor = Color(0xFF14141F),
-        title = {
+    // Nuvio-style centered glass dialog (PlayerCenteredDialog) — not a
+    // flat Material3 AlertDialog.
+    PlayerCenteredDialog(onDismiss = onResume) {
+        Column(
+            Modifier.fillMaxWidth().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(
                 "Resume playback",
                 color = TextPrimary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge
             )
-        },
-        text = {
             Text(
-                "Resume \"${title}\" from ${formatMs(savedMs)}?",
+                "Resume \"$title\" from ${formatMs(savedMs)}?",
                 color = TextSecondary
             )
-        },
-        confirmButton = {
-            TextButton(onClick = onResume) {
-                Text("Resume", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onStartOver) {
-                Text("Start over", color = TextSecondary)
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onStartOver) {
+                    Text("Start over", color = TextSecondary)
+                }
+                TextButton(onClick = onResume) {
+                    Text("Resume", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+                }
             }
         }
-    )
+    }
 }
 
 /** Speed pill + popup menu for the bottom toolbar — Nuvio legacy

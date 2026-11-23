@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,6 +55,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -65,9 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
 import com.pulsestream.app.data.SettingsStore
@@ -79,6 +79,7 @@ import com.pulsestream.app.data.debridFormattedName
 import com.pulsestream.app.data.hasDebridPreferredTag
 import com.pulsestream.app.data.matchesDebridStreamPrefs
 import com.pulsestream.app.data.StreamItem
+import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.theme.AppPalette
 import com.pulsestream.app.ui.theme.GlassBorder
 import com.pulsestream.app.ui.theme.LocalPalette
@@ -551,29 +552,41 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
     ) {
         items(tabs, key = { it.key }) { tab ->
             val selected = tab.key == state.selectedTab
+            // Nuvio AddonFilterChip (compact = player Sources): 20dp
+            // radius, selected = accent fill + onAccent text, unselected
+            // = surfaceCard #222222 + 1dp #252A2A border, h16/v10.
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(if (compact) 20.dp else 50))
                     .background(
                         if (selected && compact) palette.accent
                         else if (selected) palette.accent.copy(alpha = 0.22f)
+                        else if (compact) Color(0xFF222222)
                         else Color.White.copy(alpha = 0.06f)
                     )
                     .border(
                         1.dp,
-                        if (selected) palette.accent else GlassBorder,
-                        RoundedCornerShape(50)
+                        if (selected) palette.accent
+                        else if (compact) Color(0xFF252A2A)
+                        else GlassBorder,
+                        RoundedCornerShape(if (compact) 20.dp else 50)
                     )
                     .clickable(role = Role.Tab) { state.onSelectTab(tab.key) }
                     .semantics { this.selected = selected }
-                    .tvFocusRing(RoundedCornerShape(50))
-                    .padding(horizontal = if (compact) 11.dp else 14.dp, vertical = if (compact) 6.dp else 8.dp)
+                    .tvFocusRing(RoundedCornerShape(if (compact) 20.dp else 50))
+                    .padding(
+                        horizontal = if (compact) 16.dp else 14.dp,
+                        vertical = if (compact) 10.dp else 8.dp
+                    )
             ) {
                 Text(
                     text = if (compact) tab.label else "${tab.label} • ${tab.count}",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (selected && compact) Color.Black else if (selected) TextPrimary else TextSecondary,
+                    style = if (compact) MaterialTheme.typography.labelLarge
+                        else MaterialTheme.typography.labelMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected && compact) {
+                        if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
+                    } else if (selected) TextPrimary else TextSecondary,
                     maxLines = 1
                 )
             }
@@ -798,23 +811,39 @@ private fun CompactStreamCard(
     description: String? = null
 ) {
     val palette = LocalPalette.current
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(12.dp)
     val unresolvedTorrent = stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)
+    // Nuvio StreamCard: glass row (blur 18, static backdrop), min height
+    // 68dp, 12dp radius, 14dp padding. Selected = accent-tinted glass +
+    // 1dp accent 0.52 border; unselected = white 0.05 glass, no border.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 3.dp)
-            .border(1.dp, if (selected) palette.accent else GlassBorder, shape)
-            .background(Color.White.copy(alpha = 0.025f), shape)
+            .heightIn(min = 68.dp)
+            .clip(shape)
+            .ambientLiquidGlass(
+                shape = shape,
+                tint = if (selected) palette.accent.copy(alpha = 0.12f)
+                    else Color.White.copy(alpha = 0.05f),
+                fallback = if (selected) palette.accent.copy(alpha = 0.12f)
+                    else Color.White.copy(alpha = 0.05f),
+                blurRadius = 18.dp,
+                staticFromBackdrop = true,
+            )
+            .then(
+                if (selected) Modifier.border(
+                    1.dp, palette.accent.copy(alpha = 0.52f), shape
+                ) else Modifier
+            )
             .semantics { this.selected = selected }
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f).clickable(enabled = !unresolvedTorrent, onClick = onClick).tvFocusRing(shape)) {
             Text(
                 text = headline ?: display.headline,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 lineHeight = 19.sp
             )
@@ -845,16 +874,23 @@ private fun CompactStreamCard(
                     }
                 }
             }
-            // The "Playing" state stays as PLAIN TEXT only — no chip
-            // background/border, no decoration on stream rows.
+            // Nuvio CurrentStreamBadge: a 999dp pill (accent fill, onAccent
+            // 11sp SemiBold text) — not plain text.
             if (selected) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Playing",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = palette.accent
-                )
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(palette.accent)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Playing",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
+                    )
+                }
             }
         }
         if (onDownload != null) {
@@ -1030,18 +1066,15 @@ fun SmartStreamSheet(
     val shownCount = remember(streams, tick) {
         streams.count { SmartStreamRanking.matches(SmartStreamQuality.cached(it), smart.filters) }
     }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     fun bump() {
         tick++
         onChanged()
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        dragHandle = null,
-        containerColor = Color(0xFF14141F)
+    // Nuvio-style bottom glass panel (PlayerOverlayPanel) — not a flat
+    // Material3 ModalBottomSheet.
+    com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+        onDismiss = onDismiss
     ) {
         Column(
             modifier = Modifier
