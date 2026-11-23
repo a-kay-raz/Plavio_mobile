@@ -132,6 +132,7 @@ fun DownloadsScreen(
                         image = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         onClick = onBack,
+                        modifier = Modifier.padding(start = 12.dp),
                         tint = TextPrimary
                     )
                 },
@@ -141,6 +142,7 @@ fun DownloadsScreen(
                         image = Icons.Filled.Settings,
                         contentDescription = "Download settings",
                         onClick = onGoToDownloadSettings,
+                        modifier = Modifier.padding(end = 12.dp),
                         tint = TextPrimary
                     )
                 }
@@ -168,7 +170,7 @@ fun DownloadsScreen(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 24.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
                         Icon(
                             Icons.Filled.CloudDownload,
