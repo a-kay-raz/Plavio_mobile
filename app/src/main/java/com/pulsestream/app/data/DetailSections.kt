@@ -94,7 +94,13 @@ fun DetailSectionSettings.scrollIndexFor(
 
 fun defaultDetailSections(): DetailSectionSettings =
     DetailSectionSettings(
-        order = DetailSectionKey.entries.map { DetailSectionPref(it, true) },
+        // Trakt Comments is OFF by default (owner's order, 2026-11-23):
+        // the comments rail fetches + renders on every detail page, and
+        // he wants it opt-in. The toggle stays in the Detail sections
+        // screen, so turning it back on is one tap and persists.
+        order = DetailSectionKey.entries.map {
+            DetailSectionPref(it, it != DetailSectionKey.COMMENTS)
+        },
         tabLayout = false
     )
 
@@ -116,9 +122,10 @@ fun loadDetailSections(raw: String?): DetailSectionSettings {
                 order += DetailSectionPref(key, obj.optBoolean("enabled", true))
             }
         }
-        // Keys missing from storage (new sections) append enabled, in default order.
+        // Keys missing from storage (new sections) append with their
+        // default enabled flag — Comments defaults OFF, the rest ON.
         DetailSectionKey.entries.forEach { key ->
-            if (key !in seen) order += DetailSectionPref(key, true)
+            if (key !in seen) order += DetailSectionPref(key, key != DetailSectionKey.COMMENTS)
         }
         DetailSectionSettings(order, root.optBoolean("tabLayout", false))
     }.getOrDefault(fallback)

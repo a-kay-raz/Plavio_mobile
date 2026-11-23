@@ -1098,18 +1098,24 @@ private fun DetailContent(
         }
     }
     // Trakt comments (Step 33): most-liked first, API key only — no login
-    // needed. A failed fetch hides the section entirely.
+    // needed. A failed fetch hides the section entirely. The fetch is
+    // skipped entirely while the Comments section is disabled (it is
+    // OFF by default) so detail pages make no Trakt comments call.
+    // (detailSections is hoisted here so the fetch gate and the section
+    // rendering below share one load.)
+    val detailSections = loadDetailSections(settings.detailSectionsJson)
+    val commentsEnabled = detailSections.isEnabled(DetailSectionKey.COMMENTS)
     var traktComments by remember(meta.id) { mutableStateOf<TraktApi.TraktCommentsPage?>(null) }
     var traktCommentsPage by remember(meta.id) { mutableStateOf(1) }
     var traktCommentsLoadingMore by remember { mutableStateOf(false) }
     var commentsExpanded by remember { mutableStateOf(false) }
-    LaunchedEffect(meta.id) {
+    LaunchedEffect(meta.id, commentsEnabled) {
         traktComments = null
         traktCommentsPage = 1
         traktCommentsLoadingMore = false
         commentsExpanded = false
         val imdbId = meta.id.substringBefore(":").takeIf { it.startsWith("tt") }
-        if (imdbId != null) {
+        if (commentsEnabled && imdbId != null) {
             traktComments = runCatching {
                 TraktApi().getComments(meta.type, imdbId, 1)
             }.getOrNull()
@@ -1157,7 +1163,6 @@ private fun DetailContent(
     // TMDB Networks module: the Show Details Network tile reads the
     // TMDB network when the meta addon serves none.
     val detailTiles = buildDetailTiles(meta.copy(network = effectiveNetwork))
-    val detailSections = loadDetailSections(settings.detailSectionsJson)
     val detailAvailability = DetailSectionAvailability(
         hasOverview = !meta.description.isNullOrBlank(),
         hasTrailers = effectiveTrailers.isNotEmpty(),
