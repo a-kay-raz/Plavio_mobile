@@ -1290,7 +1290,7 @@ private fun M3uImportDialog(
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
         title = { Text("Import M3U playlist", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {

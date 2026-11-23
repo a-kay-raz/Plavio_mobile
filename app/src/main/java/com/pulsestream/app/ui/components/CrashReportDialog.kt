@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.pulsestream.app.ui.theme.LocalPalette
 
 /**
  * Shown on launch if the previous run died with an uncaught exception.
@@ -28,6 +29,7 @@ fun CrashReportDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("The app crashed last time") },
         text = {
             Text(

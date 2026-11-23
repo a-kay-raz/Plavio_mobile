@@ -1881,6 +1881,7 @@ private fun PulseNavGraph(
         val warnCtx = activity ?: appContext
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { externalWarnReq = null },
+            containerColor = LocalPalette.current.background,
             title = { androidx.compose.material3.Text("Protected link") },
             text = {
                 androidx.compose.foundation.layout.Column {

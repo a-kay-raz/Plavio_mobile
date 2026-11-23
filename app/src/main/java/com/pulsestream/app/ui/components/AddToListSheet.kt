@@ -69,6 +69,7 @@ fun AddToListSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         sheetState = sheetState
     ) {
         Column(

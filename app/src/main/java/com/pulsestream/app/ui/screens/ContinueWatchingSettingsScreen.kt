@@ -270,6 +270,7 @@ private fun CwOptionsDialog(
     var chosen by remember { mutableStateOf(selected) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title, color = TextPrimary) },
         text = {
             Column {

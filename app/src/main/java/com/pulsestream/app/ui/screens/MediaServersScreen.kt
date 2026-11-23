@@ -218,6 +218,7 @@ fun MediaServersScreen(
     if (removeTarget != null) {
         AlertDialog(
             onDismissRequest = { removeTarget = null },
+            containerColor = LocalPalette.current.background,
             title = { Text("Remove ${removeTarget!!.name}?") },
             text = { Text("Its libraries will stop showing on Home until you add it again.") },
             confirmButton = {
@@ -323,6 +324,7 @@ private fun MediaBrowserSignInDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = LocalPalette.current.background,
         title = { Text("Sign in to ${kind.label}", color = TextPrimary) },
         text = {
             Column(Modifier.fillMaxWidth()) {
@@ -443,6 +445,7 @@ private fun PlexSignInDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = LocalPalette.current.background,
         title = { Text("Sign in to Plex", color = TextPrimary) },
         text = {
             Column(
@@ -595,6 +598,7 @@ private fun SiloSignInDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = LocalPalette.current.background,
         title = { Text("Sign in to Silo", color = TextPrimary) },
         text = {
             Column(

@@ -394,6 +394,7 @@ private fun TrackingSingleSelectDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title) },
         text = {
             LazyColumn {

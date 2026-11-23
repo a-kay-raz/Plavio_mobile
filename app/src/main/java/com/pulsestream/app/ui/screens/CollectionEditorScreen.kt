@@ -60,6 +60,7 @@ import com.pulsestream.app.data.trakt.TraktManager
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
+import com.pulsestream.app.ui.theme.LocalPalette
 import kotlinx.coroutines.launch
 
 /**
@@ -211,6 +212,7 @@ fun CollectionEditorScreen(
         var name by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddFolder = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("New folder") },
             text = {
                 OutlinedTextField(
@@ -349,6 +351,7 @@ private fun FolderEditorCard(
         var name by remember { mutableStateOf(folder.title) }
         AlertDialog(
             onDismissRequest = { renameOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Rename folder") },
             text = {
                 OutlinedTextField(
@@ -377,6 +380,7 @@ private fun FolderEditorCard(
     if (deleteOpen) {
         AlertDialog(
             onDismissRequest = { deleteOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Delete folder?") },
             text = { Text("\"${folder.title}\" and all of its sources will be deleted.") },
             confirmButton = {
@@ -473,6 +477,7 @@ private fun PickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title) },
         text = {
             LazyColumn {
@@ -512,6 +517,7 @@ private fun AddSourceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Add source") },
         text = {
             Column(Modifier.fillMaxWidth()) {

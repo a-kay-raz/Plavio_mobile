@@ -625,6 +625,7 @@ private fun ApiKeyDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title, color = TextPrimary) },
         text = {
             Column {
@@ -836,6 +837,7 @@ private fun ChoiceDialog(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title, color = TextPrimary) },
         text = {
             Column {

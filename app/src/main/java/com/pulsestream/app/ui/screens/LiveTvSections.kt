@@ -361,7 +361,7 @@ fun LiveTvSeriesSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),

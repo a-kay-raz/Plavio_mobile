@@ -783,6 +783,7 @@ fun SkipSecondsDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(if (forward) "Skip forward" else "Skip backward", color = TextPrimary) },
         text = {
             Column {
@@ -847,6 +848,7 @@ fun HoldSpeedDialog(
     var selected by remember { mutableStateOf(settings.holdSpeedValue) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Hold speed", color = TextPrimary) },
         text = {
             Column {
@@ -909,6 +911,7 @@ fun ReuseLinkHoursDialog(
     var selected by remember { mutableStateOf(settings.reuseLastLinkCacheHours) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Last-link cache", color = TextPrimary) },
         text = {
             Column {
@@ -980,6 +983,7 @@ fun HeroTrailerDelayDialog(
     var selected by remember { mutableStateOf(settings.heroTrailerStartDelaySeconds) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Trailer start delay", color = TextPrimary) },
         text = {
             Column {
@@ -1087,6 +1091,7 @@ fun NextEpisodeThresholdDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Next episode", color = TextPrimary) },
         text = {
             Column {
@@ -1182,6 +1187,7 @@ fun AutoSkipDialog(
     var selected by remember { mutableStateOf(settings.autoSkipSegmentTypes) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Auto-skip", color = TextPrimary) },
         text = {
             Column {
@@ -1255,6 +1261,7 @@ fun SkipOffsetDialog(
     var selected by remember { mutableStateOf(settings.skipIntroOffsetSeconds) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Skip offset", color = TextPrimary) },
         text = {
             Column {
@@ -1318,6 +1325,7 @@ fun WatchedThresholdDialog(
     var selected by remember { mutableStateOf(settings.watchedThresholdPercent) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Watched threshold", color = TextPrimary) },
         text = {
             Column {
@@ -1387,6 +1395,7 @@ fun BufferPresetDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Buffer preset", color = TextPrimary) },
         text = {
             Column {
@@ -1467,6 +1476,7 @@ fun DiskCacheDialog(
     var autoSize by remember { mutableStateOf(settings.diskCacheAutoSize) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Disk cache", color = TextPrimary) },
         text = {
             Column {
@@ -1551,6 +1561,7 @@ fun PlayerChoiceDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Preferred player", color = TextPrimary) },
         text = {
             Column {
@@ -1618,6 +1629,7 @@ fun SubtitleLanguagePickerDialog(
     var selected by remember { mutableStateOf(initial.toSet()) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Preferred subtitle languages", color = TextPrimary) },
         text = {
             Column {
@@ -1692,6 +1704,7 @@ fun AudioLanguagePickerDialog(
     var selected by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Preferred audio language", color = TextPrimary) },
         text = {
             Column {
@@ -1787,6 +1800,7 @@ fun SubtitleStyleDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Subtitle appearance", color = TextPrimary) },
         text = {
             Column {
@@ -2043,6 +2057,7 @@ fun BufferFineDialog(
     var backS by remember { mutableStateOf(settings.bufferBackBufferMs / 1000) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Fine-tune buffers", color = TextPrimary) },
         text = {
             Column(
@@ -2132,6 +2147,7 @@ fun SourceFailoverDialog(
     var timeoutS by remember { mutableStateOf(settings.fallbackStartupTimeoutSeconds) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Source failover", color = TextPrimary) },
         text = {
             Column(

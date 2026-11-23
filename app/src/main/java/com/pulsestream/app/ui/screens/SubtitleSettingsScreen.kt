@@ -57,6 +57,7 @@ import com.pulsestream.app.data.subtitleLanguageName
 import com.pulsestream.app.data.subtitleSizeName
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
+import com.pulsestream.app.ui.theme.LocalPalette
 
 /**
  * Settings > Subtitles: preferred subtitle languages (auto-selected in the
@@ -331,6 +332,7 @@ private fun SubtitleFontPickerDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text("Subtitle font") },
         text = {
             Column(

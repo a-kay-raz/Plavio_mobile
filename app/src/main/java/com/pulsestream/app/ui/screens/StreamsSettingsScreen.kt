@@ -579,6 +579,7 @@ private fun SingleSelectDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title, color = TextPrimary) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {

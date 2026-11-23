@@ -1021,6 +1021,7 @@ private fun AddonCard(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Delete ${addon.name}?", color = TextPrimary) },
             text = {
                 Text(
@@ -1193,7 +1194,7 @@ private fun TrackingAddonConsentDialog(
     var accepted by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
         title = { Text("Tracking addon", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
@@ -1248,7 +1249,7 @@ private fun AddAddonDialog(
     var url by remember(initialUrl) { mutableStateOf(initialUrl) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
         title = { Text("Add addon", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
@@ -1317,7 +1318,7 @@ private fun ImportBundleDialog(
     var result by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
         title = { Text("Import addon bundle", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {

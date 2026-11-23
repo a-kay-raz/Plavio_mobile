@@ -253,6 +253,7 @@ fun ListsScreen(
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
+            containerColor = LocalPalette.current.background,
             title = { Text("Delete \"${target.name}\"?", color = TextPrimary) },
             text = {
                 Text(
@@ -392,6 +393,7 @@ private fun ListNameDialog(
     var description by remember { mutableStateOf(initialDescription) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = { Text(title, color = TextPrimary) },
         text = {
             Column {

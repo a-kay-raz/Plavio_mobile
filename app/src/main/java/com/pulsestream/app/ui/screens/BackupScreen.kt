@@ -111,6 +111,7 @@ fun BackupScreen(repository: StreamRepository, onBack: () -> Unit) {
 
     passwordPrompt?.let { purpose ->
         AlertDialog(onDismissRequest = { passwordPrompt = null; busy = false },
+            containerColor = LocalPalette.current.background,
             title = { Text(if (purpose == "export") "Set backup password" else "Unlock backup") },
             text = {
                 Column {
@@ -140,6 +141,7 @@ fun BackupScreen(repository: StreamRepository, onBack: () -> Unit) {
     }
     preview?.let { counts ->
         AlertDialog(onDismissRequest = { preview = null; queuedImport = null },
+            containerColor = LocalPalette.current.background,
             title = { Text("Review backup before restore") },
             text = {
                 Column {

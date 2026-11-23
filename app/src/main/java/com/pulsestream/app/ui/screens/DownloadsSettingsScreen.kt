@@ -48,6 +48,7 @@ import com.pulsestream.app.data.download.DownloadManager
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
+import com.pulsestream.app.ui.theme.LocalPalette
 
 /**
  * Downloads settings (Step 35 — Nuvio DownloadsSettingsRepository +
@@ -237,6 +238,7 @@ fun DownloadsSettingsScreen(
     if (resolutionOpen) {
         AlertDialog(
             onDismissRequest = { resolutionOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Preferred resolution", color = TextPrimary) },
             text = {
                 Column(Modifier.selectableGroup()) {
@@ -274,6 +276,7 @@ fun DownloadsSettingsScreen(
     if (concurrencyOpen) {
         AlertDialog(
             onDismissRequest = { concurrencyOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Simultaneous downloads", color = TextPrimary) },
             text = {
                 Column(Modifier.selectableGroup()) {
@@ -311,6 +314,7 @@ fun DownloadsSettingsScreen(
     if (showsOpen) {
         AlertDialog(
             onDismissRequest = { showsOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Max concurrent shows", color = TextPrimary) },
             text = {
                 Column(Modifier.selectableGroup()) {
@@ -351,6 +355,7 @@ fun DownloadsSettingsScreen(
     if (episodesOpen) {
         AlertDialog(
             onDismissRequest = { episodesOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Max episodes per series", color = TextPrimary) },
             text = {
                 Column(Modifier.selectableGroup()) {

@@ -49,6 +49,7 @@ import com.pulsestream.app.ui.components.EmptyState
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
+import com.pulsestream.app.ui.theme.LocalPalette
 import kotlinx.coroutines.launch
 
 @Composable
@@ -148,6 +149,7 @@ fun ListDetailScreen(
         var description by remember { mutableStateOf(listDescription ?: "") }
         AlertDialog(
             onDismissRequest = { showRename = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Edit list", color = TextPrimary) },
             text = {
                 Column {
@@ -189,6 +191,7 @@ fun ListDetailScreen(
     if (showDelete) {
         AlertDialog(
             onDismissRequest = { showDelete = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Delete \"${listName ?: "list"}\"?", color = TextPrimary) },
             text = {
                 Text(

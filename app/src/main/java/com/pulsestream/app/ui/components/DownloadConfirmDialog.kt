@@ -18,6 +18,7 @@ import com.pulsestream.app.data.download.OfflineShowMetadata
 import com.pulsestream.app.data.pickClosestVariant
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
+import com.pulsestream.app.ui.theme.LocalPalette
 import kotlinx.coroutines.launch
 
 /**
@@ -90,6 +91,7 @@ fun DownloadConfirmDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
         title = {
             Text("Download", fontWeight = FontWeight.Bold, color = TextPrimary)
         },

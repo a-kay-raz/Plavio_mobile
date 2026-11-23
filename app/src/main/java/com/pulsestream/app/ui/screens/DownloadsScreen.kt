@@ -370,6 +370,7 @@ fun DownloadsScreen(
     confirmDelete?.let { item ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
+            containerColor = LocalPalette.current.background,
             title = { Text("Delete download?") },
             text = { Text("\"${item.title}\" will be removed from your device.") },
             confirmButton = {

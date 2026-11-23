@@ -2873,6 +2873,7 @@ private fun DetailContent(
     if (sortOpen) {
         AlertDialog(
             onDismissRequest = { sortOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Sort episodes", color = TextPrimary) },
             text = {
                 Column {

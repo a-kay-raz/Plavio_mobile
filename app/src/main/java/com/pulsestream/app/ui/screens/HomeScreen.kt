@@ -1050,6 +1050,7 @@ fun HomeScreen(
         } else null
         ModalBottomSheet(
             onDismissRequest = { cwLongPressTarget = null },
+            containerColor = LocalPalette.current.background,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             Column(
@@ -1182,6 +1183,7 @@ fun HomeScreen(
         val remainingMs = promptItem.durationMs - promptItem.positionMs
         AlertDialog(
             onDismissRequest = { resumePromptOpen = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("Continue watching?", color = TextPrimary) },
             text = {
                 Column {

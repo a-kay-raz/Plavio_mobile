@@ -570,7 +570,7 @@ private fun AddEpgSourceDialog(
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
         title = { Text("Add guide source", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {

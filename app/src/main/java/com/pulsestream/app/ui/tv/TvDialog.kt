@@ -56,7 +56,7 @@ fun TvDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = palette.panel,
+            color = palette.background,
             border = BorderStroke(1.dp, GlassBorder),
             modifier = Modifier
                 .width(560.dp)

@@ -438,7 +438,7 @@ fun TvAddonSetupScreen(
     confirmRemove?.let { addon ->
         AlertDialog(
             onDismissRequest = { confirmRemove = null },
-            containerColor = LocalPalette.current.panel,
+            containerColor = LocalPalette.current.background,
             title = { Text("Remove addon?", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Text(

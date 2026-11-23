@@ -70,7 +70,7 @@ fun PlayerOverlayPanel(
                 .ambientLiquidGlass(
                     shape = RoundedCornerShape(28.dp),
                     tint = LocalPalette.current.panel.copy(alpha = 0.10f),
-                    fallback = Color(0xFF14141F),
+                    fallback = LocalPalette.current.background,
                     blurRadius = 28.dp,
                     refractionHeight = 32.dp,
                     refractionAmount = 32.dp,
@@ -124,7 +124,7 @@ fun PlayerCenteredDialog(
                 .ambientLiquidGlass(
                     shape = RoundedCornerShape(24.dp),
                     tint = LocalPalette.current.panel.copy(alpha = 0.72f),
-                    fallback = Color(0xFF1E1E24),
+                    fallback = LocalPalette.current.background,
                     blurRadius = 28.dp,
                     refractionHeight = 10.dp,
                     refractionAmount = 18.dp,
@@ -176,7 +176,7 @@ fun PlayerSidePanel(
                 .ambientLiquidGlass(
                     shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
                     tint = Color(0xFF1A1A1A).copy(alpha = 0.72f),
-                    fallback = Color(0xFF1A1A1A),
+                    fallback = LocalPalette.current.background,
                     blurRadius = 28.dp,
                     refractionHeight = 10.dp,
                     refractionAmount = 18.dp,

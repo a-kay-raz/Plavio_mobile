@@ -81,6 +81,7 @@ import com.pulsestream.app.ui.components.GlowBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.pulsestream.app.ui.theme.LocalPalette
 
 /**
  * Account screen (v0.11.9+): Google account + Drive sync.
@@ -558,6 +559,7 @@ fun AccountScreen(
                 if (showPicker) {
                     AlertDialog(
                         onDismissRequest = { showPicker = false },
+                        containerColor = LocalPalette.current.background,
                         title = { Text("Choose picture") },
                         text = {
                             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -631,6 +633,7 @@ fun AccountScreen(
                 if (editingName) {
                     AlertDialog(
                         onDismissRequest = { editingName = false },
+                        containerColor = LocalPalette.current.background,
                         title = { Text("Username") },
                         text = {
                             Column {

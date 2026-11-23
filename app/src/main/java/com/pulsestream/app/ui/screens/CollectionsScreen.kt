@@ -42,6 +42,7 @@ import com.pulsestream.app.data.db.Collection
 import com.pulsestream.app.ui.components.GlassCard
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.theme.TextPrimary
+import com.pulsestream.app.ui.theme.LocalPalette
 import kotlinx.coroutines.launch
 
 /**
@@ -122,6 +123,7 @@ fun CollectionsScreen(
         var name by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCreate = false },
+            containerColor = LocalPalette.current.background,
             title = { Text("New collection") },
             text = {
                 OutlinedTextField(
@@ -152,6 +154,7 @@ fun CollectionsScreen(
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
+            containerColor = LocalPalette.current.background,
             title = { Text("Delete collection?") },
             text = { Text("\"${target.title}\" and all of its folders and sources will be deleted.") },
             confirmButton = {
