@@ -24,7 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
-import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
@@ -96,10 +95,8 @@ internal fun SpeedMenuButton(
                 Column(
                     Modifier
                         .width(76.dp)
-                        .ambientLiquidGlass(
+                        .playerLiquidGlass(
                             shape = RoundedCornerShape(14.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = LocalPalette.current.panel,
                         )
                         .padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally

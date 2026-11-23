@@ -254,7 +254,7 @@ import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.DotsLoadingIndicator
 import com.pulsestream.app.ui.components.SafePosterImage
-import com.pulsestream.app.ui.glass.ambientLiquidGlass
+import com.pulsestream.app.ui.screens.player.playerLiquidGlass
 import com.pulsestream.app.ui.components.StreamCard
 import com.pulsestream.app.ui.components.StreamList
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
@@ -3793,10 +3793,8 @@ fun PlayerScreen(
             ) {
                 Box(
                     Modifier
-                        .ambientLiquidGlass(
+                        .playerLiquidGlass(
                             shape = RoundedCornerShape(24.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = LocalPalette.current.panel,
                         )
                         .graphicsLayer {
                             scaleX = indScale.value
@@ -3896,10 +3894,8 @@ fun PlayerScreen(
                 contentAlignment = Alignment.TopCenter
             ) {
                 Box(
-                    Modifier.ambientLiquidGlass(
+                    Modifier.playerLiquidGlass(
                         shape = RoundedCornerShape(24.dp),
-                        tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                        fallback = LocalPalette.current.panel,
                     )
                 ) {
                     Row(
@@ -3949,10 +3945,8 @@ fun PlayerScreen(
                             Modifier
                                 .widthIn(max = 320.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .ambientLiquidGlass(
+                                .playerLiquidGlass(
                                     shape = RoundedCornerShape(16.dp),
-                                    tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                                    fallback = LocalPalette.current.panel,
                                 )
                                 .clickable {
                                     state.autoSkippedSegments = state.autoSkippedSegments + seg
@@ -4151,10 +4145,8 @@ fun PlayerScreen(
                     Box(
                         Modifier
                             .size(72.dp)
-                            .ambientLiquidGlass(
+                            .playerLiquidGlass(
                                 shape = CircleShape,
-                                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                                fallback = LocalPalette.current.panel,
                                 refractionHeight = 6.dp,
                                 refractionAmount = 8.dp,
                             ),
@@ -4441,10 +4433,8 @@ fun PlayerScreen(
                     }
                     Box(
                         modifier = Modifier
-                            .ambientLiquidGlass(
+                            .playerLiquidGlass(
                                 shape = CircleShape,
-                                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                                fallback = LocalPalette.current.panel,
                                 refractionHeight = 10.dp,
                                 refractionAmount = 14.dp,
                             )
@@ -4507,10 +4497,8 @@ fun PlayerScreen(
                 val actionPill: @Composable () -> Unit = {
                     val palette = LocalPalette.current
                     Box(
-                        Modifier.ambientLiquidGlass(
+                        Modifier.playerLiquidGlass(
                             shape = RoundedCornerShape(24.dp),
-                            tint = palette.panel.copy(alpha = 0.25f),
-                            fallback = palette.panel,
                             refractionHeight = 10.dp,
                             refractionAmount = 14.dp,
                         )

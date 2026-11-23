@@ -9,8 +9,10 @@ import kotlin.math.roundToInt
  * floatingBar = the dock / floating bar glass.
  * selectionLens = the selected-tab lens that slides under the active tab.
  * Values started as Nuvio's exact defaults; the floatingBar numbers
- * were strengthened for a more glassy look (more blur, more refraction,
- * thinner tint, chromatic + depth on).
+ * were strengthened for a more glassy look (more blur, thinner tint).
+ * Refraction stays at Nuvio's 20/20 with chromatic + depth off — the
+ * stronger 32/32 lens with chromatic + depth on drew a visible
+ * cracking seam along the dock's edge (owner's on-device report).
  */
 
 data class LiquidGlassEffectSettings(
@@ -77,10 +79,10 @@ object LiquidGlassEffectDefaults {
     val floatingBar = LiquidGlassEffectSettings(
         cornerRadiusPercent = 50f,
         blurRadiusDp = 28f,
-        refractionHeightDp = 32f,
-        refractionAmountDp = 32f,
-        chromaticAberration = true,
-        depthEffect = true,
+        refractionHeightDp = 20f,
+        refractionAmountDp = 20f,
+        chromaticAberration = false,
+        depthEffect = false,
         tintOpacity = 0.10f,
     )
     val selectionLens = LiquidGlassEffectSettings(

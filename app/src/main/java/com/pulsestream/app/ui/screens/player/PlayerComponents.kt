@@ -63,7 +63,6 @@ import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material3.Icon
-import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.tv.tvFocusRing
@@ -104,10 +103,8 @@ internal fun TrackRow(
 internal fun TimeChip(text: String, onClick: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .ambientLiquidGlass(
+            .playerLiquidGlass(
                 shape = RoundedCornerShape(12.dp),
-                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                fallback = LocalPalette.current.panel,
                 refractionHeight = 4.dp,
                 refractionAmount = 6.dp,
             )
@@ -157,10 +154,8 @@ internal fun PlayerHeaderButton(
     Box(
         modifier
             .size(36.dp)
-            .ambientLiquidGlass(
+            .playerLiquidGlass(
                 shape = CircleShape,
-                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                fallback = LocalPalette.current.panel,
                 refractionHeight = 6.dp,
                 refractionAmount = 8.dp,
             )
@@ -185,10 +180,8 @@ internal fun CenterControlButton(
 ) {
     Box(
         modifier
-            .ambientLiquidGlass(
+            .playerLiquidGlass(
                 shape = CircleShape,
-                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                fallback = LocalPalette.current.panel,
                 refractionHeight = 8.dp,
                 refractionAmount = 12.dp,
             )
@@ -214,10 +207,8 @@ internal fun CenterControlButton(
 ) {
     Box(
         modifier
-            .ambientLiquidGlass(
+            .playerLiquidGlass(
                 shape = CircleShape,
-                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                fallback = LocalPalette.current.panel,
                 refractionHeight = 8.dp,
                 refractionAmount = 12.dp,
             )
