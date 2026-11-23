@@ -401,3 +401,84 @@ internal fun LegacySeekBar(
         }
     )
 }
+
+/** Nuvio PlayerQualityPanel QualityOptionRow: a bordered option row.
+ * Selected = White 0.15 bg + 1dp accent-0.75 border; unselected =
+ * surfacePopover bg + 1dp borderSubtle border. 12dp radius, h14/v12
+ * padding. Title bodyMedium (SemiBold if selected); subtitle
+ * labelMedium muted; "Selected" label (accent, labelMedium SemiBold)
+ * on the right when selected. */
+@Composable
+internal fun QualityOptionRow(
+    title: String,
+    subtitle: String?,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val accent = LocalPalette.current.accent
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) Color.White.copy(alpha = 0.15f) else Color(0xFF222222)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) accent.copy(alpha = 0.75f) else Color(0xFF252A2A),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = Color.White,
+                maxLines = 1
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF969CA3),
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        if (selected) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Selected",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = accent
+            )
+        }
+    }
+}
+
+/** Nuvio PlayerDialogButton ("Close"): 12dp radius, surfaceCard bg,
+ * h16/v10 padding, labelLarge textSecondary. */
+@Composable
+internal fun PlayerDialogCloseButton(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF222222))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "Close",
+            style = MaterialTheme.typography.labelLarge,
+            color = Color(0xFFB8BEC5)
+        )
+    }
+}

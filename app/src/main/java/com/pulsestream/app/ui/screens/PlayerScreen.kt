@@ -5822,96 +5822,125 @@ fun PlayerScreen(
             }
         }
 
-        // In-player Quality picker (Nuvio PlayerQualityPanel content in
-        // Avio's bottom-sheet panel shape): Auto first, then one row per
-        // distinct quality, best first. Picking one switches to a stream
-        // of that quality at the current position.
+        // In-player Quality picker (Nuvio PlayerQualityPanel): a CENTERED
+        // glass dialog (not a bottom card) with a Close button, bordered
+        // option rows ("Selected" on the right, "Currently playing" /
+        // "Recommended compatible quality" subtitles). Auto first, then
+        // one row per distinct quality, best first. Picking one switches
+        // to a stream of that quality at the current position.
         if (state.qualityOpen) {
-            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+            com.pulsestream.app.ui.screens.player.PlayerCenteredDialog(
                 onDismiss = { state.qualityOpen = false }
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
                 ) {
-                    item {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             "Quality",
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.pulsestream.app.ui.screens.player.PlayerDialogCloseButton(
+                            onClick = { state.qualityOpen = false }
                         )
                     }
+                    Spacer(Modifier.height(16.dp))
                     val hlsState = hlsQualityState
                     if (hlsVariantsLoading) {
-                        item {
-                            Box(
-                                Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = LocalPalette.current.accent)
-                            }
+                        Box(
+                            Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = LocalPalette.current.accent,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(28.dp)
+                            )
                         }
                     } else if (hlsState != null && hlsState.hasSelectableQualities) {
                         // HLS variants of the playing stream replace the
                         // whole-stream buckets: Quality is the quality of
                         // this stream; switching streams stays in Sources.
                         val recommended = hlsState.selectedVariantFor(null)
-                        item {
-                            TrackRow(
-                                label = "Auto (${recommended?.qualityName ?: hlsState.variants.first().qualityName})",
-                                selected = hlsVariantSelection == null,
-                                onClick = { switchHlsVariant(null) }
-                            )
-                        }
-                        items(hlsState.variants, key = { it.id }) { variant ->
-                            TrackRow(
-                                label = variant.displayLabel,
-                                selected = hlsVariantSelection == variant.id,
-                                onClick = { switchHlsVariant(variant) }
-                            )
-                        }
-                    } else if (state.streamsLoading && qualityOptions.isEmpty()) {
-                        item {
-                            Box(
-                                Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = LocalPalette.current.accent)
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(bottom = 2.dp)
+                        ) {
+                            item {
+                                com.pulsestream.app.ui.screens.player.QualityOptionRow(
+                                    title = "Auto (${recommended?.qualityName ?: hlsState.variants.first().qualityName})",
+                                    subtitle = "Recommended compatible quality",
+                                    selected = hlsVariantSelection == null,
+                                    onClick = { switchHlsVariant(null) }
+                                )
+                            }
+                            items(hlsState.variants, key = { it.id }) { variant ->
+                                com.pulsestream.app.ui.screens.player.QualityOptionRow(
+                                    title = variant.displayLabel,
+                                    subtitle = null,
+                                    selected = hlsVariantSelection == variant.id,
+                                    onClick = { switchHlsVariant(variant) }
+                                )
                             }
                         }
-                    } else if (qualityOptions.isEmpty()) {
-                        item {
-                            TrackRow(
-                                label = streamLabelText ?: "Current quality",
-                                selected = true,
-                                onClick = {}
+                    } else if (state.streamsLoading && qualityOptions.isEmpty()) {
+                        Box(
+                            Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = LocalPalette.current.accent,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(28.dp)
                             )
                         }
-                        item {
+                    } else if (qualityOptions.isEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            com.pulsestream.app.ui.screens.player.QualityOptionRow(
+                                title = streamLabelText ?: "Current quality",
+                                subtitle = "Currently playing",
+                                selected = true,
+                                enabled = false,
+                                onClick = {}
+                            )
                             Text(
                                 "This stream does not expose selectable quality variants.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(start = 4.dp, top = 8.dp)
+                                color = Color(0xFF969CA3)
                             )
                         }
                     } else {
                         val bestLabel = qualityOptions.first().first
-                        item {
-                            TrackRow(
-                                label = "Auto ($bestLabel)",
-                                selected = qualitySelection == null,
-                                onClick = { switchQuality(null) }
-                            )
-                        }
-                        items(qualityOptions, key = { it.first }) { (label, _) ->
-                            TrackRow(
-                                label = label,
-                                selected = qualitySelection == label,
-                                onClick = { switchQuality(label) }
-                            )
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(bottom = 2.dp)
+                        ) {
+                            item {
+                                com.pulsestream.app.ui.screens.player.QualityOptionRow(
+                                    title = "Auto ($bestLabel)",
+                                    subtitle = "Recommended compatible quality",
+                                    selected = qualitySelection == null,
+                                    onClick = { switchQuality(null) }
+                                )
+                            }
+                            items(qualityOptions, key = { it.first }) { (label, _) ->
+                                com.pulsestream.app.ui.screens.player.QualityOptionRow(
+                                    title = label,
+                                    subtitle = null,
+                                    selected = qualitySelection == label,
+                                    onClick = { switchQuality(label) }
+                                )
+                            }
                         }
                     }
                 }

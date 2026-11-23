@@ -85,3 +85,55 @@ fun PlayerOverlayPanel(
         }
     }
 }
+
+/*
+ * Centered dialog panel (Nuvio PlayerQualityPanel / PlaybackInfoModal):
+ * a scrim dims the video and the content sits in a CENTERED glass card,
+ * not a bottom-anchored panel. Nuvio's centered dialogs are more opaque
+ * than the bottom panels (tint 0.72, refraction 10/18) so they read over
+ * the video. Used by Quality and Playback info.
+ */
+@Composable
+fun PlayerCenteredDialog(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    scrimAlpha: Float = 0.52f,
+    maxHeightDp: androidx.compose.ui.unit.Dp = 460.dp,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Scrim: dims the video; a tap outside the dialog dismisses.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = scrimAlpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onDismiss() }
+        )
+        // Centered glass card (Nuvio: 92% width, 24dp radius, more
+        // opaque tint than the bottom panels).
+        Box(
+            modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(0.92f)
+                .heightIn(max = maxHeightDp)
+                .ambientLiquidGlass(
+                    shape = RoundedCornerShape(24.dp),
+                    tint = LocalPalette.current.panel.copy(alpha = 0.72f),
+                    fallback = Color(0xFF1E1E24),
+                    blurRadius = 28.dp,
+                    refractionHeight = 10.dp,
+                    refractionAmount = 18.dp,
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color(0xFF252A2A),
+                    shape = RoundedCornerShape(24.dp)
+                )
+        ) {
+            content()
+        }
+    }
+}
