@@ -1101,9 +1101,13 @@ fun SmartStreamSheet(
         dragHandle = null,
         containerColor = palette.background
     ) {
+        // Sheet height cap (user 2026-11-23): the sheet covers only ~86%
+        // of the screen, so the hero stays visible above it — it must
+        // not stretch to full screen. Content scrolls inside.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.86f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
