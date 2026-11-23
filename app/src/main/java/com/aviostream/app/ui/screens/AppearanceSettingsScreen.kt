@@ -46,10 +46,12 @@ import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.ui.components.GlassCard
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.theme.AccentTheme
+import com.aviostream.app.ui.theme.AppTheme
 import com.aviostream.app.ui.theme.GlassBorder
 import com.aviostream.app.ui.theme.LocalPalette
 import com.aviostream.app.ui.theme.TextPrimary
 import com.aviostream.app.ui.theme.TextSecondary
+import com.aviostream.app.ui.theme.paletteForTheme
 import com.aviostream.app.ui.theme.parseHexColor
 
 @Composable
@@ -65,6 +67,8 @@ fun AppearanceSettingsScreen(
     var customHex by remember { mutableStateOf(settings.customAccentHex) }
     var hexError by remember { mutableStateOf(false) }
     var appIcon by remember { mutableStateOf(settings.appIcon) }
+    // Six-theme choice (SettingsStore.appTheme).
+    var appTheme by remember { mutableStateOf(settings.appTheme) }
     // W10: landscape mode, custom poster source, card depth.
 
     GlowBackground {
@@ -92,7 +96,7 @@ fun AppearanceSettingsScreen(
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Pick your accent colour.",
+                        "Pick your accent colour and theme.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         modifier = Modifier.padding(start = 56.dp, end = 8.dp)
@@ -102,8 +106,7 @@ fun AppearanceSettingsScreen(
             item(key = "accent") {
                 // Accent circles (owner's order 2026-10-25, from his
                 // reference): one card, solid colour circles in rows of
-                // three, the selected one ringed with a check — the ONLY
-                // appearance choice now that Onyx is permanent.
+                // three, the selected one ringed with a check.
                 GlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -254,6 +257,102 @@ fun AppearanceSettingsScreen(
                                     onThemeChanged()
                                 }) { Text("Use preset") }
                             }
+                        }
+                    }
+                }
+            }
+            // Six-theme picker (SettingsStore.appTheme) — same rows-of-
+            // three style as the accent picker above; each swatch shows
+            // the theme's own background. The tap writes the stored value
+            // and onThemeChanged() makes MainActivity re-read it via
+            // AppTheme.byName, so the whole app re-skins at once.
+            item(key = "app-theme") {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
+                        ) {
+                            Text(
+                                text = "Theme",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Six looks — the whole app re-skins when you pick one.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        AppTheme.values().toList().chunked(3).forEach { rowThemes ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                rowThemes.forEach { theme ->
+                                    val selected = theme.name == appTheme
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(58.dp)
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(
+                                                    paletteForTheme(
+                                                        theme,
+                                                        AccentTheme.byName(accentName)
+                                                    ).background
+                                                )
+                                                .border(
+                                                    if (selected) 2.5.dp else 1.dp,
+                                                    if (selected) LocalPalette.current.accent else GlassBorder,
+                                                    RoundedCornerShape(16.dp)
+                                                )
+                                                .clickable {
+                                                    appTheme = theme.name
+                                                    settings.appTheme = theme.name
+                                                    onThemeChanged()
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (selected) {
+                                                Icon(
+                                                    Icons.Filled.Check,
+                                                    contentDescription = "${theme.label} selected",
+                                                    tint = if (theme.light) Color.Black else Color.White,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            text = theme.label,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (selected) TextPrimary else TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        AppTheme.values().firstOrNull { it.name == appTheme }?.let { current ->
+                            Text(
+                                text = current.blurb,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
                         }
                     }
                 }

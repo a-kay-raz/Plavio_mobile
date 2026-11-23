@@ -157,7 +157,15 @@ enum class AppTheme(val label: String, val blurb: String, val light: Boolean) {
     fun darkVariant(): AppTheme = if (light) ONYX else this
 
     companion object {
-        fun byName(name: String?): AppTheme = ONYX
+        /**
+         * Resolves a stored theme name; unknown names (incl. the old
+         * "MIDNIGHT" string from before the 2026-10-25 rename) fall back
+         * to ONYX, the default. Was a stub returning ONYX unconditionally,
+         * which froze the theme at the migration default no matter what
+         * SettingsStore.appTheme held — fixed 2026-11-23.
+         */
+        fun byName(name: String?): AppTheme =
+            values().firstOrNull { it.name == name } ?: ONYX
     }
 }
 
