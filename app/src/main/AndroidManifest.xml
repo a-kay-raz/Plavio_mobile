@@ -17,10 +17,10 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:name=".PulseApp"
+        android:name=".AvioApp"
         android:usesCleartextTraffic="true"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PulseStream">
+        android:theme="@style/Theme.Avio">
         <!-- Sentry starts manually (CrashReports), after the app is up —
              its auto-init providers stay off so nothing Sentry runs before
              or during the launch path. -->

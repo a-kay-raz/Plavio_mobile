@@ -16,12 +16,12 @@ kotlin {
 }
 
 android {
-    namespace = "com.pulsestream.app"
+    namespace = "com.aviostream.app"
     compileSdk = 36
     buildToolsVersion = "35.0.0"
 
     defaultConfig {
-        applicationId = "com.pulsestream.app"
+        applicationId = "com.aviostream.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 153
@@ -205,7 +205,7 @@ dependencies {
     // No Firebase / Google analytics at all (owner's order
     // 2026-10-22): install + activity counting runs on the owner's
     // own open-source backend (see AppStats). Crash capture is the
-    // in-app catcher in PulseApp, fully local.
+    // in-app catcher in AvioApp, fully local.
     // YouTube trailer extraction for the Trailers tab (same as ShortsBox).
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") {
         // Same exclusion as the TV port: NewPipeExtractor's rhino-engine

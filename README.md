@@ -53,7 +53,7 @@ Kotlin 2.3.10 · Jetpack Compose (Material 3) · Navigation Compose · Media3 Ex
 ## Architecture
 
 ```
-app/src/main/java/com/pulsestream/app/
+app/src/main/java/com/aviostream/app/
 ├── data/
 │   ├── StreamRepository.kt  # multi-addon merging, search, CS3 home rows
 │   ├── cloudstream/         # CloudStream plugin runtime, repos, manager

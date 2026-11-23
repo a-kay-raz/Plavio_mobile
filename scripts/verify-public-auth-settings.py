@@ -17,7 +17,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 def verify():
-    source = (ROOT / 'app/src/main/java/com/pulsestream/app/data/cloud/CloudManager.kt').read_text()
+    source = (ROOT / 'app/src/main/java/com/aviostream/app/data/cloud/CloudManager.kt').read_text()
     endpoint = re.search(r'const val SUPABASE_URL = "([^"]+)"', source)
     public_key = re.search(r'const val SUPABASE_ANON_KEY = "([^"]+)"', source)
     if not endpoint or not public_key:

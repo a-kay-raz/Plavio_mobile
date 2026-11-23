@@ -16,7 +16,7 @@
 -keep class com.lagradost.cloudstream3.** { *; }
 -keep class com.lagradost.api.** { *; }
 -keep class com.lagradost.nicehttp.** { *; }
--keep class com.pulsestream.app.data.cloudstream.** { *; }
+-keep class com.aviostream.app.data.cloudstream.** { *; }
 -keep class com.fasterxml.jackson.** { *; }
 -keepnames class com.fasterxml.jackson.** { *; }
 -keep class org.jsoup.** { *; }

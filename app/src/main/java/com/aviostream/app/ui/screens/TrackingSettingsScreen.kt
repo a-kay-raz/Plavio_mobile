@@ -1,0 +1,418 @@
+package com.aviostream.app.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.aviostream.app.data.StreamRepository
+import com.aviostream.app.data.WatchProgressPull
+import com.aviostream.app.data.WatchProgressPullResult
+import com.aviostream.app.data.WatchProgressSource
+import com.aviostream.app.data.tracking.TrackingLibrarySource
+import com.aviostream.app.data.tracking.TrackingProgressSource
+import com.aviostream.app.data.tracking.isSimklLinked
+import com.aviostream.app.data.tracking.isTraktLinked
+import com.aviostream.app.ui.components.GlowBackground
+import com.aviostream.app.ui.theme.LocalPalette
+import com.aviostream.app.ui.theme.TextPrimary
+import kotlinx.coroutines.launch
+
+/**
+ * Step 52: tracking settings page (Nuvio settings/TrackingSettingsPage.kt,
+ * scoped port). Picks which linked service feeds the Library, Up Next
+ * progress and the ratings sheet. A single source that isn't linked falls
+ * back to all linked services (library/progress) or Trakt (ratings) —
+ * Nuvio's effective-source fallback.
+ */
+@Composable
+fun TrackingSettingsScreen(
+    repository: StreamRepository,
+    onBack: () -> Unit,
+) {
+    val settings = repository.settings
+    // Bumped on every save so the effective-source notes recompose.
+    var tick by remember { mutableIntStateOf(0) }
+
+    var libraryPickerOpen by remember { mutableStateOf(false) }
+    var progressPickerOpen by remember { mutableStateOf(false) }
+    // Step 62: resume-position source + manual pull.
+    var resumePickerOpen by remember { mutableStateOf(false) }
+    val watchProgressPull = remember { WatchProgressPull(settings) }
+    val remotePoints by watchProgressPull.points.collectAsState()
+    val scope = rememberCoroutineScope()
+    var pulling by remember { mutableStateOf(false) }
+    var pullMessage by remember { mutableStateOf<String?>(null) }
+
+    val traktLinked = remember(tick) { settings.isTraktLinked() }
+    val simklLinked = remember(tick) { settings.isSimklLinked() }
+    val librarySource = remember(tick) {
+        TrackingLibrarySource.fromStored(settings.trackingLibrarySource)
+    }
+    val progressSource = remember(tick) {
+        TrackingProgressSource.fromStored(settings.trackingProgressSource)
+    }
+    // Step 62: resume-position source (local / Trakt / Simkl).
+    val resumeSource = remember(tick) {
+        WatchProgressSource.fromStored(settings.watchProgressSource)
+    }
+    val lastPullMs = remember(tick) { settings.lastWatchProgressPullMs }
+
+    fun linkedNote(source: String, linked: Boolean, fallback: String): String? =
+        if (source != "all" && source != "local" && !linked) {
+            "Not linked — showing $fallback instead."
+        } else null
+
+    GlowBackground {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                }
+                Text(
+                    text = "Tracking",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Black),
+                    color = TextPrimary
+                )
+            }
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                item {
+                    V117SectionLabel(
+                        "Linked services",
+                        modifier = Modifier.padding(top = 8.dp, bottom = 10.dp)
+                    )
+                    TrackingLinkedRow(
+                        icon = Icons.Filled.Sync,
+                        title = "Trakt",
+                        subtitle = "Sync watched history and progress",
+                        linked = traktLinked
+                    )
+                    TrackingLinkedRow(
+                        icon = Icons.Filled.CloudQueue,
+                        title = "Simkl",
+                        subtitle = "Sync watched history and progress",
+                        linked = simklLinked
+                    )
+                    Text(
+                        text = "Link services in Settings > Integrations.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    )
+                }
+                item {
+                    TrackingPickerRow(
+                        icon = Icons.Filled.Folder,
+                        title = "Library source",
+                        subtitle = "Which service's watchlist and lists show in the Library",
+                        valueLabel = librarySource.label,
+                        note = when (librarySource) {
+                            TrackingLibrarySource.TRAKT -> linkedNote("trakt", traktLinked, "all linked services")
+                            TrackingLibrarySource.SIMKL -> linkedNote("simkl", simklLinked, "all linked services")
+                            else -> null
+                        },
+                        onClick = { libraryPickerOpen = true }
+                    )
+                }
+                item {
+                    TrackingPickerRow(
+                        icon = Icons.Filled.PlayArrow,
+                        title = "Up Next source",
+                        subtitle = "Which service's watch progress feeds Up Next",
+                        valueLabel = progressSource.label,
+                        note = when (progressSource) {
+                            TrackingProgressSource.TRAKT -> linkedNote("trakt", traktLinked, "all linked services")
+                            TrackingProgressSource.SIMKL -> linkedNote("simkl", simklLinked, "all linked services")
+                            else -> null
+                        },
+                        onClick = { progressPickerOpen = true }
+                    )
+                }
+                // Step 62: resume-position source — where in-progress
+                // playback positions come from when this device has none.
+                item {
+                    TrackingPickerRow(
+                        icon = Icons.Filled.Refresh,
+                        title = "Resume position source",
+                        subtitle = "Pull in-progress positions from another device; local progress always wins when it exists",
+                        valueLabel = resumeSource.label,
+                        note = when (resumeSource) {
+                            WatchProgressSource.TRAKT -> linkedNote("trakt", traktLinked, "local positions only")
+                            WatchProgressSource.SIMKL -> linkedNote("simkl", simklLinked, "local positions only")
+                            else -> null
+                        },
+                        onClick = { resumePickerOpen = true }
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (pulling) return@Button
+                                pulling = true
+                                pullMessage = null
+                                scope.launch {
+                                    val result = watchProgressPull.pullNow()
+                                    pulling = false
+                                    pullMessage = when (result) {
+                                        is WatchProgressPullResult.Success ->
+                                            "Pulled ${result.count} in-progress titles from ${result.source.label}."
+                                        is WatchProgressPullResult.Error -> result.message
+                                    }
+                                    tick++
+                                }
+                            },
+                            enabled = !pulling && resumeSource != WatchProgressSource.LOCAL
+                        ) {
+                            Text("Pull now")
+                        }
+                        if (pulling) {
+                            CircularProgressIndicator(modifier = Modifier.padding(start = 12.dp))
+                        }
+                    }
+                    Text(
+                        text = if (lastPullMs > 0) {
+                            val whenText = java.time.Instant.ofEpochMilli(lastPullMs)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm"))
+                            "Last pull: $whenText · ${remotePoints.size} in-progress titles stored"
+                        } else if (remotePoints.isNotEmpty()) {
+                            "${remotePoints.size} in-progress titles stored"
+                        } else {
+                            "Never pulled yet."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = V117Muted
+                    )
+                    pullMessage?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = V117Muted,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+
+    if (libraryPickerOpen) {
+        TrackingSingleSelectDialog(
+            title = "Library source",
+            options = TrackingLibrarySource.entries.map { it.stored to it.label },
+            selected = librarySource.stored,
+            onSelect = {
+                settings.trackingLibrarySource = it
+                tick++
+                libraryPickerOpen = false
+            },
+            onDismiss = { libraryPickerOpen = false }
+        )
+    }
+    if (progressPickerOpen) {
+        TrackingSingleSelectDialog(
+            title = "Up Next source",
+            options = TrackingProgressSource.entries.map { it.stored to it.label },
+            selected = progressSource.stored,
+            onSelect = {
+                settings.trackingProgressSource = it
+                tick++
+                progressPickerOpen = false
+            },
+            onDismiss = { progressPickerOpen = false }
+        )
+    }
+    if (resumePickerOpen) {
+        TrackingSingleSelectDialog(
+            title = "Resume position source",
+            options = WatchProgressSource.entries.map { it.stored to it.label },
+            selected = resumeSource.stored,
+            onSelect = {
+                settings.watchProgressSource = it
+                tick++
+                resumePickerOpen = false
+                // Switching to a remote source pulls immediately so the
+                // positions are there when the next title plays.
+                if (it != WatchProgressSource.LOCAL.stored) {
+                    pulling = true
+                    pullMessage = null
+                    scope.launch {
+                        val result = watchProgressPull.pullNow()
+                        pulling = false
+                        pullMessage = when (result) {
+                            is WatchProgressPullResult.Success ->
+                                "Pulled ${result.count} in-progress titles from ${result.source.label}."
+                            is WatchProgressPullResult.Error -> result.message
+                        }
+                        tick++
+                    }
+                }
+            },
+            onDismiss = { resumePickerOpen = false }
+        )
+    }
+}
+
+/**
+ * Picker rows, restyled to the Nuvio v1.17 flat settings row
+ * (gap report §2): 16dp horizontal / 14dp vertical, 36dp icon tile,
+ * bodyLarge Medium title + bodyMedium muted subtitle, caller-supplied
+ * chevron. The old GlassCards (14dp inside, 5dp between cards) sat
+ * heavier than every other settings row — see the tracking-removal
+ * note in the file history. The value label sits on the title line,
+ * the note under the subtitle.
+ */
+@Composable
+private fun TrackingPickerRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    valueLabel: String,
+    note: String?,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingsIconTile(icon, title)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = valueLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = V117Muted)
+            if (note != null) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = V117Muted,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        V117Chevron()
+    }
+}
+
+@Composable
+private fun TrackingLinkedRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    linked: Boolean,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingsIconTile(icon, title)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = V117Muted)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = if (linked) "Linked" else "Not linked",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (linked) LocalPalette.current.accent else V117Muted
+        )
+    }
+}
+
+@Composable
+private fun TrackingSingleSelectDialog(
+    title: String,
+    options: List<Pair<String, String>>,
+    selected: String?,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LocalPalette.current.background,
+        title = { Text(title) },
+        text = {
+            LazyColumn {
+                itemsIndexed(options, key = { index, _ -> index }) { _, option ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect(option.first) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = option.first == selected,
+                            onClick = { onSelect(option.first) }
+                        )
+                        Text(option.second, color = TextPrimary)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}

@@ -1,0 +1,1916 @@
+package com.aviostream.app
+
+import android.app.PictureInPictureParams
+import android.app.PendingIntent
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.app.ActivityManager
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.res.Configuration
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Rational
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import kotlinx.coroutines.withContext
+import com.aviostream.app.data.update.UpdateChecker
+import com.aviostream.app.data.AddonShare
+import com.aviostream.app.data.PlaybackRequest
+import com.aviostream.app.data.PlayerChoice
+import com.aviostream.app.data.CollectionRepository
+import com.aviostream.app.data.CustomListsRepository
+import com.aviostream.app.data.FavoritePeopleRepository
+import com.aviostream.app.data.StreamBadgeSettings
+import com.aviostream.app.data.ProfileStore
+import com.aviostream.app.data.ProfilesRepository
+import com.aviostream.app.data.StreamRepository
+import com.aviostream.app.data.notifications.EpisodeNotifications
+import com.aviostream.app.data.notifications.NotificationNav
+import com.aviostream.app.util.ExternalPlayer
+import com.aviostream.app.data.update.UpdateInfo
+import com.aviostream.app.ui.components.CrashReportDialog
+import com.aviostream.app.ui.components.LocalPosterStyle
+import com.aviostream.app.ui.glass.LiquidGlassFrostedBar
+import com.aviostream.app.ui.glass.LiquidGlassStyle
+import com.aviostream.app.ui.glass.LocalAvioGlassBackdrop
+import com.aviostream.app.ui.glass.SolidGlassBar
+import com.aviostream.app.ui.glass.avioBackdropSource
+import com.aviostream.app.ui.glass.isLiquidGlassSupported
+import com.aviostream.app.ui.glass.rememberAvioBackdrop
+import com.aviostream.app.ui.components.posterStyleFrom
+import com.aviostream.app.ui.components.UpdatePrompt
+import com.aviostream.app.ui.nav.Routes
+import com.aviostream.app.ui.screens.LiveScreen
+import com.aviostream.app.ui.screens.LiveTvSettingsScreen
+import com.aviostream.app.ui.screens.OnboardingScreen
+import com.aviostream.app.ui.screens.SplashScreen
+import com.aviostream.app.ui.screens.SettingsScreen
+import com.aviostream.app.ui.screens.AccountScreen
+import com.aviostream.app.ui.screens.DetailSectionsScreen
+import com.aviostream.app.ui.screens.PlayerToolbarScreen
+import com.aviostream.app.ui.screens.StreamBadgesScreen
+import com.aviostream.app.ui.screens.PinEntryDialog
+import com.aviostream.app.ui.screens.ProfilesScreen
+import com.aviostream.app.ui.screens.AddonsScreen
+import com.aviostream.app.ui.screens.CatalogScreen
+import com.aviostream.app.ui.screens.CloudStreamScreen
+import com.aviostream.app.ui.screens.ContinueWatchingSettingsScreen
+import com.aviostream.app.ui.screens.DetailScreen
+import com.aviostream.app.ui.screens.DownloadsScreen
+import com.aviostream.app.ui.screens.DownloadsSettingsScreen
+import com.aviostream.app.ui.screens.LibraryScreen
+import com.aviostream.app.ui.screens.HomeCatalogsScreen
+import com.aviostream.app.ui.screens.PlaybackSettingsScreen
+import com.aviostream.app.ui.screens.ActorScreen
+import com.aviostream.app.ui.screens.StreamsSettingsScreen
+import com.aviostream.app.ui.screens.SubtitleSettingsScreen
+import com.aviostream.app.ui.screens.AppearanceSettingsScreen
+import com.aviostream.app.ui.screens.LayoutSettingsScreen
+import com.aviostream.app.ui.screens.AboutScreen
+import com.aviostream.app.ui.screens.WhatsNewScreen
+import com.aviostream.app.ui.screens.LicensesScreen
+import com.aviostream.app.ui.screens.HomeScreen
+import com.aviostream.app.ui.screens.PlayerScreen
+import com.aviostream.app.ui.screens.SearchScreen
+import com.aviostream.app.ui.components.MiniTrailerOverlay
+import com.aviostream.app.ui.components.TrailerMiniController
+import com.aviostream.app.ui.components.TrailerPlayerState
+import com.aviostream.app.ui.screens.TrailerPlayerScreen
+import com.aviostream.app.ui.screens.WatchlistScreen
+import com.aviostream.app.ui.screens.CollectionEditorScreen
+import com.aviostream.app.ui.screens.CollectionFolderScreen
+import com.aviostream.app.ui.screens.CollectionsScreen
+import com.aviostream.app.ui.screens.TrackingSettingsScreen
+import com.aviostream.app.ui.screens.AdvancedSettingsScreen
+import com.aviostream.app.ui.screens.ContentDiscoverySettingsScreen
+import com.aviostream.app.ui.screens.NotificationsSettingsScreen
+import com.aviostream.app.ui.screens.ListsScreen
+import com.aviostream.app.ui.screens.ListDetailScreen
+import com.aviostream.app.ui.screens.BackupScreen
+import com.aviostream.app.ui.screens.MediaServersScreen
+import com.aviostream.app.ui.screens.ServerLibraryScreen
+import com.aviostream.app.ui.screens.IntegrationsScreen
+import com.aviostream.app.ui.screens.TmdbEnrichmentScreen
+import com.aviostream.app.ui.theme.AccentTheme
+import com.aviostream.app.ui.theme.AppTheme
+import com.aviostream.app.ui.theme.isLightColor
+import com.aviostream.app.ui.theme.paletteForTheme
+import com.aviostream.app.ui.theme.parseHexColor
+import com.aviostream.app.ui.theme.asDark
+import com.aviostream.app.ui.theme.GlassBorder
+import com.aviostream.app.ui.theme.LocalPalette
+import com.aviostream.app.ui.theme.AvioTheme
+import com.aviostream.app.ui.theme.TextSecondary
+import com.aviostream.app.ui.theme.paletteFor
+import com.aviostream.app.ui.tv.TvAddonSetupScreen
+import com.aviostream.app.ui.tv.TvBottomBar
+import com.aviostream.app.ui.tv.rememberIsTv
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import com.aviostream.app.ui.tv.tvFocusRing
+
+class MainActivity : ComponentActivity() {
+
+    companion object {
+        /**
+         * True while the player screen is in the composition (set by
+         * PlayerScreen's DisposableEffect). Used by onUserLeaveHint to
+         * auto-enter PiP only when video is actually playing.
+         */
+        @Volatile
+        var isPlayerActive: Boolean = false
+
+        /**
+         * TV remote: Left/Right while the player is open. Value = seek delta
+         * in ms (negative = back). PlayerScreen should collect this and call
+         * player.seekTo(). (Play/pause reuses [pipToggleRequest].)
+         */
+        val playerSeekRequest = MutableSharedFlow<Long>(extraBufferCapacity = 4)
+
+        /**
+         * Current PiP mode, updated in onPictureInPictureModeChanged.
+         * PlayerScreen collects this to hide its overlay UI while floating.
+         */
+        val pipMode = MutableStateFlow(false)
+
+        /**
+         * Incremented when the user dismisses the PiP window with its X:
+         * the activity then stops without being destroyed, so nothing else
+         * releases playback. PlayerScreen compares against the value it saw
+         * at composition and exits (running its dispose teardown) on a bump.
+         */
+        val pipDismissedCount = MutableStateFlow(0L)
+
+        /** Broadcast action for the PiP window's play/pause RemoteAction. */
+        const val ACTION_PIP_TOGGLE = "com.aviostream.app.ACTION_PIP_TOGGLE"
+
+        /**
+         * Intent extra carrying a nav route (e.g. a detail page) requested
+         * by a notification tap. MainActivity stashes it on
+         * [com.aviostream.app.data.notifications.NotificationNav]; AvioNav
+         * navigates there once past splash/onboarding.
+         */
+        const val EXTRA_OPEN_ROUTE = "com.aviostream.app.OPEN_ROUTE"
+
+        /**
+         * Last known video dimensions, kept current by PlayerScreen's
+         * player listener. Used for the PiP aspect ratio when the user
+         * presses Home (onUserLeaveHint has no player access).
+         */
+        @Volatile
+        var pipVideoW: Int = 16
+
+        @Volatile
+        var pipVideoH: Int = 9
+
+        /**
+         * Last known playing state, kept current by PlayerScreen's player
+         * listener so the PiP RemoteAction shows the right icon.
+         */
+        @Volatile
+        var pipIsPlaying: Boolean = true
+
+        /**
+         * True from PiP entry until the activity next resumes in
+         * fullscreen; lets onStop tell a PiP dismissal (X) apart from a
+         * normal backgrounding.
+         */
+        var wasInPip: Boolean = false
+
+        /**
+         * Direct stop hook registered by PlayerScreen while it lives:
+         * stops + releases its ExoPlayer immediately. The PiP-dismissal
+         * rework (v0.14.4) calls this from the activity, because on the
+         * owner's Samsung an X-closed PiP stops the activity without
+         * the player screen ever collecting the dismissal counter —
+         * its audio then played on until the app was killed.
+         */
+        @Volatile
+        var pipEmergencyStop: (() -> Unit)? = null
+
+        /**
+         * Fired by the PiP play/pause RemoteAction's broadcast receiver.
+         * PlayerScreen collects this and toggles the ExoPlayer.
+         */
+        val pipToggleRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+        /**
+         * PiP windows only support aspect ratios roughly between 1:2.39 and
+         * 2.39:1 — clamp anything wider/taller (e.g. a 9:16 portrait video
+         * stays portrait, an extreme pano gets clamped, never crashes).
+         */
+        fun clampPipRatio(w: Int, h: Int): Rational {
+            if (w <= 0 || h <= 0) return Rational(16, 9)
+            val r = w.toFloat() / h.toFloat()
+            return when {
+                r > 2.39f -> Rational(239, 100)
+                r < 1f / 2.39f -> Rational(100, 239)
+                else -> Rational(w, h)
+            }
+        }
+
+        /**
+         * Builds PiP params with the video's (clamped) aspect ratio and a
+         * play/pause RemoteAction so the floating window has transport
+         * controls like YouTube's PiP.
+         */
+        fun buildPipParams(context: Context, playing: Boolean): PictureInPictureParams {
+            val toggleIntent = PendingIntent.getBroadcast(
+                context,
+                0,
+                Intent(ACTION_PIP_TOGGLE).setPackage(context.packageName),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val action = if (playing) {
+                RemoteAction(
+                    Icon.createWithResource(context, android.R.drawable.ic_media_pause),
+                    "Pause",
+                    "Pause video",
+                    toggleIntent
+                )
+            } else {
+                RemoteAction(
+                    Icon.createWithResource(context, android.R.drawable.ic_media_play),
+                    "Play",
+                    "Play video",
+                    toggleIntent
+                )
+            }
+            return PictureInPictureParams.Builder()
+                .setAspectRatio(clampPipRatio(pipVideoW, pipVideoH))
+                .setActions(listOf(action))
+                .build()
+        }
+    }
+
+    /**
+     * Receives the PiP window's play/pause RemoteAction taps and forwards
+     * them to PlayerScreen via [pipToggleRequest].
+     */
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_PIP_TOGGLE) {
+                pipToggleRequest.tryEmit(Unit)
+            }
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        // No dark scrim behind the gesture bar (owner's order
+        // 2026-10-22): Android's navigation-bar contrast enforcement
+        // paints a black layer behind the system navigation area, so
+        // the app background never reached the physical bottom edge
+        // around the floating dock. Off — the app's own background
+        // now runs edge to edge, around and below the capsule.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        handleAddonDeepLink(intent)
+        handleNotificationRoute(intent)
+        // Safety net: (re)schedule the episode check on cold start.
+        // Idempotent (KEEP) and a no-op when alerts are disabled.
+        EpisodeNotifications.ensureScheduled(this)
+        // PiP play/pause RemoteAction receiver (explicit intent, not exported).
+        val pipFilter = IntentFilter(ACTION_PIP_TOGGLE)
+        ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        setContent {
+            val app = applicationContext as AvioApp
+            // If the last run crashed, show the log with a Copy button.
+            var crashReport by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(Unit) {
+                crashReport = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    app.readCrashReport()
+                }
+            }
+            if (crashReport != null) {
+                CrashReportDialog(
+                    report = crashReport!!,
+                    onDismiss = {
+                        app.clearCrashReport()
+                        crashReport = null
+                    }
+                )
+            }
+            // Theme state: bumped whenever Settings changes accent/AMOLED so the
+            // whole app re-skins without restarting the activity.
+            var themeTick by remember { mutableIntStateOf(0) }
+            val palette = remember(themeTick) {
+                // Six frosted themes (2026-10-25); weak devices get the
+                // solid version of the chosen theme automatically.
+                val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                val lowEnd = am.isLowRamDevice || am.memoryClass <= 64
+                val base = paletteForTheme(
+                    AppTheme.byName(app.settings.appTheme),
+                    AccentTheme.byName(app.settings.accentName),
+                    frosted = !lowEnd
+                )
+                // Step 70: a custom hex accent overrides the preset's
+                // colours (accentText re-derived from luminance, so a
+                // light custom accent still gets dark text on it).
+                parseHexColor(app.settings.customAccentHex)?.let { custom ->
+                    base.copy(
+                        accent = custom,
+                        accent2 = custom,
+                        accentText = if (isLightColor(custom)) Color.Black else Color.White
+                    )
+                } ?: base
+            }
+            val isLight = palette.light
+            AvioTheme(palette = palette, isLight = isLight) {
+                CompositionLocalProvider(
+                    LocalPosterStyle provides posterStyleFrom(app.settings)
+                ) {
+                    AvioNav(onThemeChanged = { themeTick++ })
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAddonDeepLink(intent)
+        handleNotificationRoute(intent)
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(pipReceiver) }
+        super.onDestroy()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Auto-backup to Avio Cloud when app goes to background (if logged in)
+        // Note: CloudManager needs settings/repository; auto-backup is handled
+        // via the AccountScreen's lifecycle instead to avoid circular dependencies.
+    }
+
+    /**
+     * Refreshes the PiP window's play/pause RemoteAction icon. Called by
+     * PlayerScreen's player listener on every play-state change; the params
+     * only take effect while the video is actually floating.
+     */
+    fun updatePipActions(playing: Boolean) {
+        pipIsPlaying = playing
+        if (isInPictureInPictureMode) {
+            setPictureInPictureParams(buildPipParams(this, playing))
+        }
+    }
+
+    /**
+     * Auto-enter Picture-in-Picture when the user presses Home/recents while
+     * a video is playing (v0.9.0+). Only fires for explicit user leave, not
+     * for in-app navigation, and honors the pipEnabled setting.
+     */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!isPlayerActive) return
+        val app = applicationContext as AvioApp
+        if (!app.settings.pipEnabled) return
+        enterPictureInPictureMode(buildPipParams(this, pipIsPlaying))
+    }
+
+    /**
+     * Tracks PiP state so PlayerScreen can hide its overlay UI while the
+     * video floats (the system draws its own PiP controls instead).
+     * On entering PiP, (re)applies params so the play/pause RemoteAction
+     * is present with the correct icon from the first frame.
+     */
+    private val pipHandler = Handler(Looper.getMainLooper())
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipMode.value = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            wasInPip = true
+            setPictureInPictureParams(buildPipParams(this, pipIsPlaying))
+        } else if (wasInPip) {
+            // PiP exit has two shapes: expand back to fullscreen (the
+            // activity returns to RESUMED and onResume clears wasInPip)
+            // or the X close (the activity heads for stopped, and on
+            // some devices — the owner's Samsung — nothing in the
+            // player screen runs again). Re-check shortly: still not
+            // resumed means dismissed, so stop playback from here.
+            pipHandler.postDelayed({
+                if (wasInPip && !isInPictureInPictureMode &&
+                    !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                ) {
+                    handlePipDismissal()
+                }
+            }, 600L)
+        }
+    }
+
+    /**
+     * Runs once per PiP dismissal: signals the player screen (counter)
+     * AND stops playback directly through its registered hook, so the
+     * audio dies even when the stopped activity never recomposes.
+     */
+    private fun handlePipDismissal() {
+        if (!wasInPip) return
+        wasInPip = false
+        pipDismissedCount.value += 1
+        runCatching { pipEmergencyStop?.invoke() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Back in fullscreen (e.g. PiP expanded): the next onStop is a
+        // normal backgrounding, not a PiP dismissal.
+        if (!isInPictureInPictureMode) wasInPip = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // PiP dismissed with X: activity stops but is NOT destroyed and
+        // the player screen never leaves composition — the dismissal
+        // handler stops playback directly instead of relying on the
+        // screen hearing about it (owner's device reports 2026-10-25
+        // and 2026-10-26 — the counter-only path did not fire on his
+        // Samsung, audio played until the app was killed).
+        if (wasInPip && !isInPictureInPictureMode) {
+            handlePipDismissal()
+        }
+    }
+
+    /**
+     * plavio-addons:// deep link (manifest VIEW intent-filter): stash the
+     * bundle link on the repository. AvioNav navigates to the Addons tab and
+     * AddonsScreen opens its import dialog pre-filled — both cold start and
+     * while the app is already running funnel through here.
+     */
+    private fun handleAddonDeepLink(intent: Intent?) {
+        if (intent == null) return
+        val dataString = intent.dataString ?: return
+        // stremio:// links (e.g. from "Install" buttons on addon pages):
+        // convert to https:// manifest URL and add directly.
+        if (dataString.startsWith("stremio://", ignoreCase = true)) {
+            val manifestUrl = "https://" + dataString.removePrefix("stremio://").removePrefix("stremio://")
+            // Handle encoded URLs: stremio://addon/<encoded-url>
+            val cleanUrl = if (manifestUrl.contains("/addon/")) {
+                try {
+                    java.net.URLDecoder.decode(manifestUrl.substringAfter("/addon/"), "UTF-8")
+                } catch (_: Exception) {
+                    manifestUrl.substringAfter("/addon/")
+                }
+            } else {
+                manifestUrl
+            }
+            if (cleanUrl.startsWith("https://")) {
+                val app = applicationContext as AvioApp
+                // Store as pending manifest URL for AddonsScreen to pick up
+                app.repository.setPendingManifestUrl(cleanUrl)
+                return
+            }
+        }
+        // Validates the link actually carries a decodable bundle.
+        if (AddonShare.bundleFromIntent(intent).isNullOrEmpty()) return
+        val link = intent.dataString ?: return
+        val app = applicationContext as AvioApp
+        app.repository.setPendingAddonBundle(link)
+    }
+
+    /**
+     * Notification tap (episode alert): the PendingIntent carries
+     * [EXTRA_OPEN_ROUTE] with a detail-page route. Stash it on
+     * NotificationNav; AvioNav navigates there once past
+     * splash/onboarding — same pattern as the addon deep link above.
+     * The extra is consumed (removed) so a later onNewIntent without a
+     * route doesn't re-trigger the navigation.
+     */
+    private fun handleNotificationRoute(intent: Intent?) {
+        val route = intent?.getStringExtra(EXTRA_OPEN_ROUTE)?.takeIf { it.isNotBlank() }
+            ?: return
+        intent.removeExtra(EXTRA_OPEN_ROUTE)
+        NotificationNav.pendingRoute.value = route
+    }
+}
+
+private data class Tab(
+    val route: String,
+    val label: String,
+    val icon: ImageVector,
+)
+/**
+ * One item in the floating dock (v0.12.7, owner's pick — sample A
+ * "Glass Shrink"): the icon WITH its name under it, proper size and
+ * even gaps. [labelFraction] is the tray's open amount (1 = open,
+ * 0 = shrunk): as the tray shrinks on scroll-down the name is eaten —
+ * its slot collapses and it fades and crops away — until only the
+ * icon remains; scrolling up grows it back. The accent pill sits
+ * behind the whole segment when selected.
+ */
+@Composable
+private fun DockItem(
+    tab: Tab,
+    selected: Boolean,
+    labelFraction: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    labelSizeDp: Float = 10f
+) {
+    val palette = LocalPalette.current
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp)
+            .clip(RoundedCornerShape(50))
+            .then(
+                if (selected) {
+                    // Nuvio-style selected pill: flat accent at low
+                    // opacity (Nuvio Opacity.selected = 0.15f), no
+                    // gradient — the pre-blended Sample C gradient
+                    // flashed whitish over bright screens.
+                    Modifier.background(
+                        palette.accent.copy(alpha = 0.15f),
+                        RoundedCornerShape(50)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            // No ripple: the capsule highlight on the selected tab is the
+            // feedback; a square ripple clashes with the pill shape.
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 3.dp, vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            tab.icon,
+            contentDescription = tab.label,
+            tint = if (selected) (if (palette.light) palette.accentText else palette.accent)
+                else if (palette.light) palette.textPrimary.copy(alpha = 0.72f)
+                else Color.White.copy(alpha = 0.9f),
+            modifier = Modifier.size(22.dp)
+        )
+        // The name slot: eaten as the tray shrinks — height collapses
+        // (driven by the same spring value as the capsule's own size),
+        // the text fades and is cropped by the closing slot.
+        Box(
+            modifier = Modifier
+                .height((15 * labelFraction).dp)
+                .clipToBounds()
+                .graphicsLayer { alpha = labelFraction },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                tab.label,
+                // Label size (v0.12.16, owner's order): computed by
+                // the dock from the tray's real width and passed in
+                // as DP, then converted back to SP through the
+                // density — so the drawn size is the same on every
+                // device and ignores the system font-size setting.
+                // That setting is what still clipped "Downloads" to
+                // "Downlo…" on another phone at a fixed 10sp. The
+                // full word now always fits, on every screen.
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = with(LocalDensity.current) { labelSizeDp.dp.toSp() }
+                ),
+                color = if (selected) (if (palette.light) palette.accentText else palette.accent)
+                    else if (palette.light) palette.textPrimary.copy(alpha = 0.72f)
+                    else Color.White.copy(alpha = 0.9f),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/** Video surfaces (player, trailer players) stay on the dark cinematic palette in both theme modes. */
+@Composable
+private fun DarkVideoSurface(content: @Composable () -> Unit) {
+    AvioTheme(palette = LocalPalette.current.asDark(), isLight = false, content = content)
+}
+
+/** Bottom-dock tabs; labels come from string resources so they follow the app language. */
+@Composable
+private fun appTabs() = listOf(
+    Tab(Routes.HOME, stringResource(R.string.nav_home), Icons.Filled.Home),
+    Tab(Routes.LIBRARY, stringResource(R.string.nav_library), vectorResource(R.drawable.sidebar_library)),
+    Tab(Routes.LIVE, stringResource(R.string.nav_live), Icons.Filled.LiveTv),
+    Tab(Routes.SEARCH, stringResource(R.string.nav_search), Icons.Filled.Search),
+    Tab(Routes.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings)
+)
+
+@Composable
+private fun AvioNav(onThemeChanged: () -> Unit) {
+    val systemMotionEnabled = remember { com.aviostream.app.ui.screens.systemAnimationsEnabled() }
+    val navController = rememberNavController()
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val app = appContext as AvioApp
+    val repository = remember { app.repository }
+    val listsRepository = remember { CustomListsRepository(app.profileDatabase) }
+    val collectionRepository = remember { CollectionRepository(app.profileDatabase) }
+    // Step 58: favorite people (per-profile via SettingsStore).
+    val favoritePeopleRepository = remember { FavoritePeopleRepository(repository.settings) }
+    // Step 61: custom stream badges (per-profile via SettingsStore).
+    val streamBadgeSettings = remember { StreamBadgeSettings(repository.settings) }
+    // Step 56: profiles live in the global database.
+    val profilesRepository = remember { ProfilesRepository(app.database) }
+
+    // Step 56: cold-start PIN gate — a PIN-locked active profile asks
+    // for its PIN before Home shows. The check runs once per process;
+    // a profile unlocked once stays unlocked until the process dies.
+    var pinCheckDone by remember { mutableStateOf(false) }
+    var lockedProfile by remember { mutableStateOf<com.aviostream.app.data.db.Profile?>(null) }
+    LaunchedEffect(Unit) {
+        val activeId = ProfileStore.activeProfileId(appContext)
+        val profile = activeId?.let {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                profilesRepository.getById(it)
+            }
+        }
+        if (profile != null && profile.pinEnabled && !ProfileStore.isUnlocked(profile.id)) {
+            lockedProfile = profile
+        }
+        pinCheckDone = true
+    }
+    // Activity context for the "Ask every time" player chooser dialog.
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+
+    // In-app update check (GitLab releases) on every launch; silent when nothing new.
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    LaunchedEffect(Unit) {
+        updateInfo = UpdateChecker.check(appContext)
+    }
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    val isTv = rememberIsTv()
+
+    // Mini floating trailer player (YouTube-style): one trailer at a time,
+    // floats above all tabs. Mobile only — TV keeps the full player.
+    val trailerMini = remember { TrailerMiniController() }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                trailerMini.pauseForBackground()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Deep link: an plavio-addons:// link opened the app (cold start or while
+    // running — MainActivity stashed it via handleAddonDeepLink). Jump to the
+    // Addons tab; AddonsScreen picks up the pending bundle and opens its
+    // import dialog pre-filled. Skipped on splash/onboarding so the startup
+    // flow isn't hijacked — the effect refires once the real destination
+    // lands. Same nav options as the dock (single top, state kept).
+    val pendingBundle by repository.pendingAddonBundle.collectAsState()
+    val pendingManifestUrl by repository.pendingManifestUrl.collectAsState()
+    LaunchedEffect(pendingBundle, pendingManifestUrl, currentDestination) {
+        val route = currentDestination?.route
+        if ((pendingBundle != null || pendingManifestUrl != null) && route != null &&
+            route != Routes.SPLASH && route != Routes.ONBOARDING
+        ) {
+            navController.navigate(Routes.ADDONS) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
+    // Notification tap (episode alert): MainActivity stashed a detail route
+    // via handleNotificationRoute. Navigate once past splash/onboarding,
+    // then clear so it fires exactly once.
+    val pendingRoute by NotificationNav.pendingRoute.collectAsState()
+    LaunchedEffect(pendingRoute, currentDestination) {
+        val route = pendingRoute
+        val dest = currentDestination?.route
+        if (route != null && dest != null &&
+            dest != Routes.SPLASH && dest != Routes.ONBOARDING
+        ) {
+            NotificationNav.pendingRoute.value = null
+            navController.navigate(route) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    if (isTv) {
+        // TV: bottom-center nav bar (replaced the old left rail). The bar is
+        // hidden on splash/onboarding/player, same as the rail was. Content
+        // gets bottom padding so the bar never covers anything; the bar is
+        // drawn below the content in a Column, not overlaid.
+        val barHiddenRoutes = setOf(Routes.SPLASH, Routes.ONBOARDING, Routes.PLAYER)
+        val destRoutes = currentDestination?.hierarchy?.mapNotNull { it.route }.orEmpty()
+        val showBar = destRoutes.none { it in barHiddenRoutes }
+        val barFocus = remember { FocusRequester() }
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(LocalPalette.current.background)
+        ) {
+            // Left-side Home button, vertically centered: jumps home and
+            // parks focus on the bar.
+            if (showBar) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .padding(start = 12.dp, end = 8.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    IconButton(
+                        onClick = {
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                            runCatching { barFocus.requestFocus() }
+                        },
+                        modifier = Modifier.tvFocusRing(RoundedCornerShape(50))
+                    ) {
+                        Icon(
+                            Icons.Filled.Home,
+                            contentDescription = "Home",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    AvioNavGraph(navController, repository, listsRepository, onThemeChanged, collectionRepository = collectionRepository, favoritePeopleRepository = favoritePeopleRepository, streamBadgeSettings = streamBadgeSettings, profilesRepository = profilesRepository, isTv = isTv)
+                }
+                if (showBar) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        TvBottomBar(
+                            currentDestination = currentDestination,
+                            barFocus = barFocus,
+                            onNavigate = { route ->
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        val tabs = appTabs()
+        val showBottomBar = tabs.any { it.route == currentDestination?.route }
+        // Scroll-aware nav: compact (icons only) when scrolling down, like Nuvio.
+        var compactNav by remember { mutableStateOf(false) }
+        // Nuvio-style liquid glass (Kyant Backdrop): the page content is
+        // recorded once into the backdrop's graphics layer; the dock, the
+        // player controls and the pills sample it with blur + lens
+        // refraction. Replaces the old dock-only blurLayer (v0.12.20).
+        // Below Android 12 (no RenderEffect) the glass surfaces fall
+        // back to a flat tint instead.
+        val glassBackdrop = rememberAvioBackdrop()
+        val nestedScrollConnection = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    // available.y < 0 means scrolling down (content moving up).
+                    // Hysteresis: only collapse on a clear downward scroll,
+                    // only expand on a clear upward scroll — the nav stays
+                    // minimized until the user scrolls up (no dancing).
+                    if (available.y < -10) compactNav = true
+                    else if (available.y > 10) compactNav = false
+                    return Offset.Zero
+                }
+            }
+        }
+        Box(Modifier.fillMaxSize().nestedScroll(nestedScrollConnection)) {
+            // Full-height content (v0.12.2; Scaffold removed v0.12.11):
+            // even with no bottomBar, the Scaffold kept reserving the
+            // bottom system inset for its content area — a solid strip
+            // under the floating dock (owner's on-device note). A plain
+            // Box now hosts the content: only the status-bar top inset
+            // is applied (screens already expect exactly that — Home
+            // shifts its list up by the same amount for the immersive
+            // hero), and the content owns every remaining pixel down
+            // to the physical bottom edge, scrolling under the dock.
+            // Tab screens carry their own extra bottom list padding so
+            // the last row can scroll clear of the capsule.
+            val shellDensity = LocalDensity.current
+            val shellStatusTop = with(shellDensity) {
+                WindowInsets.statusBars.getTop(shellDensity).toDp()
+            }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    // The backdrop source wraps the WHOLE content box (background
+                    // included), like Nuvio's full-size AppTabHost source — so the
+                    // recorded layer is a complete picture of the screen and the
+                    // dock never samples a transparent hole where only the flat
+                    // background sits behind it (home-nav blur bug).
+                    .avioBackdropSource(glassBackdrop)
+                    .background(LocalPalette.current.background)
+                    .padding(top = shellStatusTop)
+            ) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalAvioGlassBackdrop provides glassBackdrop
+                ) {
+                    AvioNavGraph(navController, repository, listsRepository, onThemeChanged, trailerMini, collectionRepository = collectionRepository, favoritePeopleRepository = favoritePeopleRepository, streamBadgeSettings = streamBadgeSettings, profilesRepository = profilesRepository, isTv = isTv)
+                }
+            }
+        // Floating dock (v0.12.10, owner's order): no longer a
+        // Scaffold bottomBar — the reserved solid strip at the
+        // bottom is GONE. The screen's usable area runs the full
+        // height and cards scroll underneath the capsule, which
+        // floats over the content as an overlay. Tab screens
+        // already carry ~104dp bottom list padding, so the last
+        // row can still scroll clear of the capsule.
+            if (showBottomBar) {
+                // One spring drives the whole shrink (v0.12.7, owner's
+                // pick: sample A "Glass Shrink"). A single Animatable
+                // morphs the capsule's width + height a little — the
+                // tray NEVER folds into a Home pill: scrolling down
+                // shrinks it slightly from both sides and from
+                // top/bottom and eats the tab names (icons stay);
+                // scrolling up grows it back with the names. Softly
+                // damped spring: gentle settle, no bounce jitter. The
+                // hysteresis latch above (compactNav) owns the trigger.
+                // Step 70: the "compact" dock style pins the tray in
+                // the shrunk (icons-only) state regardless of scroll.
+                val dockCompact = app.settings.dockStyle == "compact"
+                val foldAnim = remember { Animatable(0f) }
+                LaunchedEffect(compactNav, dockCompact) {
+                    foldAnim.animateTo(
+                        targetValue = if (compactNav || dockCompact) 1f else 0f,
+                        animationSpec = spring(dampingRatio = 0.92f, stiffness = 205f)
+                    )
+                }
+                val fold = foldAnim.value
+                // Seated at the bottom edge (v0.12.15) and lifted a
+                // little in v0.12.16 (owner's order 2026-10-22): the
+                // capsule floated 6dp off the physical bottom — a
+                // stretch for one-hand thumbs. It now floats 16dp
+                // up. The content still owns every pixel to the
+                // physical edge and scrolls underneath it; only the
+                // capsule's seat moved.
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        // v0.12.18: lifted above the system gesture pill /
+                        // 3-button bar (navigationBarsPadding) plus a 10dp
+                        // float, so the capsule never collides with system
+                        // buttons — while the CONTENT still runs to the
+                        // physical edge behind it (clear bottom, like Nuvio).
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // End states (v0.12.7): open = nearly the FULL
+                    // width (only the 16dp side gaps), 62dp tall, five
+                    // tabs with icon + name spread evenly; shrunk = 85%
+                    // of that width, 47dp tall, names eaten, icons only.
+                    val capsuleWidth = lerp(maxWidth, maxWidth * 0.85f, fold)
+                    val capsuleHeight = lerp(62.dp, 47.dp, fold)
+                    // Per-tab width in the OPEN tray drives the label
+                    // size (v0.12.16): narrower tray → slightly smaller
+                    // labels, so all five full words always fit.
+                    val perTabDp = (maxWidth / 5).value
+                    val labelSizeDp = when {
+                        perTabDp >= 76f -> 10.5f
+                        perTabDp >= 70f -> 10f
+                        perTabDp >= 64f -> 9.5f
+                        perTabDp >= 58f -> 9f
+                        else -> 8.5f
+                    }
+                    // Capsule-fitted black backing (v0.12.9; RESTORED
+                    // v0.12.15 on the owner's correction): a black pill
+                    // EXACTLY the capsule's size and shape sits directly
+                    // behind it — same animated width/height, so it
+                    // shrinks and grows in lockstep and never shows
+                    // outside the capsule at all. The v0.12.13 removal
+                    // was a misread: the owner's "solid black" was
+                    // never this pill — it is the dead screen space
+                    // BELOW the capsule, fixed in v0.12.15 by seating
+                    // the dock at the very bottom edge.
+                    // Nuvio-style liquid-glass dock: Kyant backdrop with
+                    // blur + lens refraction + vibrancy + edge highlight
+                    // ("more glassy" values: blur 20dp, refraction 32/32,
+                    // tint 0.25, chromatic + depth on). Below Android 12
+                    // (no RenderEffect) the solid fallback is used instead.
+                    if (isLiquidGlassSupported()) {
+                        LiquidGlassFrostedBar(
+                            backdrop = glassBackdrop,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .width(capsuleWidth)
+                                .height(capsuleHeight),
+                            glowStrength = 1f,
+                            // Liquid material (Nuvio default): blur + lens
+                            // refraction. Frosted would be blur-only.
+                            style = LiquidGlassStyle.Default,
+                        )
+                    } else {
+                        SolidGlassBar(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .width(capsuleWidth)
+                                .height(capsuleHeight),
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.Transparent,
+                        shadowElevation = 0.dp,
+                        modifier = Modifier
+                            .width(capsuleWidth)
+                            .height(capsuleHeight)
+                    ) {
+                        Row(
+                            // The glass now comes from the LiquidGlassFrostedBar
+                            // behind this row (blur + lens + tint + edge); the
+                            // old static liquidGlass fill is removed so the
+                            // dock is not double-glazed.
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            tabs.forEach { tab ->
+                                val selected =
+                                    currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                                val isHome = tab.route == Routes.HOME
+                                // All five tabs stay, always (v0.12.7;
+                                // Live is back in the dock 2026-11-22, owner's
+                                // order — the floating Home pill is gone):
+                                // the shrink only eats the names — no tab
+                                // ever melts away or folds into a pill.
+                                DockItem(
+                                    tab = tab,
+                                    selected = selected,
+                                    labelFraction = 1f - fold,
+                                    labelSizeDp = labelSizeDp,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        navController.navigate(tab.route) {
+                                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                        // Home (v0.12.4): tapping Home
+                                        // lands on Home scrolled to the
+                                        // very top — from any other tab,
+                                        // and when already on Home.
+                                        if (isHome) {
+                                            com.aviostream.app.ui.screens.HomeScrollSignal
+                                                .requestScrollToTop()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        // Full portrait trailer layer — floats above the current tab (which
+        // stays mounted behind it). Slides/fades up on open, collapses down
+        // into the mini player on swipe-down/back.
+        AnimatedVisibility(
+            visible = trailerMini.playerState == TrailerPlayerState.Full,
+            enter = if (systemMotionEnabled) slideInVertically(
+                initialOffsetY = { it }, animationSpec = spring(dampingRatio = 0.88f, stiffness = 450f)
+            ) + fadeIn(tween(280)) else androidx.compose.animation.EnterTransition.None,
+            exit = if (systemMotionEnabled) slideOutVertically(
+                targetOffsetY = { it }, animationSpec = tween(380, easing = FastOutSlowInEasing)
+            ) + fadeOut(tween(300)) else androidx.compose.animation.ExitTransition.None
+        ) {
+            val req = trailerMini.request
+            val player = trailerMini.player
+            if (req != null && player != null) {
+                DarkVideoSurface {
+                    TrailerPlayerScreen(
+                        repository = repository,
+                        request = req,
+                        externalPlayer = player,
+                        onBack = { trailerMini.minimize() },
+                        onSwipeDown = { trailerMini.minimize() }
+                    )
+                }
+            }
+        }
+        // Mini floating trailer player, above content and dock.
+        AnimatedVisibility(
+            visible = trailerMini.playerState == TrailerPlayerState.Mini,
+            enter = if (systemMotionEnabled) fadeIn(tween(220, delayMillis = 120)) + scaleIn(
+                initialScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f),
+                animationSpec = tween(300, delayMillis = 120, easing = FastOutSlowInEasing)
+            ) else androidx.compose.animation.EnterTransition.None,
+            exit = if (systemMotionEnabled) fadeOut(tween(200)) + scaleOut(
+                targetScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f),
+                animationSpec = tween(200, easing = FastOutSlowInEasing)
+            ) else androidx.compose.animation.ExitTransition.None
+        ) {
+            DarkVideoSurface {
+                MiniTrailerOverlay(
+                    controller = trailerMini,
+                    onExpand = { trailerMini.expand() }
+                )
+            }
+        }
+        } // end Box wrapping mobile Scaffold
+    } // end else (mobile bottom dock)
+
+    // Update popup, shown over whatever screen is visible (both form factors).
+    UpdatePrompt(
+        info = updateInfo,
+        onDismiss = { updateInfo = null }
+    )
+
+    // Step 56: cold-start PIN gate — blocks the whole UI until the
+    // locked active profile is unlocked (dismissing exits the app).
+    if (pinCheckDone && lockedProfile != null) {
+        PinEntryDialog(
+            profile = lockedProfile!!,
+            onDismiss = { activity?.finish() },
+            onUnlocked = {
+                ProfileStore.markUnlocked(lockedProfile!!.id)
+                lockedProfile = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun AvioNavGraph(
+    navController: NavHostController,
+    repository: StreamRepository,
+    listsRepository: CustomListsRepository,
+    onThemeChanged: () -> Unit,
+    trailerMini: TrailerMiniController? = null,
+    collectionRepository: CollectionRepository,
+    favoritePeopleRepository: FavoritePeopleRepository,
+    streamBadgeSettings: StreamBadgeSettings,
+    profilesRepository: ProfilesRepository,
+    isTv: Boolean
+) {
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+
+    val navScope = rememberCoroutineScope()
+    fun openResolvedDetail(addonId: String, type: String, metaId: String) {
+        navScope.launch {
+            val target = com.aviostream.app.ui.screens.resolveDetailTarget(repository, addonId, type, metaId)
+            navController.navigate(Routes.detail(target.addonId, target.type, target.metaId))
+        }
+    }
+
+    // External-player protected-link warning (owner's order 2026-10-26):
+    // non-null while the warning popup is up for that request.
+    var externalWarnReq by remember { mutableStateOf<PlaybackRequest?>(null) }
+    var externalWarnHide by remember { mutableStateOf(false) }
+
+    /**
+     * Step 67: external handoff with subtitles + skip segments prepared
+     * first (ExternalPlayer.prepareLaunch); a failed launch falls back
+     * to the built-in player.
+     */
+    fun launchExternalPrepared(ctx: android.content.Context, req: PlaybackRequest) {
+        navScope.launch {
+            val extras = ExternalPlayer.prepareLaunch(
+                ctx, req, repository.settings, isTv = isTv
+            )
+            if (!ExternalPlayer.play(
+                    ctx, req,
+                    subtitles = extras.subtitles,
+                    skipSegmentsJson = extras.skipSegmentsJson
+                )
+            ) {
+                repository.pendingPlayback = req
+                navController.navigate(Routes.PLAYER)
+            }
+        }
+    }
+
+    /**
+     * External handoff with the warning gate: protected links show the
+     * one-time warning popup first (rendered below the NavHost); a
+     * failed launch falls back to the built-in player.
+     */
+    fun playExternal(req: PlaybackRequest) {
+        val ctx = activity ?: appContext
+        if (ExternalPlayer.needsWarning(ctx, req)) {
+            externalWarnHide = false
+            externalWarnReq = req
+        } else {
+            launchExternalPrepared(ctx, req)
+        }
+    }
+
+    /**
+     * Single choke point for all playback. Honors Settings > Playback >
+     * "Preferred player". Built-in behavior is unchanged; external/ask modes
+     * only divert when the user chose them.
+     */
+    fun playRequest(req: PlaybackRequest) {
+        when (PlayerChoice.fromName(repository.settings.preferredPlayer)) {
+            PlayerChoice.BUILT_IN -> {
+                repository.pendingPlayback = req
+                navController.navigate(Routes.PLAYER)
+            }
+            PlayerChoice.EXTERNAL -> playExternal(req)
+            PlayerChoice.ASK -> {
+                val act = activity
+                if (act == null || act.isFinishing) {
+                    repository.pendingPlayback = req
+                    navController.navigate(Routes.PLAYER)
+                } else {
+                    android.app.AlertDialog.Builder(act)
+                        .setTitle("Play with")
+                        .setItems(arrayOf("Built-in player", "External player")) { _, which ->
+                            if (which == 1) {
+                                playExternal(req)
+                            } else {
+                                repository.pendingPlayback = req
+                                navController.navigate(Routes.PLAYER)
+                            }
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+        }
+    }
+
+    // Shared downloaded-file playback (Downloads screen + Library
+    // Downloads section): same file check, same local player route.
+    // Step 37: content-URI-aware — a moved file plays from its SAF URI.
+    val playDownloadedFile: (String, String) -> Unit = { filePath, title ->
+        val isContent = filePath.startsWith("content://")
+        val exists = if (isContent) {
+            runCatching {
+                appContext.contentResolver.openInputStream(android.net.Uri.parse(filePath))?.close()
+                true
+            }.getOrDefault(false)
+        } else {
+            val file = java.io.File(filePath)
+            file.exists() && file.canRead()
+        }
+        if (!exists) {
+            android.widget.Toast.makeText(
+                appContext,
+                "Downloaded file not found \u2014 it may have been deleted.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        } else {
+            // Step 46: attach the download's subtitle sidecars + cached
+            // poster (looked up by file path, best-effort — playback never
+            // waits on a missing row).
+            navScope.launch {
+                val manager = com.aviostream.app.data.download.DownloadManager.get(appContext)
+                val item = runCatching { manager.getByFilePath(filePath) }.getOrNull()
+                val subtitles = item?.let {
+                    com.aviostream.app.data.download.DownloadSubtitles.localSubtitles(appContext, it.id)
+                } ?: emptyList()
+                val poster = item?.let {
+                    com.aviostream.app.data.download.OfflineShowMetadata.posterFile(
+                        appContext, it.showKey.ifEmpty { it.id }
+                    )
+                }?.let { "file://${it.absolutePath}" }
+                playRequest(
+                    PlaybackRequest(
+                        streamUrl = if (isContent) filePath else "file://$filePath",
+                        title = title,
+                        poster = poster,
+                        videoId = "download_${filePath.hashCode()}",
+                        subtitles = subtitles,
+                        isMovie = true
+                    )
+                )
+            }
+        }
+    }
+    NavHost(navController = navController, startDestination = Routes.SPLASH) {
+        composable(Routes.SPLASH) {
+            // Warm the home catalog cache while the splash animation
+            // plays. The splash leaves once the animation is done AND
+            // the feed is ready — but a cached feed counts as ready
+            // (owner's fix 2026-10-24): Home renders cached rows
+            // instantly and refreshes in the background, so a warm
+            // start never waits on the network. Only a truly empty
+            // cache waits for the refresh; 8s cap so a dead network
+            // can never trap the user on the splash.
+            var feedReady by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                launch {
+                    if (runCatching { repository.hasCachedHomeRows() }
+                            .getOrDefault(false)
+                    ) {
+                        feedReady = true
+                    }
+                    runCatching { repository.refreshCatalogRows() }
+                    feedReady = true
+                }
+                launch { runCatching { repository.pruneOversizedCache() } }
+                launch { delay(8000); feedReady = true }
+            }
+            SplashScreen(
+                feedReady = feedReady,
+                onDone = {
+                    // Welcome/onboarding guide REMOVED (owner's order
+                    // 2026-10-22): a fresh install goes straight to
+                    // Home — no popup guide. The flag is settled so
+                    // nothing can route into the retired flow again.
+                    if (!repository.settings.onboardingDone) {
+                        repository.settings.onboardingDone = true
+                    }
+                    val next = Routes.HOME
+                    navController.navigate(next) {
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(
+                repository = repository,
+                onDone = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(Routes.HOME) {
+            HomeScreen(
+                repository = repository,
+                listsRepository = listsRepository,
+                collectionRepository = collectionRepository,
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                },
+                onResumePlayback = {
+                    repository.pendingPlayback?.let { playRequest(it) }
+                },
+                onGoToAddons = { navController.navigate(Routes.ADDONS) },
+                onGoToWatchlist = { navController.navigate(Routes.WATCHLIST) },
+                onGoToLists = { navController.navigate(Routes.LISTS) },
+                onOpenCatalog = { row ->
+                    repository.pendingCatalog = row
+                    navController.navigate(
+                        Routes.catalog(row.addonId, row.type, row.catalogId)
+                    )
+                },
+                onOpenCollectionFolder = { folderId ->
+                    navController.navigate(Routes.collectionFolder(folderId))
+                },
+                onPlayServerItem = { req -> playRequest(req) },
+                onOpenServerLibrary = { serverId, libraryId ->
+                    navController.navigate(Routes.serverLibrary(serverId, libraryId))
+                },
+                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
+            )
+        }
+        composable(Routes.LIVE) {
+            LiveScreen(
+                repository = repository,
+                onPlay = { req ->
+                    // #3: the Live tab builds the PlaybackRequest — it must be
+                    // handed to the player, not dropped.
+                    playRequest(req)
+                },
+                onGoToAddons = { navController.navigate(Routes.ADDONS) },
+                onGoToLiveTvSettings = { navController.navigate(Routes.LIVE_TV_SETTINGS) }
+            )
+        }
+        composable(Routes.TRAILER_PLAYER) {
+            DarkVideoSurface {
+                TrailerPlayerScreen(
+                    repository = repository,
+                    externalPlayer = trailerMini?.player,
+                    onBack = {
+                        // YouTube behavior: back minimizes to the floating player.
+                        trailerMini?.minimize()
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+        composable(Routes.SEARCH) {
+        SearchScreen(
+            repository = repository,
+            onOpenDetail = { addonId, type, metaId ->
+                openResolvedDetail(addonId, type, metaId)
+            },
+            onOpenActor = { personId, personName ->
+                navController.navigate(Routes.actor(personId, personName))
+            },
+            onOpenServerLibrary = { serverId, libraryId ->
+                navController.navigate(Routes.serverLibrary(serverId, libraryId))
+            }
+        )
+        }
+        composable(Routes.WATCHLIST) {
+            WatchlistScreen(
+                repository = repository,
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                }
+            )
+        }
+        composable(Routes.LIBRARY) {
+            LibraryScreen(
+                repository = repository,
+                listsRepository = listsRepository,
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                },
+                onOpenList = { listId ->
+                    navController.navigate(Routes.listDetail(listId))
+                },
+                onGoToWatchlist = { navController.navigate(Routes.WATCHLIST) },
+                onGoToLists = { navController.navigate(Routes.LISTS) },
+                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
+                onPlayDownload = playDownloadedFile,
+                favoritePeopleRepository = favoritePeopleRepository,
+                onOpenPerson = { personId, personName ->
+                    navController.navigate(Routes.actor(personId, personName))
+                },
+                onConnect = { navController.navigate(Routes.INTEGRATIONS) }
+            )
+        }
+        composable(Routes.LISTS) {
+            ListsScreen(
+                listsRepository = listsRepository,
+                onOpenList = { listId ->
+                    navController.navigate(Routes.listDetail(listId))
+                }
+            )
+        }
+        composable(
+            Routes.LIST_DETAIL,
+            arguments = listOf(
+                navArgument("listId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            ListDetailScreen(
+                listsRepository = listsRepository,
+                listId = entry.arguments!!.getString("listId")!!,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                }
+            )
+        }
+        composable(Routes.ADDONS) {
+            AddonsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onGoToTvSetup = { navController.navigate(Routes.TV_ADDON_SETUP) }
+            )
+        }
+        composable(Routes.TV_ADDON_SETUP) {
+            TvAddonSetupScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.HOME_CATALOGS) {
+            HomeCatalogsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.CONTINUE_WATCHING_SETTINGS) {
+            ContinueWatchingSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.LIVE_TV_SETTINGS) {
+            LiveTvSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                repository = repository,
+                onThemeChanged = onThemeChanged,
+                onGoToAddons = { navController.navigate(Routes.ADDONS) },
+                onGoToHomeCatalogs = { navController.navigate(Routes.HOME_CATALOGS) },
+                onGoToContinueWatching = { navController.navigate(Routes.CONTINUE_WATCHING_SETTINGS) },
+                onGoToLiveTv = { navController.navigate(Routes.LIVE_TV_SETTINGS) },
+                onGoToPlayback = { navController.navigate(Routes.PLAYBACK_SETTINGS) },
+                onGoToSubtitles = { navController.navigate(Routes.SUBTITLE_SETTINGS) },
+                onGoToAppearance = { navController.navigate(Routes.APPEARANCE_SETTINGS) },
+                onGoToLayout = { navController.navigate(Routes.LAYOUT_SETTINGS) },
+                onGoToStreams = { navController.navigate(Routes.STREAMS_SETTINGS) },
+                onGoToAbout = { navController.navigate(Routes.ABOUT) },
+                onGoToAccount = { navController.navigate(Routes.ACCOUNT) },
+                onGoToIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
+                onGoToCloudStream = { navController.navigate(Routes.CLOUDSTREAM) },
+                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
+                onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
+                onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) },
+                onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) },
+                onGoToProfiles = { navController.navigate(Routes.PROFILES) },
+                onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) },
+                onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) },
+                onGoToPlayerToolbar = { navController.navigate(Routes.PLAYER_TOOLBAR) },
+                onGoToContentDiscovery = { navController.navigate(Routes.CONTENT_DISCOVERY_SETTINGS) },
+                onGoToNotifications = { navController.navigate(Routes.NOTIFICATIONS_SETTINGS) },
+                onGoToAdvanced = { navController.navigate(Routes.ADVANCED_SETTINGS) },
+                onGoToWhatsNew = { navController.navigate(Routes.WHATS_NEW) },
+                onGoToLicenses = { navController.navigate(Routes.LICENSES) }
+            )
+        }
+        composable(Routes.MEDIA_SERVERS) {
+            MediaServersScreen(
+                settings = repository.settings,
+                onBack = { navController.popBackStack() },
+                onOpenLibrary = { serverId, libraryId ->
+                    navController.navigate(Routes.serverLibrary(serverId, libraryId))
+                }
+            )
+        }
+        composable(
+            Routes.SERVER_LIBRARY,
+            arguments = listOf(
+                navArgument("serverId") { type = NavType.StringType },
+                navArgument("libraryId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            ServerLibraryScreen(
+                settings = repository.settings,
+                serverId = entry.arguments!!.getString("serverId")!!,
+                libraryId = entry.arguments!!.getString("libraryId")!!,
+                onBack = { navController.popBackStack() },
+                onPlay = { req -> playRequest(req) }
+            )
+        }
+        composable(Routes.TRACKING_SETTINGS) {
+            TrackingSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.COLLECTIONS) {
+            CollectionsScreen(
+                collectionRepository = collectionRepository,
+                onBack = { navController.popBackStack() },
+                onOpenEditor = { collectionId ->
+                    navController.navigate(Routes.collectionEditor(collectionId))
+                }
+            )
+        }
+        composable(
+            Routes.COLLECTION_EDITOR,
+            arguments = listOf(
+                navArgument("collectionId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            CollectionEditorScreen(
+                collectionId = entry.arguments!!.getString("collectionId")!!,
+                collectionRepository = collectionRepository,
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenFolder = { folderId ->
+                    navController.navigate(Routes.collectionFolder(folderId))
+                }
+            )
+        }
+        composable(
+            Routes.COLLECTION_FOLDER,
+            arguments = listOf(
+                navArgument("folderId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            CollectionFolderScreen(
+                folderId = entry.arguments!!.getString("folderId")!!,
+                collectionRepository = collectionRepository,
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                }
+            )
+        }
+        composable(Routes.INTEGRATIONS) {
+            IntegrationsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onGoToTmdbEnrichment = { navController.navigate(Routes.TMDB_ENRICHMENT) }
+            )
+        }
+        composable(Routes.TMDB_ENRICHMENT) {
+            TmdbEnrichmentScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.CLOUDSTREAM) {
+            CloudStreamScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ACCOUNT) {
+            AccountScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                profilesRepository = profilesRepository,
+                onGoToProfiles = { navController.navigate(Routes.PROFILES) }
+            )
+        }
+        composable(Routes.PROFILES) {
+            ProfilesScreen(
+                profilesRepository = profilesRepository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.DETAIL_SECTIONS) {
+            DetailSectionsScreen(
+                settings = repository.settings,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        // Step 61: custom stream badges.
+        composable(Routes.STREAM_BADGES) {
+            StreamBadgesScreen(
+                badgeSettings = streamBadgeSettings,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        // Step 63: player toolbar customization.
+        composable(Routes.PLAYER_TOOLBAR) {
+            PlayerToolbarScreen(
+                settings = repository.settings,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.PLAYBACK_SETTINGS) {
+            PlaybackSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.SUBTITLE_SETTINGS) {
+            SubtitleSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.APPEARANCE_SETTINGS) {
+            AppearanceSettingsScreen(
+                repository = repository,
+                onThemeChanged = onThemeChanged,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.LAYOUT_SETTINGS) {
+            LayoutSettingsScreen(
+                repository = repository,
+                onThemeChanged = onThemeChanged,
+                onGoToHomeCatalogs = { navController.navigate(Routes.HOME_CATALOGS) },
+                onGoToDetailSections = { navController.navigate(Routes.DETAIL_SECTIONS) },
+                onGoToStreamBadges = { navController.navigate(Routes.STREAM_BADGES) },
+                onGoToPlayerToolbar = { navController.navigate(Routes.PLAYER_TOOLBAR) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.CONTENT_DISCOVERY_SETTINGS) {
+            ContentDiscoverySettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onGoToContinueWatching = { navController.navigate(Routes.CONTINUE_WATCHING_SETTINGS) },
+                onGoToLiveTv = { navController.navigate(Routes.LIVE_TV_SETTINGS) },
+                onGoToAddons = { navController.navigate(Routes.ADDONS) },
+                onGoToStreams = { navController.navigate(Routes.STREAMS_SETTINGS) },
+                onGoToSubtitles = { navController.navigate(Routes.SUBTITLE_SETTINGS) },
+                onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
+                onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
+                onGoToMediaServers = { navController.navigate(Routes.MEDIA_SERVERS) },
+                onGoToCloudStream = { navController.navigate(Routes.CLOUDSTREAM) }
+            )
+        }
+        composable(Routes.NOTIFICATIONS_SETTINGS) {
+            NotificationsSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ADVANCED_SETTINGS) {
+            AdvancedSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.STREAMS_SETTINGS) {
+            StreamsSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ABOUT) {
+            AboutScreen(
+                onBack = { navController.popBackStack() },
+                onGoToLicenses = { navController.navigate(Routes.LICENSES) },
+                onGoToWhatsNew = { navController.navigate(Routes.WHATS_NEW) }
+            )
+        }
+        composable(Routes.WHATS_NEW) {
+            WhatsNewScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.DOWNLOADS) {
+            DownloadsScreen(
+                onBack = { navController.popBackStack() },
+                onPlayFile = playDownloadedFile,
+                onGoToDownloadSettings = { navController.navigate(Routes.DOWNLOADS_SETTINGS) }
+            )
+        }
+        composable(Routes.DOWNLOADS_SETTINGS) {
+            DownloadsSettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.LICENSES) {
+            LicensesScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(
+            Routes.DETAIL,
+            arguments = listOf(
+                navArgument("addonId") { type = NavType.StringType },
+                navArgument("type") { type = NavType.StringType },
+                navArgument("metaId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val trailerCtx = androidx.compose.ui.platform.LocalContext.current.applicationContext
+            DetailScreen(
+                repository = repository,
+                listsRepository = listsRepository,
+                addonId = Routes.dec(entry.arguments!!.getString("addonId")!!),
+                type = Routes.dec(entry.arguments!!.getString("type")!!),
+                metaId = Routes.dec(entry.arguments!!.getString("metaId")!!),
+                onBack = { navController.popBackStack() },
+                onPlay = {
+                    // startPlayback() stashed the request; honor the
+                    // preferred-player setting instead of always navigating.
+                    val req = repository.pendingPlayback
+                    if (req != null) playRequest(req)
+                    else navController.navigate(Routes.PLAYER)
+                },
+                onPlayTrailer = { req ->
+                    repository.pendingPlayback = req
+                    // Mini floating player (mobile); TV falls back to the full player.
+                    val mini = trailerMini
+                    if (mini != null) {
+                        mini.play(trailerCtx, req)
+                    } else {
+                        navController.navigate(Routes.TRAILER_PLAYER)
+                    }
+                },
+                onOpenDetail = { relatedAddonId, relatedType, relatedMetaId ->
+                    openResolvedDetail(relatedAddonId, relatedType, relatedMetaId)
+                },
+                onOpenActor = { personId, personName ->
+                    navController.navigate(Routes.actor(personId, personName))
+                }
+            )
+        }
+        composable(
+            Routes.ACTOR,
+            arguments = listOf(
+                androidx.navigation.navArgument("personId") {
+                    type = androidx.navigation.NavType.IntType
+                },
+                androidx.navigation.navArgument("name") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { entry ->
+            ActorScreen(
+                repository = repository,
+                personId = entry.arguments!!.getInt("personId"),
+                personName = entry.arguments!!.getString("name")
+                    ?.let { runCatching { Routes.dec(it) }.getOrNull() },
+                favoritePeopleRepository = favoritePeopleRepository,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { type, metaId ->
+                    // Cinemeta addon id — detail resolves meta/streams from
+                    // any capable addon via the base-URL hint chain.
+                    openResolvedDetail("com.linvo.cinemeta", type, metaId)
+                }
+            )
+        }
+        composable(Routes.PLAYER) {
+            DarkVideoSurface {
+                PlayerScreen(
+                    repository = repository,
+                    onBack = { navController.popBackStack() },
+                    onOpenDetail = { addonId, type, metaId ->
+                        navController.popBackStack()
+                        openResolvedDetail(addonId, type, metaId)
+                    }
+                )
+            }
+        }
+        composable(
+            Routes.CATALOG,
+            arguments = listOf(
+                navArgument("addonId") { type = NavType.StringType },
+                navArgument("type") { type = NavType.StringType },
+                navArgument("catalogId") { type = NavType.StringType }
+            )
+        ) {
+            CatalogScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { addonId, type, metaId ->
+                    openResolvedDetail(addonId, type, metaId)
+                }
+            )
+        }
+    }
+
+    // Protected-link warning for the preferred-player flow (owner's
+    // order 2026-10-26 — same popup as the player's External button).
+    externalWarnReq?.let { warnReq ->
+        val warnCtx = activity ?: appContext
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { externalWarnReq = null },
+            containerColor = LocalPalette.current.background,
+            title = { androidx.compose.material3.Text("Protected link") },
+            text = {
+                androidx.compose.foundation.layout.Column {
+                    androidx.compose.material3.Text(
+                        "This source uses protected headers, which stay in Avio — " +
+                            "the other app may not be able to play this link."
+                    )
+                    androidx.compose.foundation.layout.Spacer(
+                        androidx.compose.ui.Modifier.height(8.dp)
+                    )
+                    androidx.compose.foundation.layout.Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.Checkbox(
+                            checked = externalWarnHide,
+                            onCheckedChange = { externalWarnHide = it }
+                        )
+                        androidx.compose.material3.Text("Don't show again")
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    if (externalWarnHide) {
+                        ExternalPlayer.setWarningSuppressed(warnCtx, true)
+                    }
+                    externalWarnReq = null
+                    launchExternalPrepared(warnCtx, warnReq)
+                }) {
+                    androidx.compose.material3.Text("Open anyway")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { externalWarnReq = null }) {
+                    androidx.compose.material3.Text("Cancel")
+                }
+            }
+        )
+    }
+}

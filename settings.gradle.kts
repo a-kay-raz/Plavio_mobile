@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PulseStream"
+rootProject.name = "Avio"
 include(":app")

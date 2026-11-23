@@ -1,0 +1,90 @@
+package com.aviostream.app.ui.nav
+
+import android.util.Base64
+import java.net.URLDecoder
+import java.net.URLEncoder
+
+object Routes {
+    const val SPLASH = "splash"
+    const val ONBOARDING = "onboarding"
+    const val HOME = "home"
+    const val LIVE = "live"
+    const val LIVE_TV_SETTINGS = "live_tv_settings"
+    const val LIBRARY = "library"
+    const val SEARCH = "search"
+    const val WATCHLIST = "watchlist"
+    const val LISTS = "lists"
+    const val LIST_DETAIL = "list_detail/{listId}"
+    const val COLLECTIONS = "collections"
+    const val COLLECTION_EDITOR = "collection_editor/{collectionId}"
+    const val COLLECTION_FOLDER = "collection_folder/{folderId}"
+    const val MEDIA_SERVERS = "media_servers"
+    const val SERVER_LIBRARY = "server_library/{serverId}/{libraryId}"
+    const val PROFILES = "profiles"
+    const val DETAIL_SECTIONS = "detail_sections"
+    const val ADDONS = "addons"
+    const val HOME_CATALOGS = "home_catalogs"
+    const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"
+    const val ACCOUNT = "account"
+    const val BACKUP = "backup"
+    const val PLAYBACK_SETTINGS = "playback_settings"
+    const val SUBTITLE_SETTINGS = "subtitle_settings"
+    const val APPEARANCE_SETTINGS = "appearance_settings"
+    const val LAYOUT_SETTINGS = "layout_settings"
+    const val STREAMS_SETTINGS = "streams_settings"
+    const val TRACKING_SETTINGS = "tracking_settings"
+    const val STREAM_BADGES = "stream_badges"
+    const val PLAYER_TOOLBAR = "player_toolbar"
+    const val INTEGRATIONS = "integrations"
+    const val TMDB_ENRICHMENT = "tmdb_enrichment"
+    const val CLOUDSTREAM = "cloudstream"
+    const val ABOUT = "about"
+    const val WHATS_NEW = "whats_new"
+    const val DOWNLOADS = "downloads"
+    const val DOWNLOADS_SETTINGS = "downloads_settings"
+    const val LICENSES = "licenses"
+    const val CONTENT_DISCOVERY_SETTINGS = "content_discovery_settings"
+    const val NOTIFICATIONS_SETTINGS = "notifications_settings"
+    const val ADVANCED_SETTINGS = "advanced_settings"
+    const val SETTINGS = "settings"
+    const val PLAYER = "player"
+    const val TRAILER_PLAYER = "trailer_player"
+    const val TV_ADDON_SETUP = "tv_addon_setup"
+    const val DETAIL = "detail/{addonId}/{type}/{metaId}"
+    const val CATALOG = "catalog/{addonId}/{type}/{catalogId}"
+    const val ACTOR = "actor/{personId}?name={name}"
+
+    /**
+     * Actor page route. The name rides along so the page can fall back
+     * to search-by-actor-name when no addon serves /person for the id
+     * (metadata flexibility, owner's order 2026-10-26).
+     */
+    fun actor(personId: Int, name: String?): String {
+        val base = "actor/$personId"
+        return if (name.isNullOrBlank()) base
+        else base + "?name=" + enc(name)
+    }
+
+    fun detail(addonId: String, type: String, metaId: String): String =
+        "detail/${enc(addonId)}/${enc(type)}/${enc(metaId)}"
+
+    fun catalog(addonId: String, type: String, catalogId: String): String =
+        "catalog/${enc(addonId)}/${enc(type)}/${enc(catalogId)}"
+
+    /** List ids are UUIDs (URL-safe), no encoding needed. */
+    fun listDetail(listId: String): String = "list_detail/$listId"
+
+    /** Collection/folder ids are UUIDs (URL-safe), no encoding needed. */
+    fun collectionEditor(collectionId: String): String = "collection_editor/$collectionId"
+    fun collectionFolder(folderId: String): String = "collection_folder/$folderId"
+
+    /** Server/library ids are UUIDs (URL-safe), no encoding needed. */
+    fun serverLibrary(serverId: String, libraryId: String): String =
+        "server_library/$serverId/$libraryId"
+
+    private fun enc(s: String): String =
+        Base64.encodeToString(s.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+
+    fun dec(s: String): String =
+        String(Base64.decode(s, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+}
