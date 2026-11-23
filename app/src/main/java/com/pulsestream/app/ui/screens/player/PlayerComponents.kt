@@ -106,6 +106,8 @@ internal fun TimeChip(text: String, onClick: (() -> Unit)? = null, modifier: Mod
                 shape = RoundedCornerShape(12.dp),
                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                 fallback = LocalPalette.current.panel,
+                refractionHeight = 4.dp,
+                refractionAmount = 6.dp,
             )
             .then(if (onClick != null) Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick) else Modifier)
     ) {
@@ -157,6 +159,8 @@ internal fun PlayerHeaderButton(
                 shape = CircleShape,
                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                 fallback = LocalPalette.current.panel,
+                refractionHeight = 6.dp,
+                refractionAmount = 8.dp,
             )
             .clip(CircleShape)
             .clickable(onClick = onClick)
@@ -183,6 +187,8 @@ internal fun CenterControlButton(
                 shape = CircleShape,
                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                 fallback = LocalPalette.current.panel,
+                refractionHeight = 8.dp,
+                refractionAmount = 12.dp,
             )
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick)
@@ -210,6 +216,8 @@ internal fun CenterControlButton(
                 shape = CircleShape,
                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                 fallback = LocalPalette.current.panel,
+                refractionHeight = 8.dp,
+                refractionAmount = 12.dp,
             )
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick)

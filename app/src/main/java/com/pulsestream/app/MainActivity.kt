@@ -932,9 +932,14 @@ private fun PulseNav(onThemeChanged: () -> Unit) {
             Box(
                 Modifier
                     .fillMaxSize()
+                    // The backdrop source wraps the WHOLE content box (background
+                    // included), like Nuvio's full-size AppTabHost source — so the
+                    // recorded layer is a complete picture of the screen and the
+                    // dock never samples a transparent hole where only the flat
+                    // background sits behind it (home-nav blur bug).
+                    .avioBackdropSource(glassBackdrop)
                     .background(LocalPalette.current.background)
                     .padding(top = shellStatusTop)
-                    .avioBackdropSource(glassBackdrop)
             ) {
                 androidx.compose.runtime.CompositionLocalProvider(
                     LocalAvioGlassBackdrop provides glassBackdrop

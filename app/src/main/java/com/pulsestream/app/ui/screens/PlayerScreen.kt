@@ -4143,6 +4143,8 @@ fun PlayerScreen(
                                 shape = CircleShape,
                                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                                 fallback = LocalPalette.current.panel,
+                                refractionHeight = 6.dp,
+                                refractionAmount = 8.dp,
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -4431,6 +4433,8 @@ fun PlayerScreen(
                                 shape = CircleShape,
                                 tint = LocalPalette.current.panel.copy(alpha = 0.25f),
                                 fallback = LocalPalette.current.panel,
+                                refractionHeight = 10.dp,
+                                refractionAmount = 14.dp,
                             )
                             .clip(CircleShape)
                             .clickable(onClick = { togglePlay() })
@@ -4495,6 +4499,8 @@ fun PlayerScreen(
                             shape = RoundedCornerShape(24.dp),
                             tint = palette.panel.copy(alpha = 0.25f),
                             fallback = palette.panel,
+                            refractionHeight = 10.dp,
+                            refractionAmount = 14.dp,
                         )
                     ) {
                         Row(
