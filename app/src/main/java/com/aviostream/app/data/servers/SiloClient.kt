@@ -2,6 +2,7 @@ package com.aviostream.app.data.servers
 
 import com.aviostream.app.BuildConfig
 import com.aviostream.app.data.SettingsStore
+import com.aviostream.app.data.Subtitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -16,12 +17,14 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Silo client (Nuvio servers/silo/, scoped port): device-code
- * sign-in, libraries, catalog items and watched marking. Silo's
- * negotiated playback session (installation handshake, sequenced
- * progress, HLS/direct delivery) is NOT ported — Silo titles browse
- * in the Library/Home rows, but playback needs that protocol and is
- * deferred. Profile PINs are not supported either; the account token
- * is used directly.
+ * sign-in, libraries, catalog items, watched marking and playback.
+ * Playback is the smallest working port of Nuvio's
+ * SiloProvider.preparePlayback: installation handshake, watch state
+ * for the file id, playback/start for the plan's stream URL — the URL
+ * + auth headers go straight into the existing player path. No replan
+ * for copy-remux routes and no sequenced progress/stop reporting yet
+ * (watched marking still works through markPlayed). Profile PINs are
+ * not supported; the primary profile is used directly.
  */
 object SiloClient {
 
@@ -431,6 +434,376 @@ object SiloClient {
             code in 200..299
         } catch (_: Exception) {
             false
+        }
+    }
+
+    // ---- Playback (smallest port of Nuvio SiloProvider.preparePlayback) ----
+
+    /** A started Silo playback: the plan's stream URL plus the headers
+     * the player must send with it (the token, so the URL works), the
+     * server's playback session id, the delivery kind, and any sidecar
+     * subtitles from the plan. */
+    data class SiloPlaybackSession(
+        val url: String,
+        val headers: Map<String, String>,
+        val sessionId: String?,
+        val delivery: String,
+        val subtitles: List<Subtitle>
+    )
+
+    /** The server's playback installation, which every playback call
+     * carries. Cached 10 minutes (Nuvio's TTL). Null when playback is
+     * switched off or the server is too old for protocol 3. */
+    private val installations = mutableMapOf<String, Pair<Long, String>>()
+
+    /** The profile playback belongs to (primary first); "" when the
+     * server does not list one. Browsing never needed it. Cached per
+     * server: the profile list does not change mid-session. */
+    private val profileIds = mutableMapOf<String, String>()
+
+    /** The device this playback comes from, as Silo's own apps name it. */
+    private fun deviceHeaders(settings: SettingsStore?): Map<String, String> {
+        val deviceId = settings?.mediaServerDeviceId
+            ?: java.util.UUID.randomUUID().toString()
+        return mapOf(
+            "X-Device-ID" to deviceId,
+            "X-Silo-Device-Id" to deviceId,
+            "X-Client-Name" to "Avio",
+            "X-Client-Version" to BuildConfig.VERSION_NAME
+        )
+    }
+
+    private fun playbackHeaders(
+        token: String,
+        profileId: String,
+        device: Map<String, String>
+    ): Map<String, String> = buildMap {
+        put("Authorization", bearer(token))
+        if (profileId.isNotBlank()) put("X-Profile-Id", profileId)
+        putAll(device)
+    }
+
+    /** A link from a playback plan: root-relative to the address Silo is used at. */
+    private fun resolveStreamUrl(server: MediaServer, url: String): String? {
+        val value = url.trim().takeIf { it.isNotEmpty() } ?: return null
+        return when {
+            value.startsWith("http://", ignoreCase = true) ||
+                value.startsWith("https://", ignoreCase = true) -> value
+            value.startsWith("/") -> cleanBase(server.baseUrl) + value
+            else -> null
+        }
+    }
+
+    private fun randomHexId(): String =
+        java.util.UUID.randomUUID().toString().replace("-", "")
+
+    private fun jsonStrings(values: List<String>): JSONArray =
+        JSONArray().apply { values.forEach { put(it) } }
+
+    private fun jsonInts(values: List<Int>): JSONArray =
+        JSONArray().apply { values.forEach { put(it) } }
+
+    private suspend fun installationId(
+        settings: SettingsStore?,
+        server: MediaServer
+    ): String? {
+        val now = System.currentTimeMillis()
+        installations[server.id]?.let { (at, id) ->
+            if (now - at < 10 * 60_000L) return id
+        }
+        val (code, body) = executeAuthed(settings, server) { token ->
+            Request.Builder()
+                .url("${cleanBase(server.baseUrl)}/api/v2/playback/capabilities")
+                .header("Authorization", bearer(token))
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+        } ?: return null
+        if (code !in 200..299) return null
+        val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val protocols = root.optJSONArray("protocol_versions")
+        val hasProtocol3 = protocols != null &&
+            (0 until protocols.length()).any { protocols.optInt(it) == 3 }
+        val features = root.optJSONArray("features")
+        val hasSequencedProgress = features != null &&
+            (0 until features.length()).any { features.optString(it) == "sequenced_progress_v1" }
+        val usable = root.optString("state") == "available" &&
+            root.optBoolean("allowed", false) && hasProtocol3 && hasSequencedProgress
+        val id = root.optString("installation_id").takeIf { usable && it.isNotBlank() }
+            ?: return null
+        installations[server.id] = now to id
+        return id
+    }
+
+    private suspend fun profileId(
+        settings: SettingsStore?,
+        server: MediaServer
+    ): String {
+        profileIds[server.id]?.let { return it }
+        val (code, body) = executeAuthed(settings, server) { token ->
+            Request.Builder()
+                .url("${cleanBase(server.baseUrl)}/api/v2/profiles")
+                .header("Authorization", bearer(token))
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+        } ?: return ""
+        if (code !in 200..299) return ""
+        val items = runCatching {
+            JSONObject(body).optJSONArray("items") ?: JSONArray()
+        }.getOrDefault(JSONArray())
+        var first = ""
+        var primary = ""
+        for (i in 0 until items.length()) {
+            val row = items.optJSONObject(i) ?: continue
+            val id = row.optString("id").takeIf { it.isNotBlank() } ?: continue
+            if (first.isEmpty()) first = id
+            if (row.optBoolean("is_primary", false)) primary = id
+        }
+        val resolved = primary.ifBlank { first }
+        if (resolved.isNotBlank()) profileIds[server.id] = resolved
+        return resolved
+    }
+
+    /** The file to play: the last-played file when it is still a version
+     * of this title, else the first version. Null when the title has no
+     * playable file. */
+    private suspend fun watchFileId(
+        settings: SettingsStore?,
+        server: MediaServer,
+        contentId: String
+    ): String? {
+        val (code, body) = executeAuthed(settings, server) { token ->
+            Request.Builder()
+                .url("${cleanBase(server.baseUrl)}/api/v2/watch/${encode(contentId)}")
+                .header("Authorization", bearer(token))
+                .header("User-Agent", userAgent)
+                .header("Accept", "application/json")
+                .get()
+                .build()
+        } ?: return null
+        if (code !in 200..299) return null
+        val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val versions = root.optJSONArray("versions") ?: JSONArray()
+        val fileIds = (0 until versions.length()).mapNotNull {
+            versions.optJSONObject(it)?.optString("file_id")?.takeIf { s -> s.isNotBlank() }
+        }
+        if (fileIds.isEmpty()) return null
+        val last = root.optJSONObject("user_data")?.optString("last_file_id")
+            ?.takeIf { it.isNotBlank() }
+        return if (last != null && fileIds.contains(last)) last else fileIds.first()
+    }
+
+    private fun deliveryJson(
+        containers: List<String>,
+        video: List<String>,
+        audio: List<String>,
+        direct: Boolean
+    ): JSONObject = JSONObject().apply {
+        put("enabled", true)
+        put("supported_on_device", true)
+        put("containers", jsonStrings(containers))
+        put("video_codecs", jsonStrings(video))
+        put("audio_decode_codecs", jsonStrings(audio))
+        put("audio_passthrough_codecs", jsonStrings(emptyList()))
+        put("subtitles", JSONObject().apply {
+            put("embedded_text", direct)
+            put("sidecar_text", true)
+            put("ass_styling", direct)
+            put("embedded_bitmap", direct)
+            put("sidecar_bitmap", false)
+            put("font_attachments", false)
+        })
+        put("features", jsonStrings(if (direct) emptyList() else listOf("hls")))
+        put("auth_header_refresh", false)
+        put(
+            "validated_claims",
+            jsonStrings(
+                if (direct) listOf(
+                    "client_managed_dynamic_range_v1",
+                    "client_selected_audio_track_v1"
+                ) else emptyList()
+            )
+        )
+        put("transformations", JSONArray())
+    }
+
+    /** What the player asks Silo for (Nuvio siloStartBody, ExoPlayer
+     * support: direct-play the original file when the phone can, else
+     * a plain HLS conversion). Servers from before mid October 2026
+     * need the legacy shape ("original" + the `metered` flag). */
+    private fun startPlaybackBody(
+        installationId: String,
+        fileId: String,
+        profileId: String,
+        attemptId: String,
+        legacyQuality: Boolean
+    ): JSONObject {
+        val videoCodecs = listOf("h264", "hevc", "vp8", "vp9", "av1")
+        val audioCodecs = listOf("aac", "mp3", "ac3", "eac3", "flac", "opus", "vorbis")
+        val containers = listOf("mp4", "m4v", "mkv", "matroska", "webm", "mov")
+        val dvProfiles = listOf(8)
+        val hdr = JSONObject().apply {
+            put("hdr10", true)
+            put("hdr10_plus", true)
+            put("hlg", true)
+            put("dolby_vision_profiles", jsonInts(dvProfiles))
+        }
+        return JSONObject().apply {
+            put("installation_id", installationId)
+            put("protocol_version", 3)
+            put(
+                "client_features",
+                jsonStrings(listOf("playback_plan_v3", "direct_stream_resume_v1"))
+            )
+            put("file_id", fileId)
+            if (profileId.isNotBlank()) put("profile_id", profileId)
+            put("playback_attempt_id", attemptId)
+            put("quality_preference", if (legacyQuality) "original" else "auto")
+            put("subtitle_fidelity_preference", "preserve")
+            if (legacyQuality) put("metered", false)
+            put("start_position", 0)
+            put("client_capabilities", JSONObject().apply {
+                put("video_evidence", "exact")
+                put("audio_evidence", "exact")
+                put("codecs_video", jsonStrings(videoCodecs + "dolby_vision"))
+                put("codecs_video_hardware", jsonStrings(videoCodecs + "dolby_vision"))
+                put("codecs_audio", jsonStrings(audioCodecs))
+                put("containers", jsonStrings(containers))
+                put("max_resolution", "2160p")
+                put("hdr", true)
+                put("hdr_details", hdr)
+                put("video_decode", JSONArray().apply {
+                    videoCodecs.forEach { codec ->
+                        put(JSONObject().apply {
+                            put("codec", codec)
+                            put("hardware", true)
+                            put("bit_depths", jsonInts(listOf(8, 10, 12)))
+                        })
+                    }
+                })
+            })
+            put("client_playback_context", JSONObject().apply {
+                put("protocol_version", 3)
+                put("form_factor", "mobile")
+                put("app_version", BuildConfig.VERSION_NAME.take(64).ifBlank { "1" })
+                put("device", JSONObject().apply { put("platform", "android") })
+                put("output", JSONObject().apply {
+                    put("hdr_details", hdr)
+                    put("output_context_id", "1")
+                })
+                put("deliveries", JSONObject().apply {
+                    put("original_http", deliveryJson(containers, videoCodecs, audioCodecs, direct = true))
+                    put(
+                        "hls",
+                        deliveryJson(
+                            listOf("m3u8", "hls", "ts", "mp4"),
+                            listOf("h264", "hevc"),
+                            listOf("aac", "ac3", "eac3"),
+                            direct = false
+                        )
+                    )
+                })
+            })
+        }
+    }
+
+    /** One playback decision from POST /api/v2/playback/start, or null
+     * when the server refused it. A 422 / validation_failed answer is
+     * retried once with the legacy quality shape. */
+    private suspend fun startPlayback(
+        settings: SettingsStore?,
+        server: MediaServer,
+        installationId: String,
+        profileId: String,
+        fileId: String
+    ): JSONObject? {
+        val attemptId = randomHexId()
+        val device = deviceHeaders(settings)
+        suspend fun start(legacy: Boolean): Pair<Int, String>? {
+            val payload = startPlaybackBody(
+                installationId, fileId, profileId, attemptId, legacy
+            ).toString()
+            return executeAuthed(settings, server) { token ->
+                Request.Builder()
+                    .url("${cleanBase(server.baseUrl)}/api/v2/playback/start")
+                    .apply {
+                        playbackHeaders(token, profileId, device).forEach { (k, v) -> header(k, v) }
+                    }
+                    .header("User-Agent", userAgent)
+                    .header("Accept", "application/json")
+                    .post(payload.toRequestBody(JSON))
+                    .build()
+            }
+        }
+        val (code, body) = start(legacy = false) ?: return null
+        val decision = runCatching { JSONObject(body) }.getOrNull()
+        val validationFailed = code == 422 ||
+            decision?.optString("code") == "validation_failed"
+        if (validationFailed) {
+            val (retryCode, retryBody) = start(legacy = true) ?: return null
+            if (retryCode !in 200..299) return null
+            return runCatching { JSONObject(retryBody) }.getOrNull()
+        }
+        if (code !in 200..299 || decision == null) return null
+        return decision
+    }
+
+    /**
+     * Start a Silo title: installation handshake → watch state for the
+     * file id → playback/start for the plan's stream URL. Null when any
+     * step fails (playback off, no file, server refused) — the caller
+     * shows that instead of playing. The returned URL + headers go
+     * straight into the existing player path (PlaybackRequest), like a
+     * Plex direct-play URL.
+     */
+    suspend fun preparePlayback(
+        settings: SettingsStore,
+        server: MediaServer,
+        contentId: String
+    ): SiloPlaybackSession? = withContext(Dispatchers.IO) {
+        try {
+            val fresh = resolveServer(settings, server)
+            val installation = installationId(settings, fresh) ?: return@withContext null
+            val profile = profileId(settings, fresh)
+            val fileId = watchFileId(settings, fresh, contentId) ?: return@withContext null
+            val decision = startPlayback(settings, fresh, installation, profile, fileId)
+                ?: return@withContext null
+            if (decision.optString("outcome") != "playable") return@withContext null
+            val plan = decision.optJSONObject("playback_plan") ?: return@withContext null
+            val rawUrl = plan.optJSONObject("stream")?.optString("url")
+                ?.takeIf { it.isNotBlank() } ?: return@withContext null
+            val url = resolveStreamUrl(server, rawUrl) ?: return@withContext null
+            val sessionId = decision.optString("session_id").takeIf { it.isNotBlank() }
+            val delivery = plan.optString("delivery")
+            val headers = buildMap<String, String> {
+                put("Authorization", bearer(fresh.accessToken))
+                if (profile.isNotBlank()) put("X-Profile-Id", profile)
+            }
+            val inventory = plan.optJSONObject("subtitle")?.optJSONArray("inventory")
+            val subtitles = if (inventory == null) emptyList() else {
+                (0 until inventory.length()).mapNotNull { i ->
+                    val entry = inventory.optJSONObject(i) ?: return@mapNotNull null
+                    if (entry.optString("delivery") != "sidecar") return@mapNotNull null
+                    val subUrl = entry.optString("url").takeIf { it.isNotBlank() }
+                        ?.let { resolveStreamUrl(server, it) } ?: return@mapNotNull null
+                    Subtitle(
+                        url = subUrl,
+                        lang = entry.optString("language").takeIf { it.isNotBlank() } ?: "und"
+                    )
+                }
+            }
+            SiloPlaybackSession(
+                url = url,
+                headers = headers,
+                sessionId = sessionId,
+                delivery = delivery,
+                subtitles = subtitles
+            )
+        } catch (_: Exception) {
+            null
         }
     }
 

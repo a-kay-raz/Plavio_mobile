@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,8 +37,11 @@ import androidx.compose.ui.unit.dp
 import com.aviostream.app.data.MetaPreview
 import com.aviostream.app.data.PlaybackRequest
 import com.aviostream.app.data.SettingsStore
+import com.aviostream.app.data.Subtitle
+import com.aviostream.app.data.servers.MediaServer
 import com.aviostream.app.data.servers.MediaServerOps
 import com.aviostream.app.data.servers.ServerItem
+import com.aviostream.app.data.servers.ServerKind
 import com.aviostream.app.data.servers.ServerLibrary
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.components.OrbitDots
@@ -45,6 +49,7 @@ import com.aviostream.app.ui.components.PosterCard
 import com.aviostream.app.ui.theme.TextPrimary
 import com.aviostream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** One drill-down level: the series/season tapped, and its loaded children. */
@@ -58,8 +63,9 @@ private data class DrillLevel(
  * Step 55: server library browser. A poster grid of the library's
  * titles; tapping a series drills into its seasons/episodes, tapping
  * a movie or an episode plays it directly in the built-in player.
- * Silo titles cannot play yet (its playback session is not ported) —
- * the screen says so instead of failing silently.
+ * Silo titles play through a negotiated session (see
+ * MediaServerOps.preparePlayback); a failed start shows a notice
+ * instead of failing silently.
  */
 @Composable
 fun ServerLibraryScreen(
@@ -111,13 +117,16 @@ fun ServerLibraryScreen(
         stack = stack.dropLast(1) + level.copy(items = children)
     }
 
-    fun playItem(item: ServerItem, seriesTitle: String? = null) {
-        if (server == null) return
-        val url = MediaServerOps.streamUrl(server, item)
-        if (url == null) {
-            notice = "Playback isn't available for Silo yet — its playback session still needs porting."
-            return
-        }
+    val scope = rememberCoroutineScope()
+
+    fun playWithUrl(
+        server: MediaServer,
+        item: ServerItem,
+        seriesTitle: String?,
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        subtitles: List<Subtitle> = emptyList()
+    ) {
         val isEpisode = item.type == "episode"
         val title = if (isEpisode) {
             val series = seriesTitle ?: item.seriesTitle ?: item.title
@@ -139,9 +148,35 @@ fun ServerLibraryScreen(
                 isMovie = item.type == "movie",
                 sourceName = server.name,
                 seriesName = seriesTitle ?: item.seriesTitle,
-                episodeTitle = if (isEpisode) item.title else null
+                episodeTitle = if (isEpisode) item.title else null,
+                headers = headers,
+                subtitles = subtitles
             )
         )
+    }
+
+    fun playItem(item: ServerItem, seriesTitle: String? = null) {
+        if (server == null) return
+        if (server.kind == ServerKind.SILO) {
+            // Silo has no direct-play URL: negotiate a session first.
+            notice = "Starting playback on Silo…"
+            scope.launch {
+                val session = withContext(Dispatchers.IO) {
+                    runCatching {
+                        MediaServerOps.preparePlayback(settings, server, item)
+                    }.getOrNull()
+                }
+                if (session == null) {
+                    notice = "Silo couldn't start playback for this title."
+                    return@launch
+                }
+                notice = null
+                playWithUrl(server, item, seriesTitle, session.url, session.headers, session.subtitles)
+            }
+            return
+        }
+        val url = MediaServerOps.streamUrl(server, item) ?: return
+        playWithUrl(server, item, seriesTitle, url)
     }
 
     val currentTitle = stack.lastOrNull()?.title ?: library?.name ?: "Library"

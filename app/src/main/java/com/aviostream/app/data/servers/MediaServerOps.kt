@@ -4,10 +4,9 @@ import com.aviostream.app.data.SettingsStore
 
 /**
  * Step 55: one facade over the four server clients, so screens and
- * playback only deal with [MediaServer] + [ServerItem]. Silo has no
- * playable URL yet (its negotiated playback session is not ported) —
- * [streamUrl] returns null for it and the UI says so instead of
- * failing silently.
+ * playback only deal with [MediaServer] + [ServerItem]. [streamUrl]
+ * is the synchronous direct-play URL (Plex/Jellyfin/Emby); Silo needs
+ * a negotiated session, so it goes through [preparePlayback] instead.
  */
 object MediaServerOps {
 
@@ -58,11 +57,24 @@ object MediaServerOps {
             ServerKind.SILO -> SiloClient.getSeriesEpisodes(server, item.contentId, settings)
         }
 
-    /** Direct-play URL, or null when the server cannot direct-play (Silo). */
+    /** Direct-play URL, or null when the server cannot direct-play (Silo:
+     * its session is negotiated — see [preparePlayback]). */
     fun streamUrl(server: MediaServer, item: ServerItem): String? = when (server.kind) {
         ServerKind.JELLYFIN, ServerKind.EMBY -> MediaBrowserClient.streamUrl(server, item)
         ServerKind.PLEX -> PlexClient.streamUrl(server, item)
         ServerKind.SILO -> null
+    }
+
+    /** Silo playback session (URL + auth headers for the player), or
+     * null when the server refused it. Other kinds have no session to
+     * negotiate — use [streamUrl] for them. */
+    suspend fun preparePlayback(
+        settings: SettingsStore,
+        server: MediaServer,
+        item: ServerItem
+    ): SiloClient.SiloPlaybackSession? = when (server.kind) {
+        ServerKind.SILO -> SiloClient.preparePlayback(settings, server, item.contentId)
+        else -> null
     }
 
     /** Mark a title played/unplayed on its server. Best-effort, never throws. */
