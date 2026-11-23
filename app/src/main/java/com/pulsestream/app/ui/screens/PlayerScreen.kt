@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1213,6 +1214,17 @@ fun PlayerScreen(
             context.applicationContext, url, state.currentRequest.headers
         )
         hlsVariantsLoading = false
+    }
+    // Keep for next videos (Nuvio keepAudioAmplification): when OFF, a set
+    // boost resets to 0 dB when a new title starts. Keyed on videoId, so
+    // episode switches reset it but source switches of the same title keep
+    // it. Default ON preserves today's always-persist behaviour.
+    LaunchedEffect(state.currentRequest.videoId) {
+        if (!settings.keepAudioBoost) {
+            state.volumeBoost = 0f
+            settings.audioBoostDb = 0
+            applyVolumeBoost()
+        }
     }
     /** Distinct qualities across the loaded streams, best first — the Quality picker options. */
     val qualityOptions = remember(state.availableStreams) {
@@ -5008,187 +5020,280 @@ fun PlayerScreen(
                 }
             }
             if (isAudio) {
-                com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
-                    onDismiss = { state.tracksOpen = false }
+                // Nuvio AudioTrackModal layout: full-screen gradient scrim,
+                // NO card — the rail sits directly on the video, bottom-left,
+                // max 444dp wide (content padding 44/44/28/64). Wide
+                // (>=760dp): tracks left + adjustments right, side by side.
+                com.pulsestream.app.ui.screens.player.PlayerOverlayScaffold(
+                    onDismiss = { state.tracksOpen = false },
+                    contentPadding = PaddingValues(start = 44.dp, end = 44.dp, top = 28.dp, bottom = 64.dp)
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        item {
-                            Text(
-                                "Audio Tracks",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = Color.White,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                            )
-                        }
-                        // Tracks FIRST (Nuvio AudioTrackModal order) —
-                        // full accent fill + checkmark, not a RadioButton.
-                        item {
-                            com.pulsestream.app.ui.screens.player.AudioTrackRow(
-                                label = "Auto",
-                                language = null,
-                                selected = audioOpts.none { it.selected },
-                                onClick = { applyAudioSelection(null) },
-                                modifier = Modifier.focusRequester(firstRowFocus)
-                            )
-                        }
-                        items(audioOpts) { opt ->
-                            com.pulsestream.app.ui.screens.player.AudioTrackRow(
-                                label = opt.label,
-                                language = opt.language,
-                                selected = opt.selected,
-                                onClick = { applyAudioSelection(opt) }
-                            )
-                        }
-                        // Audio delay (Nuvio AudioDelaySection): a stepper,
-                        // 25ms steps, +/-60s. A positive delay means the
-                        // audio plays later than the video.
-                        item {
-                            Text(
-                                "Audio delay",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 8.dp)
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                StyleStepper(
-                                    value = formatAudioDelay(state.audioDelayMs),
-                                    onMinus = { setAudioDelayMs(state.audioDelayMs - AUDIO_DELAY_STEP_MS) },
-                                    onPlus = { setAudioDelayMs(state.audioDelayMs + AUDIO_DELAY_STEP_MS) }
-                                )
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color.White.copy(alpha = 0.08f))
-                                        .clickable(enabled = state.audioDelayMs != 0) { setAudioDelayMs(0) }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        "Reset",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = if (state.audioDelayMs != 0) Color.White else Color.White.copy(alpha = 0.38f)
-                                    )
-                                }
-                            }
-                        }
-                        // Amplification (Nuvio AudioAmplificationSection):
-                        // a dB stepper on the existing LoudnessEnhancer —
-                        // the value persists and applies on the next title.
-                        // (Nuvio's "Keep for next videos" chip is not
-                        // ported: in Avio a set boost always persists.)
-                        item {
-                            Text(
-                                "Amplification",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 8.dp)
-                            )
-                            val boostDb = (state.volumeBoost * 10).roundToInt().coerceIn(0, 10)
-                            StyleStepper(
-                                value = if (boostDb > 0) "+$boostDb dB" else "0 dB",
-                                onMinus = { setAudioBoostDb(boostDb - 1) },
-                                onPlus = { setAudioBoostDb(boostDb + 1) }
-                            )
-                        }
-                        // Step 66 (Nuvio downmix + centre-mix): mix
-                        // surround sound down to stereo/mono. The toggle
-                        // + target apply on the next video (the channel
-                        // count is negotiated when the player is built);
-                        // centre level + keep-original apply live.
-                        item {
-                            Text(
-                                "Downmix",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 8.dp)
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val railWidth = minOf(maxWidth, 444.dp)
+                        val railMaxHeight = (maxHeight - 64.dp).coerceAtLeast(120.dp).coerceAtMost(620.dp)
+                        val panelMaxHeight = maxHeight
+                        // Adjustments: delay + amplification (+ keep chip) +
+                        // downmix (Avio's 5.1 mechanism). Each section gets
+                        // 12dp above it, like Nuvio's sections.
+                        val adjustments: @Composable () -> Unit = {
+                            // Audio delay (Nuvio AudioDelaySection): a stepper,
+                            // 25ms steps, +/-60s. A positive delay means the
+                            // audio plays later than the video.
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Text(
-                                    "Mix surround down",
+                                    "Audio delay",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = TextPrimary,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Switch(
-                                    checked = state.downmixOn,
-                                    onCheckedChange = { setDownmixEnabled(it) }
-                                )
-                            }
-                            if (state.downmixOn) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
-                                ) {
-                                    FilterChip(
-                                        selected = state.downmixTarget == 2,
-                                        onClick = { setDownmixTarget(2) },
-                                        label = { Text("Stereo") }
-                                    )
-                                    FilterChip(
-                                        selected = state.downmixTarget == 1,
-                                        onClick = { setDownmixTarget(1) },
-                                        label = { Text("Mono") }
-                                    )
-                                }
-                                Text(
-                                    "Centre mix",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextPrimary,
-                                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp)
+                                    color = Color.White
                                 )
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     StyleStepper(
-                                        value = if (state.centerMixDb > 0) "+${state.centerMixDb} dB" else "${state.centerMixDb} dB",
-                                        onMinus = { setCenterMixDb(state.centerMixDb - 1) },
-                                        onPlus = { setCenterMixDb(state.centerMixDb + 1) }
+                                        value = formatAudioDelay(state.audioDelayMs),
+                                        onMinus = { setAudioDelayMs(state.audioDelayMs - AUDIO_DELAY_STEP_MS) },
+                                        onPlus = { setAudioDelayMs(state.audioDelayMs + AUDIO_DELAY_STEP_MS) }
                                     )
-                                    TextButton(
-                                        onClick = { setCenterMixDb(0) },
-                                        enabled = state.centerMixDb != 0
-                                    ) {
-                                        Text("Reset")
-                                    }
+                                    AudioResetChip(
+                                        enabled = state.audioDelayMs != 0,
+                                        onClick = { setAudioDelayMs(0) }
+                                    )
                                 }
+                            }
+                            // Amplification (Nuvio AudioAmplificationSection):
+                            // a dB stepper on the existing LoudnessEnhancer —
+                            // the value persists and applies on the next title.
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    "Amplification",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val boostDb = (state.volumeBoost * 10).roundToInt().coerceIn(0, 10)
+                                    StyleStepper(
+                                        value = if (boostDb > 0) "+$boostDb dB" else "0 dB",
+                                        onMinus = { setAudioBoostDb(boostDb - 1) },
+                                        onPlus = { setAudioBoostDb(boostDb + 1) }
+                                    )
+                                    com.pulsestream.app.ui.screens.player.AudioToggleChip(
+                                        label = "Keep for next videos",
+                                        checked = settings.keepAudioBoost,
+                                        onCheckedChange = { settings.keepAudioBoost = it }
+                                    )
+                                }
+                            }
+                            // Step 66 (Nuvio downmix + centre-mix): mix
+                            // surround sound down to stereo/mono. The toggle
+                            // + target apply on the next video (the channel
+                            // count is negotiated when the player is built);
+                            // centre level + keep-original apply live.
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    "Downmix",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White
+                                )
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        "Keep original levels",
+                                        "Mix surround down",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = TextPrimary,
+                                        color = Color.White,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Switch(
-                                        checked = state.keepOriginalLevels,
-                                        onCheckedChange = { setKeepOriginalLevels(it) }
+                                        checked = state.downmixOn,
+                                        onCheckedChange = { setDownmixEnabled(it) }
                                     )
                                 }
+                                if (state.downmixOn) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
+                                    ) {
+                                        FilterChip(
+                                            selected = state.downmixTarget == 2,
+                                            onClick = { setDownmixTarget(2) },
+                                            label = { Text("Stereo") }
+                                        )
+                                        FilterChip(
+                                            selected = state.downmixTarget == 1,
+                                            onClick = { setDownmixTarget(1) },
+                                            label = { Text("Mono") }
+                                        )
+                                    }
+                                    Text(
+                                        "Centre mix",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp)
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        StyleStepper(
+                                            value = if (state.centerMixDb > 0) "+${state.centerMixDb} dB" else "${state.centerMixDb} dB",
+                                            onMinus = { setCenterMixDb(state.centerMixDb - 1) },
+                                            onPlus = { setCenterMixDb(state.centerMixDb + 1) }
+                                        )
+                                        AudioResetChip(
+                                            enabled = state.centerMixDb != 0,
+                                            onClick = { setCenterMixDb(0) }
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            "Keep original levels",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Switch(
+                                            checked = state.keepOriginalLevels,
+                                            onCheckedChange = { setKeepOriginalLevels(it) }
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "Mixes 5.1/7.1 audio so dialogue stays clear on stereo output. Toggle + target apply on the next video; centre level applies live.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
+                                )
                             }
-                            Text(
-                                "Mixes 5.1/7.1 audio so dialogue stays clear on stereo output. Toggle + target apply on the next video; centre level applies live.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 12.dp)
-                            )
+                        }
+                        // Tracks column (Nuvio tracksColumn): header + the
+                        // track list, bottom-anchored; the list scrolls on
+                        // its own when tall.
+                        val tracksColumn: @Composable (Modifier) -> Unit = { columnModifier ->
+                            Column(
+                                modifier = columnModifier,
+                                verticalArrangement = Arrangement.Bottom
+                            ) {
+                                Text(
+                                    "Audio Tracks",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f, fill = false)
+                                        .heightIn(max = railMaxHeight),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    // Tracks FIRST (Nuvio AudioTrackModal order) —
+                                    // full accent fill + checkmark, not a RadioButton.
+                                    item {
+                                        com.pulsestream.app.ui.screens.player.AudioTrackRow(
+                                            label = "Auto",
+                                            language = null,
+                                            selected = audioOpts.none { it.selected },
+                                            onClick = { applyAudioSelection(null) },
+                                            modifier = Modifier.focusRequester(firstRowFocus)
+                                        )
+                                    }
+                                    items(audioOpts) { opt ->
+                                        com.pulsestream.app.ui.screens.player.AudioTrackRow(
+                                            label = opt.label,
+                                            language = opt.language,
+                                            selected = opt.selected,
+                                            onClick = { applyAudioSelection(opt) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (maxWidth >= 760.dp) {
+                            // Wide enough: tracks on the left and adjustments
+                            // on the right, so neither squeezes the other.
+                            val columnWidth = minOf((maxWidth - 32.dp) / 2, 444.dp)
+                            Row(
+                                modifier = Modifier.align(Alignment.BottomStart),
+                                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                tracksColumn(
+                                    Modifier
+                                        .width(columnWidth)
+                                        .heightIn(max = panelMaxHeight)
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .width(columnWidth)
+                                        .heightIn(max = panelMaxHeight)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    adjustments()
+                                }
+                            }
+                        } else {
+                            // One rail that scrolls as a whole, so the tracks
+                            // keep their size next to the adjustments.
+                            Column(
+                                modifier = Modifier
+                                    .width(railWidth)
+                                    .heightIn(max = panelMaxHeight)
+                                    .align(Alignment.BottomStart)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    "Audio Tracks",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    com.pulsestream.app.ui.screens.player.AudioTrackRow(
+                                        label = "Auto",
+                                        language = null,
+                                        selected = audioOpts.none { it.selected },
+                                        onClick = { applyAudioSelection(null) },
+                                        modifier = Modifier.focusRequester(firstRowFocus)
+                                    )
+                                    audioOpts.forEach { opt ->
+                                        com.pulsestream.app.ui.screens.player.AudioTrackRow(
+                                            label = opt.label,
+                                            language = opt.language,
+                                            selected = opt.selected,
+                                            onClick = { applyAudioSelection(opt) }
+                                        )
+                                    }
+                                }
+                                adjustments()
+                            }
                         }
                     }
                 }
+
             } else {
                 // ===== Subtitle overlay (v0.14.5, owner's approved
                 // design): a translucent full-player overlay — the video
@@ -6527,6 +6632,31 @@ private fun StyleStepper(
             )
         }
         StyleStepperButton(Icons.Filled.Add, "Increase", onPlus)
+    }
+}
+
+/**
+ * Nuvio SubtitleTextAction: the small Reset chip used by the Audio delay /
+ * centre-mix sections — White 0.08 bg, 12dp radius, h12/v10.
+ */
+@Composable
+private fun AudioResetChip(
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "Reset",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) Color.White else Color.White.copy(alpha = 0.38f)
+        )
     }
 }
 

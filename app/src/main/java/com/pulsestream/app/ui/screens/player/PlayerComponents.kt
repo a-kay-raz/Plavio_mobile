@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -49,6 +51,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -499,7 +502,10 @@ internal fun AudioTrackRow(
     modifier: Modifier = Modifier
 ) {
     val accent = LocalPalette.current.accent
-    val onAccent = Color.Black
+    // onAccent follows the accent's luminance (like the other player rows):
+    // black text on a light accent, white on a dark one. A hardcoded black
+    // was unreadable on dark accents.
+    val onAccent = if (accent.luminance() > 0.5f) Color.Black else Color.White
     Row(
         modifier
             .fillMaxWidth()
@@ -535,5 +541,44 @@ internal fun AudioTrackRow(
                 modifier = Modifier.size(20.dp)
             )
         }
+    }
+}
+
+/**
+ * Nuvio AudioToggleChip ("Keep for next videos"): accent fill + check when
+ * on, White 0.08 when off. A toggleable chip, not a Switch.
+ */
+@Composable
+internal fun AudioToggleChip(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val accent = LocalPalette.current.accent
+    val onAccent = if (accent.luminance() > 0.5f) Color.Black else Color.White
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (checked) accent else Color.White.copy(alpha = 0.08f))
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (checked) {
+            Icon(
+                Icons.Rounded.Check,
+                contentDescription = null,
+                tint = onAccent,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (checked) onAccent else Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

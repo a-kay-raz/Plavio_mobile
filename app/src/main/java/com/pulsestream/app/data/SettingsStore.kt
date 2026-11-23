@@ -873,6 +873,13 @@ class SettingsStore(
         get() = prefInt(KEY_AUDIO_BOOST_DB, 0).coerceIn(0, 10)
         set(value) = prefs.edit().putInt(KEY_AUDIO_BOOST_DB, value.coerceIn(0, 10)).apply()
 
+    /** Keep the audio boost for the next video (Nuvio keepAudioAmplification):
+     *  ON (default) = a set boost carries over to the next title; OFF = it
+     *  resets to 0 dB when a new title starts. */
+    var keepAudioBoost: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_AUDIO_BOOST, true)
+        set(value) = prefs.edit().putBoolean(KEY_KEEP_AUDIO_BOOST, value).apply()
+
     /** Step 70: custom accent hex ("#RRGGBB", empty = use the preset accent). */
     var customAccentHex: String
         get() = prefs.getString(KEY_CUSTOM_ACCENT_HEX, "") ?: ""
@@ -2164,6 +2171,7 @@ class SettingsStore(
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
         private const val KEY_RESIZE_MODE = "resize_mode"
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
+        private const val KEY_KEEP_AUDIO_BOOST = "keep_audio_boost"
         private const val KEY_AUDIO_DELAY_MS = "audio_delay_ms"
         private const val KEY_DOWNMIX_ENABLED = "downmix_enabled"
         private const val KEY_CUSTOM_ACCENT_HEX = "custom_accent_hex"
