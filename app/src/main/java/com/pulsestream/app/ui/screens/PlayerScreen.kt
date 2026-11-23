@@ -258,6 +258,8 @@ import com.pulsestream.app.ui.components.ErrorState
 import com.pulsestream.app.ui.components.GlowBackground
 import com.pulsestream.app.ui.components.DotsLoadingIndicator
 import com.pulsestream.app.ui.components.SafePosterImage
+import com.pulsestream.app.ui.glass.AvioBackdrop
+import com.pulsestream.app.ui.glass.LocalAvioGlassBackdrop
 import com.pulsestream.app.ui.glass.ambientLiquidGlass
 import com.pulsestream.app.ui.screens.player.playerLiquidGlass
 import com.pulsestream.app.ui.components.StreamCard
@@ -3612,6 +3614,21 @@ fun PlayerScreen(
     // died mid-pinch, normal playback included, with no Java trace
     // (native graphics crash). Nuvio scales the content frame and it
     // does not crash; the subtitles stay unscaled too.
+    //
+    // The View scale alone did NOT fix the crash (still force-stops past
+    // ~1.2x): the remaining divergence from Nuvio is the SURFACE.
+    // Nuvio's PlayerView is a SurfaceView (separate surface, never drawn
+    // into the backdrop recording); Avio's is a TextureView, and the
+    // backdrop source re-records the whole screen — including the 4K
+    // video — into a GraphicsLayer every frame. Drawing the SCALED
+    // TextureView into that layer is what kills the app (the scaled 4K
+    // texture crosses the GPU's ~4096 render-target limit: 3840 x ~1.07
+    // = 4096, and the % pill lags the true scale by an event or two, so
+    // the user sees the last value ~115-120%). While zoomed, the
+    // recording is therefore frozen (AvioBackdrop.suspendRecording) and
+    // the glass keeps the last recorded frame; recording resumes when
+    // the zoom is back to 1x.
+    val glassBackdrop = LocalAvioGlassBackdrop.current as? AvioBackdrop
     fun applyVideoZoom() {
         val pv = state.playerView ?: return
         val target = pv.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
@@ -3619,8 +3636,15 @@ fun PlayerScreen(
             ?: return
         target.scaleX = state.videoZoom
         target.scaleY = state.videoZoom
+        glassBackdrop?.suspendRecording = state.videoZoom != 1f
     }
     LaunchedEffect(state.videoZoom) { applyVideoZoom() }
+    // The backdrop is app-wide: never leave the recording frozen after
+    // the player goes away (the Home/Detail glass would show a stale
+    // frame forever).
+    DisposableEffect(Unit) {
+        onDispose { glassBackdrop?.suspendRecording = false }
+    }
     Box(tvKeys.fillMaxSize().background(Color.Black)
         .then(if (isTv) Modifier.onFocusChanged { state.rootHasFocus = it.hasFocus } else Modifier)
         .then(tvContainerModifier)) {
