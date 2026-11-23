@@ -7,10 +7,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -131,6 +133,58 @@ fun PlayerCenteredDialog(
                     width = 1.dp,
                     color = Color(0xFF252A2A),
                     shape = RoundedCornerShape(24.dp)
+                )
+        ) {
+            content()
+        }
+    }
+}
+
+/*
+ * Right-side panel (Nuvio PlayerSidePanel, used by Chapters and
+ * Episodes): docked to the right edge, full height, only the left
+ * corners rounded (16dp). Glass is more opaque than the bottom
+ * panels (tint 0.72, refraction 10/18). Scrim Black 0.34.
+ */
+@Composable
+fun PlayerSidePanel(
+    onDismiss: () -> Unit,
+    widthDp: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Scrim: dims the video; a tap outside the panel dismisses.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.34f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onDismiss() }
+        )
+        // Right-docked glass panel, full height, left corners rounded.
+        // Width is the requested width, capped so at least 24dp of the
+        // video stays visible on a narrow screen.
+        val panelWidth = minOf(maxWidth - 24.dp, widthDp)
+        Box(
+            modifier
+                .align(Alignment.CenterEnd)
+                .width(panelWidth)
+                .fillMaxHeight()
+                .ambientLiquidGlass(
+                    shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+                    tint = Color(0xFF1A1A1A).copy(alpha = 0.72f),
+                    fallback = Color(0xFF1A1A1A),
+                    blurRadius = 28.dp,
+                    refractionHeight = 10.dp,
+                    refractionAmount = 18.dp,
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color(0xFF252A2A),
+                    shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
                 )
         ) {
             content()

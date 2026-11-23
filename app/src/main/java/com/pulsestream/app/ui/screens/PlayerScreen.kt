@@ -4831,66 +4831,91 @@ fun PlayerScreen(
             )
         }
 
-        // Chapters panel (Nuvio PlayerChaptersPanel, bottom-sheet shape
-        // like the Audio sheet): time + title rows, current highlighted,
-        // tap seeks to the chapter and closes.
+        // Chapters panel (Nuvio PlayerChaptersPanel): a RIGHT-side panel
+        // (420dp, full height), not a bottom card. Header 'Chapters'
+        // (headlineSmall) + Close button; rows spaced 6dp, current row =
+        // White 0.15 bg + 1dp accent-0.75 border, others = 0xFF222222 bg
+        // + 1dp borderSubtle border; time is muted 0xFF969CA3 when not
+        // current. Tap seeks to the chapter and closes.
         if (state.chaptersOpen) {
-            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
-                onDismiss = { state.chaptersOpen = false }
+            com.pulsestream.app.ui.screens.player.PlayerSidePanel(
+                onDismiss = { state.chaptersOpen = false },
+                widthDp = 420.dp
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
+                val currentIndex = state.chapters.currentChapterIndex(state.positionMs)
+                val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+                    initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0)
+                )
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
                 ) {
-                    item {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             "Chapters",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.headlineSmall,
                             color = TextPrimary,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.pulsestream.app.ui.screens.player.PlayerDialogCloseButton(
+                            onClick = { state.chaptersOpen = false }
                         )
                     }
-                    val currentIndex = state.chapters.currentChapterIndex(state.positionMs)
-                    itemsIndexed(state.chapters, key = { index, chapter -> "chap_${index}_${chapter.startMs}" }) { index, chapter ->
-                        val isCurrent = index == currentIndex
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isCurrent) LocalPalette.current.accent.copy(alpha = 0.15f) else Color.Transparent)
-                                .clickable {
-                                    state.chaptersOpen = false
-                                    player.seekTo(chapter.startMs)
-                                    pokeIndicator(PlayerIndicator.Message(chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}"))
-                                }
-                                .padding(horizontal = 12.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                formatMs(chapter.startMs),
-                                color = if (isCurrent) LocalPalette.current.accent else TextSecondary,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            Text(
-                                chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}",
-                                color = TextPrimary,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (isCurrent) {
-                                Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.height(16.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        itemsIndexed(state.chapters, key = { index, chapter -> "chap_${index}_${chapter.startMs}" }) { index, chapter ->
+                            val isCurrent = index == currentIndex
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isCurrent) Color.White.copy(alpha = 0.15f) else Color(0xFF222222))
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isCurrent) LocalPalette.current.accent.copy(alpha = 0.75f) else Color(0xFF252A2A),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable {
+                                        state.chaptersOpen = false
+                                        player.seekTo(chapter.startMs)
+                                        pokeIndicator(PlayerIndicator.Message(chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}"))
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    "Playing",
-                                    color = LocalPalette.current.accent,
+                                    formatMs(chapter.startMs),
+                                    color = if (isCurrent) LocalPalette.current.accent else Color(0xFF969CA3),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                Spacer(Modifier.width(14.dp))
+                                Text(
+                                    chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}",
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isCurrent) {
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        "Playing",
+                                        color = LocalPalette.current.accent,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
@@ -5972,25 +5997,34 @@ fun PlayerScreen(
                 onDismiss = { state.channelsOpen = false }
             )
         }
-        // Episodes picker for series.
+        // Episodes picker for series (Nuvio PlayerEpisodesPanel): a
+        // RIGHT-side panel (520dp, full height), not a bottom card.
+        // Header 'Episodes' (headlineSmall) + Close button. Season
+        // chips: 24dp radius, selected = 0xFFF5F5F5 fill + Black text,
+        // labels 'Season 1' / 'Specials'. Episode rows: 16dp radius,
+        // 130x90 thumbnail with an 'S1 E2' code chip, title titleMedium
+        // (max 1), overview max 2, current = 2dp focusRing border.
         if (state.episodesOpen) {
             val episodes = state.currentRequest.episodes
             val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
             var selSeason by remember(episodes) { mutableStateOf(state.currentRequest.season) }
             val panelWatchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
-            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
-                onDismiss = { state.episodesOpen = false }
+            com.pulsestream.app.ui.screens.player.PlayerSidePanel(
+                onDismiss = { state.episodesOpen = false },
+                widthDp = 520.dp
             ) {
-                Column(Modifier.tvSheetFocus()) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             "Episodes",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.headlineSmall,
                             color = TextPrimary,
                             modifier = Modifier.weight(1f),
                         )
@@ -6008,36 +6042,52 @@ fun PlayerScreen(
                                 tint = if (settings.shuffleEpisodes) LocalPalette.current.accent else TextSecondary,
                             )
                         }
+                        com.pulsestream.app.ui.screens.player.PlayerDialogCloseButton(
+                            onClick = { state.episodesOpen = false }
+                        )
                     }
+                    Spacer(Modifier.height(16.dp))
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                         modifier = Modifier.padding(bottom = 12.dp)
                     ) {
                         items(seasons, key = { it }) { season ->
-                            FilterChip(
-                                modifier = Modifier.tvFocusRing(RoundedCornerShape(50)),
-                                selected = selSeason == season,
-                                onClick = { selSeason = season },
-                                label = { Text(if (season == 0) "Specials" else "S$season") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
-                                    selectedLabelColor = TextPrimary,
-                                    containerColor = Color.White.copy(alpha = 0.06f),
-                                    labelColor = TextSecondary
+                            val chipSelected = selSeason == season
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(if (chipSelected) Color(0xFFF5F5F5) else Color(0xFF222222))
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (chipSelected) Color.Transparent else Color(0xFF252A2A),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .clickable { selSeason = season }
+                                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    if (season == 0) "Specials" else "Season $season",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (chipSelected) Color.Black else TextSecondary
                                 )
-                            )
+                            }
                         }
                     }
-                }
                 val eps = remember(episodes, selSeason) {
                     episodes.filter { it.season == selSeason }
                         .sortedWith(compareBy({ it.episode }, { it.title }))
                 }
+                val currentEpIndex = eps.indexOfFirst { it.id == state.currentRequest.videoId }.coerceAtLeast(0)
+                val epListState = androidx.compose.foundation.lazy.rememberLazyListState(
+                    initialFirstVisibleItemIndex = (currentEpIndex - 1).coerceAtLeast(0)
+                )
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 20.dp, end = 20.dp, bottom = 32.dp
-                    )
+                    state = epListState,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp)
                 ) {
                     items(eps, key = { it.id }) { video ->
                         val selected = video.id == state.currentRequest.videoId
@@ -6045,18 +6095,22 @@ fun PlayerScreen(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(
-                                    if (selected) LocalPalette.current.accent.copy(alpha = 0.14f)
-                                    else Color.White.copy(alpha = 0.04f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF222222))
+                                .then(
+                                    if (selected) Modifier.border(
+                                        width = 2.dp,
+                                        color = LocalPalette.current.accent,
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) else Modifier
                                 )
                                 .clickable { playEpisode(video) }
-                                .padding(12.dp),
+                                .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
-                                Modifier.size(64.dp, 44.dp).clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = 0.06f)),
+                                Modifier.size(130.dp, 90.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF222222)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (video.thumbnail != null) {
@@ -6071,43 +6125,72 @@ fun PlayerScreen(
                                         style = MaterialTheme.typography.labelMedium
                                     )
                                 }
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "${video.episode}. ${video.title}",
-                                    color = TextPrimary,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (!video.overview.isNullOrBlank()) {
+                                // Episode-code chip, bottom-start.
+                                Box(
+                                    Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(6.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color.Black.copy(alpha = 0.75f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
                                     Text(
-                                        video.overview!!,
-                                        color = TextSecondary,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        "S${video.season} E${video.episode}",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelMedium
                                     )
                                 }
+                                if (isWatched) {
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                            .size(22.dp)
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(LocalPalette.current.accent),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = "Watched",
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    video.title,
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                                 val airDate = video.released?.takeIf { it.isNotBlank() }?.let { formatEpisodeAirDate(it) }
                                 if (airDate != null) {
                                     Text(
                                         airDate,
+                                        color = Color(0xFF969CA3),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                if (!video.overview.isNullOrBlank()) {
+                                    Text(
+                                        video.overview!!,
                                         color = TextSecondary,
-                                        style = MaterialTheme.typography.labelSmall
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 4.dp)
                                     )
                                 }
                             }
-                            if (isWatched) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = "Watched",
-                                    tint = LocalPalette.current.accent,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
+                            if (selected) {
+                                Spacer(Modifier.width(8.dp))
+                                Icon(Icons.Filled.PlayArrow, null, tint = LocalPalette.current.accent)
                             }
                             // Per-episode stream choice (Nuvio
                             // PlayerEpisodesPanel): opens this episode's
@@ -6123,14 +6206,10 @@ fun PlayerScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-                            if (selected) {
-                                Icon(Icons.Filled.PlayArrow, null, tint = LocalPalette.current.accent)
-                            }
                         }
-                        Spacer(Modifier.height(8.dp))
                     }
                 }
-                            }
+                }
             }
         }
 
