@@ -3479,8 +3479,13 @@ private data class PlaybackIds(
 @Volatile
 private var lastHeroTrailerMuted: Boolean? = null
 
+/**
+ * Hero trailer player — shared with the Home hero (Fix 4): internal so
+ * HomeScreen can reuse the exact Detail player/overlay instead of a
+ * second ExoPlayer setup. Callers own mute/play gating and the fade.
+ */
 @Composable
-private fun HeroTrailerPlayer(
+internal fun HeroTrailerPlayer(
     videoUrl: String,
     audioUrl: String?,
     muted: Boolean,

@@ -69,6 +69,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -136,6 +137,9 @@ import com.aviostream.app.data.parseReleaseYear
 import com.aviostream.app.data.streamQualityLabel
 import com.aviostream.app.data.StoredHomeRowPrefs
 import com.aviostream.app.data.StreamRepository
+import com.aviostream.app.data.TmdbClient
+import com.aviostream.app.data.TrailerResolver
+import com.aviostream.app.data.TrailerStream
 import com.aviostream.app.data.heroSourceKeys
 import com.aviostream.app.data.rowKey
 import com.aviostream.app.data.db.Collection
@@ -169,6 +173,7 @@ import com.aviostream.app.ui.components.tmdbSizedImage
 import com.aviostream.app.ui.theme.TextPrimary
 import com.aviostream.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -1244,7 +1249,10 @@ private data class HeroMetaExtras(
     val releaseInfo: String? = null,
     val imdbRating: String? = null,
     val genres: List<String> = emptyList(),
-    val background: String? = null
+    val background: String? = null,
+    // Fix 4: the title's trailers, for hero autoplay (same sources as
+    // Detail — addon first, TMDB when the addon serves none).
+    val trailers: List<TrailerStream> = emptyList()
 )
 
 @Composable
@@ -1268,11 +1276,16 @@ private fun HeroCarousel(
         else (config.screenWidthDp * 1.5f).dp
 
     val reducedMotion = com.aviostream.app.data.rememberReducedMotion()
-    LaunchedEffect(pagerState, featured.size, reducedMotion) {
+    // Fix 4: hero trailer autoplay reads the same setting as Detail.
+    val settings = repository.settings
+    LaunchedEffect(pagerState, featured.size, reducedMotion, settings.heroTrailerPlayback) {
         // No auto-advance on TV: the 8s full-bleed pager animation steals
         // frames from D-pad browsing on weak TV GPUs/CPUs and its backdrop
         // re-decodes cause jank spikes that coincide with user input.
         if (isTv || reducedMotion) return@LaunchedEffect
+        // Fix 4 (Nuvio HomeHeroSection): auto-scroll is off while hero
+        // trailers can play, so a page never flips mid-trailer.
+        if (settings.heroTrailerPlayback) return@LaunchedEffect
         while (featured.size > 1) {
             delay(8000)
             if (!pagerState.isScrollInProgress) {
@@ -1400,6 +1413,21 @@ private fun HeroCarousel(
                         val detail = runCatching {
                             repository.getMetaFromAny(null, item.meta.type, item.meta.id)
                         }.getOrNull() ?: return@launch
+                        // Fix 4: hero trailer source — the addon's trailers
+                        // win; TMDB fills in when there are none (same as
+                        // Detail's effectiveTrailers).
+                        val trailers = if (detail.trailerStreams.isNotEmpty()) {
+                            detail.trailerStreams
+                        } else {
+                            val tmdbId = runCatching {
+                                TmdbClient.resolveTmdbId(repository.settings, item.meta.id, item.meta.type)
+                            }.getOrNull()
+                            if (tmdbId != null) {
+                                runCatching {
+                                    TmdbClient.getTrailers(repository.settings, item.meta.type, tmdbId)
+                                }.getOrDefault(emptyList())
+                            } else emptyList()
+                        }
                         heroExtras = heroExtras + (key to HeroMetaExtras(
                             runtime = detail.runtime,
                             certification = detail.certification,
@@ -1409,11 +1437,59 @@ private fun HeroCarousel(
                             releaseInfo = detail.releaseInfo,
                             imdbRating = detail.imdbRating,
                             genres = detail.genres,
-                            background = detail.background
+                            background = detail.background,
+                            trailers = trailers
                         ))
                     }
                 }
             }
+    }
+
+    // Fix 4: hero trailer autoplay (Nuvio HomeHeroSection + Detail D2).
+    // The current page's first trailer — ranked exactly like Detail's
+    // heroTrailer — autoplays muted once resolved, after the same start
+    // delay as Detail. Only the current page ever resolves or plays;
+    // a page change resets the state via the key.
+    val currentHeroItem = featured.getOrNull(pagerState.currentPage)
+    val currentHeroKey = currentHeroItem?.let { "${it.meta.type}|${it.meta.id}" }
+    val currentHeroTrailers = currentHeroKey?.let { heroExtras[it]?.trailers }.orEmpty()
+    val heroTrailer = currentHeroTrailers.maxByOrNull { trailer ->
+        val t = trailer.title.lowercase()
+        when {
+            "official" in t && "trailer" in t -> 70
+            "trailer" in t -> 60
+            "official" in t -> 50
+            else -> 0
+        }
+    }
+    var heroTrailerUrl by remember(currentHeroKey) { mutableStateOf<String?>(null) }
+    var heroTrailerAudioUrl by remember(currentHeroKey) { mutableStateOf<String?>(null) }
+    var heroTrailerReady by remember(currentHeroKey) { mutableStateOf(false) }
+    var heroTrailerFinished by remember(currentHeroKey) { mutableStateOf(false) }
+    var heroMuted by remember(currentHeroKey) {
+        mutableStateOf(!settings.heroTrailerStartUnmuted)
+    }
+    LaunchedEffect(currentHeroKey, heroTrailer?.ytId, settings.heroTrailerPlayback, settings.heroTrailerStartDelaySeconds) {
+        heroTrailerUrl = null
+        heroTrailerAudioUrl = null
+        heroTrailerReady = false
+        heroTrailerFinished = false
+        val ytId = heroTrailer?.ytId ?: return@LaunchedEffect
+        if (!settings.heroTrailerPlayback) return@LaunchedEffect
+        val resolved = async {
+            runCatching {
+                withTimeoutOrNull(30_000) { TrailerResolver.resolvePlayback(ytId) }
+            }.getOrNull()
+        }
+        val delaySeconds = settings.heroTrailerStartDelaySeconds
+        if (delaySeconds > 0) delay(delaySeconds * 1000L)
+        val playback = resolved.await()
+        if (playback == null) {
+            heroTrailerFinished = true
+        } else {
+            heroTrailerUrl = playback.videoUrl
+            heroTrailerAudioUrl = playback.audioUrl
+        }
     }
 
     // Scroll parallax (Nuvio HERO_BACKGROUND_PARALLAX 0.055 / content 0.18 /
@@ -1480,6 +1556,42 @@ private fun HeroCarousel(
                         },
                     contentScale = ContentScale.Crop
                 )
+                // Fix 4: hero trailer autoplay (Nuvio HomeHeroSection) —
+                // the current page's trailer plays over the backdrop and
+                // fades in when ready; the gradients below stay on top so
+                // the title text keeps reading. Same parallax/scale as the
+                // backdrop; pauses once the hero has scrolled away.
+                val trailerUrl = heroTrailerUrl
+                val trailerFadeAlpha by animateFloatAsState(
+                    targetValue = if (heroTrailerReady) 1f else 0f,
+                    animationSpec = tween(300),
+                    label = "home_hero_trailer_fade"
+                )
+                if (index == pagerState.currentPage && trailerUrl != null && !heroTrailerFinished) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationY = scrollOffsetPx * 0.3f
+                                val inc = if (scrollOffsetPx < 0f) abs(scrollOffsetPx) * 0.002f
+                                    else scrollOffsetPx * 0.0001f
+                                val scale = 1.14f * (1f + inc).coerceAtMost(1.3f)
+                                scaleX = scale
+                                scaleY = scale
+                                alpha = trailerFadeAlpha
+                            }
+                    ) {
+                        HeroTrailerPlayer(
+                            videoUrl = trailerUrl,
+                            audioUrl = heroTrailerAudioUrl,
+                            muted = heroMuted,
+                            play = scrollOffsetPx < heroHeightPx,
+                            onReady = { heroTrailerReady = true },
+                            onEnded = { heroTrailerFinished = true },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
                 // Full-height gradient fade (Nuvio alphas 0.02/0.12/0.34/0.78)
                 // + 220dp bottom fade to the background.
                 Box(
