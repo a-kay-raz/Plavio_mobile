@@ -2747,7 +2747,7 @@ private fun DetailContent(
         ModalBottomSheet(
             onDismissRequest = { episodeActionVideo = null },
             sheetState = rememberModalBottomSheetState(),
-            containerColor = Color(0xFF14141F)
+            containerColor = LocalPalette.current.background
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
@@ -2801,7 +2801,7 @@ private fun DetailContent(
         ModalBottomSheet(
             onDismissRequest = { goToOpen = false },
             sheetState = rememberModalBottomSheetState(),
-            containerColor = Color(0xFF14141F)
+            containerColor = LocalPalette.current.background
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
@@ -3388,7 +3388,7 @@ private fun RatingsSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         dragHandle = null,
-        containerColor = Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     ) {
         Column(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 32.dp)

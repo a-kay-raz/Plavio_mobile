@@ -348,7 +348,7 @@ fun ProfilesScreen(
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
-            containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+            containerColor = LocalPalette.current.background
         )
     }
 }
@@ -531,7 +531,7 @@ private fun ProfileEditorDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
-        containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }
 
@@ -580,7 +580,7 @@ fun PinEntryDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
-        containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }
 

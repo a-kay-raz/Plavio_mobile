@@ -179,7 +179,7 @@ fun MediaServersScreen(
             dismissButton = {
                 TextButton(onClick = { showAdd = false }) { Text("Cancel", color = V117Muted) }
             },
-            containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+            containerColor = LocalPalette.current.background
         )
     }
 
@@ -394,7 +394,7 @@ private fun MediaBrowserSignInDialog(
         dismissButton = {
             TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
-        containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }
 
@@ -529,7 +529,7 @@ private fun PlexSignInDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
-        containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }
 
@@ -677,6 +677,6 @@ private fun SiloSignInDialog(
         dismissButton = {
             TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = V117Muted) }
         },
-        containerColor = androidx.compose.ui.graphics.Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }

@@ -250,7 +250,7 @@ fun TraktSimklSection(settings: SettingsStore) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = Color(0xFF14141F)
+            containerColor = LocalPalette.current.background
         )
     }
 
@@ -293,7 +293,7 @@ fun TraktSimklSection(settings: SettingsStore) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = Color(0xFF14141F)
+            containerColor = LocalPalette.current.background
         )
     }
 }
@@ -364,6 +364,6 @@ fun TraktCodeDialog(
                 }
             }
         },
-        containerColor = Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }

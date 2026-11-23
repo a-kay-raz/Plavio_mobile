@@ -153,6 +153,6 @@ fun UpdateDialog(
                 Text("Later", color = TextSecondary)
             }
         },
-        containerColor = Color(0xFF14141F)
+        containerColor = LocalPalette.current.background
     )
 }
