@@ -5192,59 +5192,74 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             // ---- Languages rail (200dp) ----
-                            Column(
-                                Modifier
-                                    .width(200.dp)
-                                    .height(railHeight)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                                    .border(
-                                        1.dp, Color.White.copy(alpha = 0.08f),
-                                        RoundedCornerShape(14.dp)
-                                    )
-                                    .padding(10.dp)
-                            ) {
-                                LazyColumn(
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Column(Modifier.width(200.dp)) {
+                                Text(
+                                    "Languages",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color(0xFF969CA3),
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(railHeight)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
+                                        .border(
+                                            1.dp, Color.White.copy(alpha = 0.08f),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .padding(10.dp)
                                 ) {
-                                    item {
-                                        RailLanguageRow(
-                                            name = "None",
-                                            count = null,
-                                            selected = subtitlesOff && state.panelPickedUrl == null,
-                                            modifier = Modifier.focusRequester(firstRowFocus),
-                                            onClick = {
-                                                state.panelPickedUrl = null
-                                                applySubtitleSelection(null)
-                                            }
-                                        )
-                                    }
-                                    items(sortedLangs) { (name, count) ->
-                                        RailLanguageRow(
-                                            name = name,
-                                            count = count,
-                                            selected = name == activeLang,
-                                            onClick = { state.panelLang = name }
-                                        )
+                                    LazyColumn(
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        item {
+                                            RailLanguageRow(
+                                                name = "None",
+                                                count = null,
+                                                selected = subtitlesOff && state.panelPickedUrl == null,
+                                                modifier = Modifier.focusRequester(firstRowFocus),
+                                                onClick = {
+                                                    state.panelPickedUrl = null
+                                                    applySubtitleSelection(null)
+                                                }
+                                            )
+                                        }
+                                        items(sortedLangs) { (name, count) ->
+                                            RailLanguageRow(
+                                                name = name,
+                                                count = count,
+                                                selected = name == activeLang,
+                                                onClick = { state.panelLang = name }
+                                            )
+                                        }
                                     }
                                 }
                             }
                             // ---- Subtitles rail (300dp) ----
-                            Column(
-                                Modifier
-                                    .width(300.dp)
-                                    .height(railHeight)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF14141F).copy(alpha = 0.94f))
-                                    .border(
-                                        1.dp, Color.White.copy(alpha = 0.08f),
-                                        RoundedCornerShape(14.dp)
-                                    )
-                                    .padding(10.dp)
-                            ) {
-                                LazyColumn(
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Column(Modifier.width(300.dp)) {
+                                Text(
+                                    "Subtitles",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color(0xFF969CA3),
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(railHeight)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFF14141F).copy(alpha = 0.94f))
+                                        .border(
+                                            1.dp, Color.White.copy(alpha = 0.08f),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .padding(10.dp)
                                 ) {
+                                    LazyColumn(
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
                                     if (activeLang == null && !state.subSearchLoading) {
                                         item {
                                             Text(
@@ -5368,15 +5383,23 @@ fun PlayerScreen(
                                     }
                                 }
                             }
+                            }
                             // ---- Style rail (280dp) ----
                             AnimatedVisibility(
                                 visible = styleVisible,
                                 enter = fadeIn(),
                                 exit = fadeOut()
                             ) {
+                                Column(Modifier.width(280.dp)) {
+                                    Text(
+                                        "Style",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = Color(0xFF969CA3),
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
                                 Column(
                                     Modifier
-                                        .width(280.dp)
+                                        .fillMaxWidth()
                                         .height(railHeight)
                                         .clip(RoundedCornerShape(14.dp))
                                         .background(Color(0xFF14141F).copy(alpha = 0.94f))
@@ -5722,6 +5745,7 @@ fun PlayerScreen(
                                             style = MaterialTheme.typography.bodySmall
                                         )
                                     }
+                                }
                                 }
                             }
                         }
@@ -6281,21 +6305,26 @@ private fun RailLanguageRow(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    // Nuvio SubtitleLanguageRow: selected = ACCENT fill + onAccent text
+    // (black on light accents like GOLD, white on dark ones); the count
+    // badge is a pill — selected White 0.18 bg, unselected accent 0.85 bg.
+    val accent = LocalPalette.current.accent
+    val onAccent = if (accent.luminance() > 0.5f) Color.Black else Color.White
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) Color.White else Color.Transparent)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) accent else Color.Transparent)
             .clickable { onClick() }
-            .tvFocusRing(RoundedCornerShape(10.dp))
+            .tvFocusRing(RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             name,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) Color.Black else TextPrimary,
+            color = if (selected) onAccent else TextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -6303,16 +6332,19 @@ private fun RailLanguageRow(
         if (count != null) {
             Box(
                 Modifier
-                    .size(20.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(if (selected) Color.Black else Color.White),
+                    .background(
+                        if (selected) Color.White.copy(alpha = 0.18f)
+                        else accent.copy(alpha = 0.85f)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     "$count",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (selected) Color.White else Color.Black
+                    color = onAccent
                 )
             }
         }
@@ -6498,37 +6530,44 @@ private fun PanelSubCard(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    // Nuvio SubtitleOptionRow: selected = ACCENT fill + onAccent text,
+    // no border; unselected = transparent. Source chip is a pill
+    // (999dp): selected onAccent 0.14 bg + 1dp onAccent 0.22 border,
+    // unselected White 0.08 bg. Title bodyLarge max 2, metadata
+    // bodySmall max 2, 20dp onAccent checkmark.
     val palette = LocalPalette.current
+    val accent = palette.accent
+    val onAccent = if (accent.luminance() > 0.5f) Color.Black else Color.White
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Color.White else Color(0xFF1B1B1D))
-            .border(
-                1.dp,
-                if (selected) Color.White else Color.White.copy(alpha = 0.09f),
-                RoundedCornerShape(12.dp)
-            )
+            .background(if (selected) accent else Color.Transparent)
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(50))
                     .background(
-                        if (selected) Color.Black.copy(alpha = 0.08f)
-                        else palette.accent.copy(alpha = 0.18f)
+                        if (selected) onAccent.copy(alpha = 0.14f)
+                        else Color.White.copy(alpha = 0.08f)
                     )
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .then(
+                        if (selected) Modifier.border(
+                            1.dp, onAccent.copy(alpha = 0.22f),
+                            RoundedCornerShape(50)
+                        ) else Modifier
+                    )
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
             ) {
                 Text(
                     chip,
                     style = MaterialTheme.typography.labelSmall,
-                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (selected) Color(0xFF111111) else palette.accent,
+                    color = if (selected) onAccent else Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -6536,18 +6575,18 @@ private fun PanelSubCard(
             Spacer(Modifier.height(5.dp))
             Text(
                 title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
-                color = if (selected) Color(0xFF111111) else TextPrimary,
-                maxLines = 1,
+                color = if (selected) onAccent else TextPrimary,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             if (detail.isNotBlank()) {
                 Text(
                     detail,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (selected) Color(0xFF555555) else TextSecondary,
-                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected) onAccent.copy(alpha = 0.72f) else Color(0xFF969CA3),
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -6557,7 +6596,7 @@ private fun PanelSubCard(
             Icon(
                 Icons.Filled.Check,
                 contentDescription = "Selected",
-                tint = if (selected) Color.Black else palette.accent,
+                tint = onAccent,
                 modifier = Modifier.size(20.dp)
             )
         }
