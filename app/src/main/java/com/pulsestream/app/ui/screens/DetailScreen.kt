@@ -2422,7 +2422,7 @@ private fun DetailContent(
                 // The watchlist button's long-press opens the Add-to-list
                 // sheet (Nuvio DetailActionButtons save long-press).
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp + detailStatusDp, bottom = 8.dp),
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 16.dp + detailStatusDp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Top hero buttons are 36dp (user 2026-11-23: 25%
