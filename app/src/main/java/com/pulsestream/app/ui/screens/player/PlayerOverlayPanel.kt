@@ -1,6 +1,7 @@
 package com.pulsestream.app.ui.screens.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.pulsestream.app.ui.glass.ambientLiquidGlass
@@ -53,7 +55,10 @@ fun PlayerOverlayPanel(
                 ) { onDismiss() }
         )
         // Bottom-anchored glass panel, like the subtitle overlay's
-        // bottom placement (24dp sides, 20dp bottom).
+        // bottom placement (24dp sides, 20dp bottom). The glass matches
+        // the home navigation pill (dock) exactly — same near-clear
+        // tint, blur, refraction and bright rim — so the boxes and the
+        // dock read as one glass system.
         Box(
             modifier
                 .align(Alignment.BottomStart)
@@ -62,8 +67,18 @@ fun PlayerOverlayPanel(
                 .heightIn(max = maxHeight * 0.75f)
                 .ambientLiquidGlass(
                     shape = RoundedCornerShape(28.dp),
-                    tint = LocalPalette.current.panel.copy(alpha = 0.25f),
+                    tint = LocalPalette.current.panel.copy(alpha = 0.10f),
                     fallback = Color(0xFF14141F),
+                    blurRadius = 28.dp,
+                    refractionHeight = 32.dp,
+                    refractionAmount = 32.dp,
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.05f))
+                    ),
+                    shape = RoundedCornerShape(28.dp)
                 )
         ) {
             content()
