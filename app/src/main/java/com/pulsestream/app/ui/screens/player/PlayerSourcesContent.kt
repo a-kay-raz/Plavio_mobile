@@ -1,5 +1,6 @@
 package com.pulsestream.app.ui.screens.player
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,7 @@ import com.pulsestream.app.ui.components.SmartStreamSheet
 import com.pulsestream.app.ui.components.pinnedStreamSourceKey
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
 import com.pulsestream.app.ui.components.streamListItems
+import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
@@ -98,11 +101,11 @@ internal fun PlayerSourcesContent(
     // Nuvio PlayerSourcesPanel layout: fixed header + content label +
     // provider filter on top, the stream list scrolls below (weight 1f).
     // No banner — Nuvio's Sources panel has no artwork header.
-    // Padding/size matches the Quality panel (PlayerCenteredDialog
-    // content): 20dp horizontal / 18dp vertical outer padding, titleSmall
-    // header, 16dp gap below the header, 6dp list spacing.
+    // Header kept compact so the links list gets maximum room in
+    // landscape: 16dp horizontal / 12dp vertical outer padding, 8dp
+    // header gap, 6dp gaps between filter rows, compact chips.
     Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp)
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -118,15 +121,15 @@ internal fun PlayerSourcesContent(
             )
             PlayerDialogCloseButton(onClick = onClose)
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         if (streams.isNotEmpty()) {
             // Provider tabs ALWAYS show (compact = true): without it,
             // AddonTabs hides itself when there are <= 2 tabs — with a
@@ -134,8 +137,12 @@ internal fun PlayerSourcesContent(
             // see which addon the links are from. Compact = Nuvio
             // AddonFilterChip style.
             AddonTabs(browser, compact = true)
-            Spacer(Modifier.height(8.dp))
-            QualityPills(browser)
+            Spacer(Modifier.height(6.dp))
+            // Compact pills (Detail browser style): smaller chips; the
+            // first pill reads "Any" like it does on Detail.
+            QualityPills(browser, compact = true)
+            // Plain clickable texts, not TextButtons: a TextButton enforces
+            // a 40dp min height, these rows are ~28dp so the list gains room.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -144,23 +151,34 @@ internal fun PlayerSourcesContent(
                     color = TextSecondary)
                 Spacer(Modifier.weight(1f))
                 if (store != null) {
-                    TextButton(
-                        onClick = { smartSheetOpen = true },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                    ) {
-                        Text(if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart")
-                    }
+                    Text(
+                        text = if (smartActiveCount > 0) "Smart ($smartActiveCount)" else "Smart",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = LocalPalette.current.accent,
+                        modifier = Modifier.clickable(role = Role.Button) { smartSheetOpen = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    )
                 }
-                TextButton(
-                    onClick = { pinSheetOpen = true },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                Row(
+                    modifier = Modifier.clickable(role = Role.Button) { pinSheetOpen = true }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.PushPin, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Filled.PushPin,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = LocalPalette.current.accent
+                    )
                     Spacer(Modifier.width(4.dp))
-                    Text("Pin sources")
+                    Text(
+                        "Pin sources",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = LocalPalette.current.accent
+                    )
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f).testTag("player-source-list"),
                 contentPadding = PaddingValues(bottom = 2.dp),

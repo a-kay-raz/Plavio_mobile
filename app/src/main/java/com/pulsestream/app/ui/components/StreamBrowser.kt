@@ -575,14 +575,13 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
                     .semantics { this.selected = selected }
                     .tvFocusRing(RoundedCornerShape(if (compact) 20.dp else 50.dp))
                     .padding(
-                        horizontal = if (compact) 16.dp else 14.dp,
-                        vertical = if (compact) 10.dp else 8.dp
+                        horizontal = if (compact) 12.dp else 14.dp,
+                        vertical = if (compact) 6.dp else 8.dp
                     )
             ) {
                 Text(
                     text = if (compact) tab.label else "${tab.label} • ${tab.count}",
-                    style = if (compact) MaterialTheme.typography.labelLarge
-                        else MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     color = if (selected && compact) {
                         if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
