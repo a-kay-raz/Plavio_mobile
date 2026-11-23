@@ -119,6 +119,7 @@ fun MediaServersScreen(
                 items(servers, key = { it.id }) { server ->
                     ServerCard(
                         server = server,
+                        settings = settings,
                         expanded = expandedServer == server.id,
                         onToggleExpand = {
                             expandedServer = if (expandedServer == server.id) null else server.id
@@ -236,6 +237,7 @@ fun MediaServersScreen(
 @Composable
 private fun ServerCard(
     server: MediaServer,
+    settings: SettingsStore,
     expanded: Boolean,
     onToggleExpand: () -> Unit,
     onOpenLibrary: (ServerLibrary) -> Unit,
@@ -248,7 +250,7 @@ private fun ServerCard(
         LaunchedEffect(server.id) {
             loadingLibraries = true
             libraries = withContext(Dispatchers.IO) {
-                runCatching { MediaServerOps.getLibraries(server) }.getOrNull()
+                runCatching { MediaServerOps.getLibraries(server, settings) }.getOrNull()
             } ?: emptyList()
             loadingLibraries = false
         }

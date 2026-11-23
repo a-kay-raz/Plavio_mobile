@@ -1,5 +1,7 @@
 package com.aviostream.app.data.servers
 
+import com.aviostream.app.data.SettingsStore
+
 /**
  * Step 55: one facade over the four server clients, so screens and
  * playback only deal with [MediaServer] + [ServerItem]. Silo has no
@@ -9,13 +11,20 @@ package com.aviostream.app.data.servers
  */
 object MediaServerOps {
 
-    suspend fun getLibraries(server: MediaServer): List<ServerLibrary> = when (server.kind) {
+    suspend fun getLibraries(
+        server: MediaServer,
+        settings: SettingsStore? = null
+    ): List<ServerLibrary> = when (server.kind) {
         ServerKind.JELLYFIN, ServerKind.EMBY -> MediaBrowserClient.getLibraries(server)
         ServerKind.PLEX -> PlexClient.getSections(server)
-        ServerKind.SILO -> SiloClient.getLibraries(server)
+        ServerKind.SILO -> SiloClient.getLibraries(server, settings)
     }
 
-    suspend fun getLibraryItems(server: MediaServer, library: ServerLibrary): List<ServerItem> =
+    suspend fun getLibraryItems(
+        server: MediaServer,
+        library: ServerLibrary,
+        settings: SettingsStore? = null
+    ): List<ServerItem> =
         when (server.kind) {
             ServerKind.JELLYFIN, ServerKind.EMBY -> {
                 val type = when (library.kind) {
@@ -33,16 +42,20 @@ object MediaServerOps {
                 }
                 PlexClient.getSectionItems(server, library.id, type)
             }
-            ServerKind.SILO -> SiloClient.getCatalogItems(server, library)
+            ServerKind.SILO -> SiloClient.getCatalogItems(server, library, settings)
         }
 
     /** Episodes of a series (or seasons for Plex — see below). */
-    suspend fun getSeriesChildren(server: MediaServer, item: ServerItem): List<ServerItem> =
+    suspend fun getSeriesChildren(
+        server: MediaServer,
+        item: ServerItem,
+        settings: SettingsStore? = null
+    ): List<ServerItem> =
         when (server.kind) {
             ServerKind.JELLYFIN, ServerKind.EMBY ->
                 MediaBrowserClient.getItems(server, item.contentId.substringBefore("|"), "episode")
             ServerKind.PLEX -> PlexClient.getChildren(server, item.contentId.substringBefore("|"))
-            ServerKind.SILO -> SiloClient.getSeriesEpisodes(server, item.contentId)
+            ServerKind.SILO -> SiloClient.getSeriesEpisodes(server, item.contentId, settings)
         }
 
     /** Direct-play URL, or null when the server cannot direct-play (Silo). */
@@ -53,13 +66,18 @@ object MediaServerOps {
     }
 
     /** Mark a title played/unplayed on its server. Best-effort, never throws. */
-    suspend fun markPlayed(server: MediaServer, item: ServerItem, played: Boolean): Boolean =
+    suspend fun markPlayed(
+        server: MediaServer,
+        item: ServerItem,
+        played: Boolean,
+        settings: SettingsStore? = null
+    ): Boolean =
         runCatching {
             when (server.kind) {
                 ServerKind.JELLYFIN, ServerKind.EMBY ->
                     MediaBrowserClient.markPlayed(server, item.contentId, played)
                 ServerKind.PLEX -> PlexClient.markPlayed(server, item, played)
-                ServerKind.SILO -> SiloClient.setPlayed(server, item.contentId, played)
+                ServerKind.SILO -> SiloClient.setPlayed(server, item.contentId, played, settings)
             }
         }.getOrDefault(false)
 
@@ -69,7 +87,8 @@ object MediaServerOps {
         videoId: String,
         season: Int,
         episode: Int,
-        played: Boolean
+        played: Boolean,
+        settings: SettingsStore? = null
     ): Boolean {
         if (!videoId.startsWith("server:")) return false
         val rest = videoId.removePrefix("server:")
@@ -94,6 +113,6 @@ object MediaServerOps {
             played = played,
             positionSecs = null
         )
-        return markPlayed(server, item, played)
+        return markPlayed(server, item, played, settings)
     }
 }

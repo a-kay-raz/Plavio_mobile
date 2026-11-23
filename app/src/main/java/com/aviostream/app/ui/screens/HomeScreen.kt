@@ -123,6 +123,7 @@ import com.aviostream.app.data.CatalogRow
 import com.aviostream.app.data.CollectionRepository
 import com.aviostream.app.data.CollectionSourceResolver
 import com.aviostream.app.data.MetaPreview
+import com.aviostream.app.data.SettingsStore
 import com.aviostream.app.data.servers.MediaServer
 import com.aviostream.app.data.servers.MediaServerOps
 import com.aviostream.app.data.servers.ServerItem
@@ -974,6 +975,7 @@ fun HomeScreen(
                             item(key = "server_${server.id}") {
                                 ServerHomeSection(
                                     server = server,
+                                    settings = settings,
                                     onPlayServerItem = onPlayServerItem,
                                     onOpenServerLibrary = onOpenServerLibrary
                                 )
@@ -3055,6 +3057,7 @@ private fun CollectionHomeSection(
 @Composable
 private fun ServerHomeSection(
     server: MediaServer,
+    settings: SettingsStore,
     onPlayServerItem: (PlaybackRequest) -> Unit,
     onOpenServerLibrary: (serverId: String, libraryId: String) -> Unit,
 ) {
@@ -3062,13 +3065,13 @@ private fun ServerHomeSection(
     var itemsByLibrary by remember { mutableStateOf<Map<String, List<ServerItem>>>(emptyMap()) }
     LaunchedEffect(server.id) {
         val libs = withContext(Dispatchers.IO) {
-            runCatching { MediaServerOps.getLibraries(server) }.getOrNull()
+            runCatching { MediaServerOps.getLibraries(server, settings) }.getOrNull()
         }.orEmpty()
         libraries = libs
         val loaded = mutableMapOf<String, List<ServerItem>>()
         for (library in libs) {
             loaded[library.id] = withContext(Dispatchers.IO) {
-                runCatching { MediaServerOps.getLibraryItems(server, library) }.getOrNull()
+                runCatching { MediaServerOps.getLibraryItems(server, library, settings) }.getOrNull()
             }.orEmpty().take(20)
         }
         itemsByLibrary = loaded

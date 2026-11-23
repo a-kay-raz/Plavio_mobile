@@ -87,7 +87,7 @@ fun ServerLibraryScreen(
         }
         loading = true
         val libraries = withContext(Dispatchers.IO) {
-            runCatching { MediaServerOps.getLibraries(server) }.getOrNull()
+            runCatching { MediaServerOps.getLibraries(server, settings) }.getOrNull()
         }.orEmpty()
         library = libraries.firstOrNull { it.id == libraryId }
         if (library == null) {
@@ -96,7 +96,7 @@ fun ServerLibraryScreen(
             return@LaunchedEffect
         }
         items = withContext(Dispatchers.IO) {
-            runCatching { MediaServerOps.getLibraryItems(server, library!!) }.getOrNull()
+            runCatching { MediaServerOps.getLibraryItems(server, library!!, settings) }.getOrNull()
         }.orEmpty()
         loading = false
     }
@@ -106,7 +106,7 @@ fun ServerLibraryScreen(
         val level = stack.lastOrNull() ?: return@LaunchedEffect
         if (level.items.isNotEmpty() || server == null) return@LaunchedEffect
         val children = withContext(Dispatchers.IO) {
-            runCatching { MediaServerOps.getSeriesChildren(server, level.parent) }.getOrNull()
+            runCatching { MediaServerOps.getSeriesChildren(server, level.parent, settings) }.getOrNull()
         }.orEmpty()
         stack = stack.dropLast(1) + level.copy(items = children)
     }

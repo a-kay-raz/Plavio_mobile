@@ -436,7 +436,7 @@ class StreamRepository(
             }.awaitAll().flatten()
             val serverSources = settings.getMediaServers().map { server ->
                 async {
-                    runCatching { MediaServerOps.getLibraries(server) }.getOrDefault(emptyList())
+                    runCatching { MediaServerOps.getLibraries(server, settings) }.getOrDefault(emptyList())
                         .flatMap { library ->
                             val types = when (library.kind) {
                                 ServerLibraryKind.MOVIE -> listOf("movie")
@@ -529,10 +529,10 @@ class StreamRepository(
         // Plain get + put (not getOrPut — its lambda cannot suspend).
         // Two concurrent loads may both fetch; the last put wins, same data.
         val all = serverDiscoverCache[cacheKey] ?: run {
-            val library = MediaServerOps.getLibraries(server)
+            val library = MediaServerOps.getLibraries(server, settings)
                 .firstOrNull { it.id == source.catalogId }
             val loaded = if (library == null) emptyList() else {
-                MediaServerOps.getLibraryItems(server, library)
+                MediaServerOps.getLibraryItems(server, library, settings)
                     .filter { it.type == "movie" || it.type == "series" }
                     .map { it.toServerDiscoverMeta(server) }
             }
@@ -2585,7 +2585,8 @@ class StreamRepository(
             // server (videoId "server:{serverId}:{itemId}"). Best-effort.
             if (videoId.startsWith("server:")) {
                 MediaServerOps.markPlayedByVideoId(
-                    settings.getMediaServers(), videoId, season, episode, played = true
+                    settings.getMediaServers(), videoId, season, episode, played = true,
+                    settings = settings
                 )
             }
             // Step 34: finishing a title is a watch-state change — queue it

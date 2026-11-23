@@ -3,6 +3,8 @@ package com.aviostream.app.data.servers
 import com.aviostream.app.BuildConfig
 import com.aviostream.app.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -161,8 +163,28 @@ object SiloClient {
             }
         }
 
+    /** A refreshed token pair: the new access token, a rotated refresh
+     * token when the server issued one, and the new access-token expiry. */
+    data class RefreshedTokens(
+        val accessToken: String,
+        val refreshToken: String?,
+        val expiresAtMs: Long
+    )
+
+    /** Refresh at most this long before the stored expiry, so a request
+     * that starts now never runs on a token that dies mid-request. */
+    private const val REFRESH_MARGIN_MS = 60_000L
+
+    /** Refreshed servers held in memory so a screen still holding the
+     * pre-refresh copy keeps working; the persisted copy is the source
+     * of truth after a cold start. Keyed by server id. */
+    private val freshServers = mutableMapOf<String, MediaServer>()
+
+    /** One refresh at a time: a rotated refresh token must not be spent twice. */
+    private val refreshMutex = Mutex()
+
     /** POST /api/v2/auth/refresh {"refresh_token"} — null on failure. */
-    suspend fun refreshAccessToken(server: MediaServer): String? =
+    suspend fun refreshAccessToken(server: MediaServer): RefreshedTokens? =
         withContext(Dispatchers.IO) {
             val refreshToken = server.refreshToken?.takeIf { it.isNotBlank() }
                 ?: return@withContext null
@@ -178,46 +200,139 @@ object SiloClient {
                 client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@withContext null
                     val root = JSONObject(resp.body?.string().orEmpty())
-                    root.optString("access_token").takeIf { it.isNotBlank() }
-                        ?: root.optJSONObject("tokens")?.optString("access_token")
-                            ?.takeIf { it.isNotBlank() }
+                    val tokens = root.optJSONObject("tokens")
+                    val access = root.optString("access_token").takeIf { it.isNotBlank() }
+                        ?: tokens?.optString("access_token")?.takeIf { it.isNotBlank() }
+                        ?: return@withContext null
+                    val rotated = root.optString("refresh_token").takeIf { it.isNotBlank() }
+                        ?: tokens?.optString("refresh_token")?.takeIf { it.isNotBlank() }
+                    val expiresIn = root.optLong("expires_in", 0L).takeIf { it > 0L }
+                        ?: tokens?.optLong("expires_in", 0L)?.takeIf { it > 0L }
+                    RefreshedTokens(
+                        accessToken = access,
+                        refreshToken = rotated,
+                        expiresAtMs = expiresIn
+                            ?.let { System.currentTimeMillis() + it * 1000L } ?: 0L
+                    )
                 }
             } catch (_: Exception) {
                 null
             }
         }
 
+    /**
+     * The server copy to use for a request: the in-memory refreshed copy
+     * when it is still fresh, otherwise a refresh first when the stored
+     * token is expired or about to expire. Falls back to [server] when
+     * there is nothing to refresh with (the 401 retry below is the
+     * backstop for an unknown expiry — [MediaServer.tokenExpiresAtMs]
+     * is 0 when sign-in never reported one).
+     */
+    private suspend fun resolveServer(
+        settings: SettingsStore?,
+        server: MediaServer
+    ): MediaServer {
+        freshServers[server.id]?.let { cached ->
+            if (cached.tokenExpiresAtMs <= 0L ||
+                System.currentTimeMillis() < cached.tokenExpiresAtMs - REFRESH_MARGIN_MS
+            ) return cached
+        }
+        if (server.tokenExpiresAtMs > 0L &&
+            System.currentTimeMillis() >= server.tokenExpiresAtMs - REFRESH_MARGIN_MS
+        ) {
+            refreshAndStore(settings, server)?.let { return it }
+        }
+        return freshServers[server.id] ?: server
+    }
+
+    /**
+     * Spend the refresh token once, cache the new pair and persist it
+     * when [settings] is supplied. Null when there is no refresh token
+     * or the server refused it — then the sign-in is dead and the user
+     * has to sign in again.
+     */
+    private suspend fun refreshAndStore(
+        settings: SettingsStore?,
+        server: MediaServer
+    ): MediaServer? = refreshMutex.withLock {
+        val base = freshServers[server.id] ?: server
+        val refreshed = refreshAccessToken(base) ?: return@withLock null
+        val updated = base.copy(
+            accessToken = refreshed.accessToken,
+            refreshToken = refreshed.refreshToken ?: base.refreshToken,
+            tokenExpiresAtMs = refreshed.expiresAtMs.takeIf { it > 0L }
+                ?: base.tokenExpiresAtMs
+        )
+        freshServers[server.id] = updated
+        if (settings != null) {
+            runCatching {
+                settings.saveMediaServers(
+                    settings.getMediaServers().map { if (it.id == server.id) updated else it }
+                )
+            }
+        }
+        updated
+    }
+
+    /**
+     * Run one authenticated request: refresh first when the token is
+     * expired (or about to be), and retry once on 401 with a fresh
+     * token. Returns (HTTP code, body) or null when the request itself
+     * failed (no network, timeout) — callers treat that as before.
+     */
+    private suspend fun executeAuthed(
+        settings: SettingsStore?,
+        server: MediaServer,
+        build: (token: String) -> Request
+    ): Pair<Int, String>? {
+        var current = resolveServer(settings, server)
+        repeat(2) { attempt ->
+            val result = try {
+                client.newCall(build(current.accessToken)).execute().use { resp ->
+                    resp.code to (resp.body?.string().orEmpty())
+                }
+            } catch (_: Exception) {
+                return null
+            }
+            if (result.first != 401 || attempt == 1) return result
+            current = refreshAndStore(settings, current) ?: return result
+        }
+        return null
+    }
+
     /** GET /api/v2/user/libraries — {items: [{id, name, type, sort_order}]}. */
-    suspend fun getLibraries(server: MediaServer): List<ServerLibrary> =
+    suspend fun getLibraries(
+        server: MediaServer,
+        settings: SettingsStore? = null
+    ): List<ServerLibrary> =
         withContext(Dispatchers.IO) {
             try {
-                val req = Request.Builder()
-                    .url("${cleanBase(server.baseUrl)}/api/v2/user/libraries")
-                    .header("Authorization", bearer(server.accessToken))
-                    .header("User-Agent", userAgent)
-                    .header("Accept", "application/json")
-                    .get()
-                    .build()
-                client.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext emptyList()
-                    val items = JSONObject(resp.body?.string().orEmpty())
-                        .optJSONArray("items") ?: JSONArray()
-                    (0 until items.length()).mapNotNull { i ->
-                        val row = items.optJSONObject(i) ?: return@mapNotNull null
-                        val id = row.optString("id").takeIf { it.isNotBlank() }
-                            ?: return@mapNotNull null
-                        val kind = when (row.optString("type").lowercase()) {
-                            "movie", "movies" -> ServerLibraryKind.MOVIE
-                            "show", "shows", "series", "tv" -> ServerLibraryKind.SERIES
-                            else -> ServerLibraryKind.MIXED
-                        }
-                        ServerLibrary(
-                            id = id,
-                            name = row.optString("name").takeIf { it.isNotBlank() } ?: id,
-                            kind = kind
-                        )
-                    } // Response order is the server's order.
-                }
+                val (code, body) = executeAuthed(settings, server) { token ->
+                    Request.Builder()
+                        .url("${cleanBase(server.baseUrl)}/api/v2/user/libraries")
+                        .header("Authorization", bearer(token))
+                        .header("User-Agent", userAgent)
+                        .header("Accept", "application/json")
+                        .get()
+                        .build()
+                } ?: return@withContext emptyList()
+                if (code !in 200..299) return@withContext emptyList()
+                val items = JSONObject(body).optJSONArray("items") ?: JSONArray()
+                (0 until items.length()).mapNotNull { i ->
+                    val row = items.optJSONObject(i) ?: return@mapNotNull null
+                    val id = row.optString("id").takeIf { it.isNotBlank() }
+                        ?: return@mapNotNull null
+                    val kind = when (row.optString("type").lowercase()) {
+                        "movie", "movies" -> ServerLibraryKind.MOVIE
+                        "show", "shows", "series", "tv" -> ServerLibraryKind.SERIES
+                        else -> ServerLibraryKind.MIXED
+                    }
+                    ServerLibrary(
+                        id = id,
+                        name = row.optString("name").takeIf { it.isNotBlank() } ?: id,
+                        kind = kind
+                    )
+                } // Response order is the server's order.
             } catch (_: Exception) {
                 emptyList()
             }
@@ -229,7 +344,8 @@ object SiloClient {
      */
     suspend fun getCatalogItems(
         server: MediaServer,
-        library: ServerLibrary
+        library: ServerLibrary,
+        settings: SettingsStore? = null
     ): List<ServerItem> = withContext(Dispatchers.IO) {
         val type = when (library.kind) {
             ServerLibraryKind.MOVIE -> "movie"
@@ -244,20 +360,19 @@ object SiloClient {
                 if (type != null) append("&type=").append(type)
                 append("&sort=-added_at&image_size=medium&limit=100")
             }
-            val req = Request.Builder()
-                .url(url)
-                .header("Authorization", bearer(server.accessToken))
-                .header("User-Agent", userAgent)
-                .header("Accept", "application/json")
-                .get()
-                .build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext emptyList()
-                val items = JSONObject(resp.body?.string().orEmpty())
-                    .optJSONArray("items") ?: JSONArray()
-                (0 until items.length()).mapNotNull { i ->
-                    parseCatalogItem(items.optJSONObject(i) ?: return@mapNotNull null)
-                }
+            val (code, body) = executeAuthed(settings, server) { token ->
+                Request.Builder()
+                    .url(url)
+                    .header("Authorization", bearer(token))
+                    .header("User-Agent", userAgent)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+            } ?: return@withContext emptyList()
+            if (code !in 200..299) return@withContext emptyList()
+            val items = JSONObject(body).optJSONArray("items") ?: JSONArray()
+            (0 until items.length()).mapNotNull { i ->
+                parseCatalogItem(items.optJSONObject(i) ?: return@mapNotNull null)
             }
         } catch (_: Exception) {
             emptyList()
@@ -270,23 +385,24 @@ object SiloClient {
      */
     suspend fun getSeriesEpisodes(
         server: MediaServer,
-        seriesId: String
+        seriesId: String,
+        settings: SettingsStore? = null
     ): List<ServerItem> = withContext(Dispatchers.IO) {
         try {
-            val req = Request.Builder()
-                .url("${cleanBase(server.baseUrl)}/api/v2/catalog/series/${encode(seriesId)}")
-                .header("Authorization", bearer(server.accessToken))
-                .header("User-Agent", userAgent)
-                .header("Accept", "application/json")
-                .get()
-                .build()
-            client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext emptyList()
-                val root = JSONObject(resp.body?.string().orEmpty())
-                val episodes = root.optJSONArray("episodes") ?: JSONArray()
-                (0 until episodes.length()).mapNotNull { i ->
-                    parseCatalogItem(episodes.optJSONObject(i) ?: return@mapNotNull null)
-                }
+            val (code, body) = executeAuthed(settings, server) { token ->
+                Request.Builder()
+                    .url("${cleanBase(server.baseUrl)}/api/v2/catalog/series/${encode(seriesId)}")
+                    .header("Authorization", bearer(token))
+                    .header("User-Agent", userAgent)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+            } ?: return@withContext emptyList()
+            if (code !in 200..299) return@withContext emptyList()
+            val root = JSONObject(body)
+            val episodes = root.optJSONArray("episodes") ?: JSONArray()
+            (0 until episodes.length()).mapNotNull { i ->
+                parseCatalogItem(episodes.optJSONObject(i) ?: return@mapNotNull null)
             }
         } catch (_: Exception) {
             emptyList()
@@ -297,19 +413,22 @@ object SiloClient {
     suspend fun setPlayed(
         server: MediaServer,
         contentId: String,
-        played: Boolean
+        played: Boolean,
+        settings: SettingsStore? = null
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val req = Request.Builder()
-                .url("${cleanBase(server.baseUrl)}/api/v2/watched/${encode(contentId)}")
-                .header("Authorization", bearer(server.accessToken))
-                .header("User-Agent", userAgent)
-                .let {
-                    if (played) it.post(ByteArray(0).toRequestBody(null))
-                    else it.delete()
-                }
-                .build()
-            client.newCall(req).execute().use { it.isSuccessful }
+            val (code, _) = executeAuthed(settings, server) { token ->
+                Request.Builder()
+                    .url("${cleanBase(server.baseUrl)}/api/v2/watched/${encode(contentId)}")
+                    .header("Authorization", bearer(token))
+                    .header("User-Agent", userAgent)
+                    .let {
+                        if (played) it.post(ByteArray(0).toRequestBody(null))
+                        else it.delete()
+                    }
+                    .build()
+            } ?: return@withContext false
+            code in 200..299
         } catch (_: Exception) {
             false
         }
