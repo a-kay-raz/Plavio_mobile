@@ -443,8 +443,8 @@ fun IntegrationsScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "⚠️ This feature is under development and testing, so you may experience issues. " +
-                                "For any problem, please report it via Settings → Feedback, " +
-                                "open an issue on GitHub, or reach out on our Discord channel.",
+                                "For any problem, please open an issue on GitHub " +
+                                "or reach out on our Discord channel.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )

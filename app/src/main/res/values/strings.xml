@@ -54,8 +54,6 @@
     <string name="settings_section_about">About</string>
     <string name="settings_about_title">About</string>
     <string name="settings_about_sub">Version, website and app updates</string>
-    <string name="settings_feedback_title">Send Feedback</string>
-    <string name="settings_feedback_sub">Report a bug or request a feature</string>
 
     <string name="settings_credit">Made with ❤️ by Najam</string>
     <string name="settings_installs_one">%1$s install</string>

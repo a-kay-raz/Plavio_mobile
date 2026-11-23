@@ -53,7 +53,6 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Folder
@@ -151,7 +150,6 @@ fun SettingsScreen(
     onGoToLayout: () -> Unit = {},
     onGoToStreams: () -> Unit = {},
     onGoToAbout: () -> Unit = {},
-    onGoToFeedback: () -> Unit = {},
     onGoToAccount: () -> Unit = {},
     onGoToIntegrations: () -> Unit = {},
     onGoToCloudStream: () -> Unit = {},
@@ -526,16 +524,6 @@ fun SettingsScreen(
                 title = "What's New",
                 subtitle = "What changed in this version.",
                 onClick = onGoToWhatsNew,
-                compact = true
-            )
-        },
-        SettingsEntry(sectionAbout, stringResource(R.string.settings_feedback_title),
-            "feedback send bug report feature request support") {
-            SettingsNavRow(
-                icon = Icons.Filled.Feedback,
-                title = stringResource(R.string.settings_feedback_title),
-                subtitle = stringResource(R.string.settings_feedback_sub),
-                onClick = onGoToFeedback,
                 compact = true
             )
         },
