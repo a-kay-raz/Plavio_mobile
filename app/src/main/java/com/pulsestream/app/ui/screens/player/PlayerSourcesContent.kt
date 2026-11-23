@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -25,8 +24,6 @@ import com.pulsestream.app.ui.components.OrbitDots
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,8 +49,6 @@ import com.pulsestream.app.ui.components.pinnedStreamSourceKey
 import com.pulsestream.app.ui.components.SafePosterImage
 import com.pulsestream.app.ui.components.rememberStreamBrowserState
 import com.pulsestream.app.ui.components.streamListItems
-import com.pulsestream.app.ui.glass.ambientLiquidGlass
-import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
@@ -89,7 +84,6 @@ internal fun PlayerSourcesContent(
     // filter/sort change bumps smartVersion so the list re-sorts live.
     var smartSheetOpen by remember { mutableStateOf(false) }
     var smartVersion by remember { mutableStateOf(0) }
-    val pinSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val store = settings
     val pinnedKeys = store?.pinnedStreamSources ?: emptySet()
     val smartActiveCount = if (smartVersion >= 0) store?.smartStreamSettings()?.filters?.activeCount ?: 0 else 0
@@ -221,21 +215,10 @@ internal fun PlayerSourcesContent(
         )
     }
     if (pinSheetOpen && store != null) {
-        ModalBottomSheet(
-            onDismissRequest = { pinSheetOpen = false },
-            sheetState = pinSheetState,
-            dragHandle = null,
-            containerColor = Color.Transparent
+        PlayerOverlayPanel(
+            onDismiss = { pinSheetOpen = false }
         ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .ambientLiquidGlass(
-                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                        tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                        fallback = Color(0xFF14141F),
-                    )
-            ) {
+            Column(Modifier.fillMaxWidth()) {
             Text(
                 text = "Pin sources",
                 style = MaterialTheme.typography.titleMedium,

@@ -108,7 +108,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -121,7 +120,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -4807,19 +4805,11 @@ fun PlayerScreen(
         // like the Audio sheet): time + title rows, current highlighted,
         // tap seeks to the chapter and closes.
         if (state.chaptersOpen) {
-            ModalBottomSheet(
-                onDismissRequest = { state.chaptersOpen = false },
-                sheetState = rememberModalBottomSheetState(),
-                containerColor = Color.Transparent
+            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                onDismiss = { state.chaptersOpen = false }
             ) {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .ambientLiquidGlass(
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = Color(0xFF14141F),
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
                 ) {
                     item {
@@ -4900,19 +4890,11 @@ fun PlayerScreen(
                 }
             }
             if (isAudio) {
-                ModalBottomSheet(
-                    onDismissRequest = { state.tracksOpen = false },
-                    sheetState = rememberModalBottomSheetState(),
-                    containerColor = Color.Transparent
+                com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                    onDismiss = { state.tracksOpen = false }
                 ) {
                     LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .ambientLiquidGlass(
-                                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                                tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                                fallback = Color(0xFF14141F),
-                            ),
+                        modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
                     ) {
                         item {
@@ -5722,19 +5704,11 @@ fun PlayerScreen(
                     runCatching { firstResultFocus.requestFocus() }
                 }
             }
-            ModalBottomSheet(
-                onDismissRequest = { state.subSearchOpen = false },
-                sheetState = rememberModalBottomSheetState(),
-                containerColor = Color.Transparent
+            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                onDismiss = { state.subSearchOpen = false }
             ) {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .ambientLiquidGlass(
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = Color(0xFF14141F),
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)
                 ) {
                     item {
@@ -5797,11 +5771,8 @@ fun PlayerScreen(
 
         // In-player Sources (Design I): full-width banner + tabs + cards.
         if (state.sourcesOpen) {
-            ModalBottomSheet(
-                onDismissRequest = { state.sourcesOpen = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                dragHandle = null,
-                containerColor = Color.Transparent
+            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                onDismiss = { state.sourcesOpen = false }
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = state.currentRequest.title,
@@ -5812,14 +5783,7 @@ fun PlayerScreen(
                     onDownload = { state.downloadStream = it },
                     onRetry = { refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId) },
                     onClose = { state.sourcesOpen = false },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.9f)
-                        .ambientLiquidGlass(
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = Color(0xFF14141F),
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                     settings = repository.settings,
                     poster = state.currentRequest.poster,
                     isEpisode = state.currentRequest.type != "movie"
@@ -5832,20 +5796,11 @@ fun PlayerScreen(
         // distinct quality, best first. Picking one switches to a stream
         // of that quality at the current position.
         if (state.qualityOpen) {
-            ModalBottomSheet(
-                onDismissRequest = { state.qualityOpen = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                dragHandle = null,
-                containerColor = Color.Transparent
+            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                onDismiss = { state.qualityOpen = false }
             ) {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .ambientLiquidGlass(
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = Color(0xFF14141F),
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)
                 ) {
                     item {
@@ -5981,20 +5936,10 @@ fun PlayerScreen(
             val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
             var selSeason by remember(episodes) { mutableStateOf(state.currentRequest.season) }
             val panelWatchedKeys by com.pulsestream.app.data.WatchedMarks.keys.collectAsState()
-            ModalBottomSheet(
-                onDismissRequest = { state.episodesOpen = false },
-                sheetState = rememberModalBottomSheetState(),
-                containerColor = Color.Transparent
+            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                onDismiss = { state.episodesOpen = false }
             ) {
-                Column(
-                    Modifier
-                        .tvSheetFocus()
-                        .ambientLiquidGlass(
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = Color(0xFF14141F),
-                        )
-                ) {
+                Column(Modifier.tvSheetFocus()) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Row(
                         Modifier.fillMaxWidth().padding(bottom = 12.dp),
@@ -6151,11 +6096,8 @@ fun PlayerScreen(
         // button on an episode row opens this episode's streams; picking
         // one plays that episode with that stream.
         state.episodeStreamsVideo?.let { video ->
-            ModalBottomSheet(
-                onDismissRequest = { state.episodeStreamsVideo = null },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                dragHandle = null,
-                containerColor = Color.Transparent
+            com.pulsestream.app.ui.screens.player.PlayerOverlayPanel(
+                onDismiss = { state.episodeStreamsVideo = null }
             ) {
                 com.pulsestream.app.ui.screens.player.PlayerSourcesContent(
                     title = "S${video.season}E${video.episode} · ${video.title}",
@@ -6168,14 +6110,7 @@ fun PlayerScreen(
                     onDownload = { state.downloadStream = it },
                     onRetry = { state.episodeStreamsTick++ },
                     onClose = { state.episodeStreamsVideo = null },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.9f)
-                        .ambientLiquidGlass(
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                            tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                            fallback = Color(0xFF14141F),
-                        ),
+                    modifier = Modifier.fillMaxWidth(),
                     settings = repository.settings,
                     poster = video.thumbnail ?: state.currentRequest.poster,
                     isEpisode = true

@@ -20,10 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,8 +39,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.pulsestream.app.data.TvChannelRef
-import com.pulsestream.app.ui.glass.ambientLiquidGlass
-import com.pulsestream.app.ui.theme.LocalPalette
 import com.pulsestream.app.ui.theme.TextPrimary
 import com.pulsestream.app.ui.theme.TextSecondary
 
@@ -87,21 +83,10 @@ fun LiveChannelsPanel(
         if (currentIndex > 0) listState.scrollToItem(currentIndex)
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(),
-        containerColor = Color.Transparent
+    PlayerOverlayPanel(
+        onDismiss = onDismiss
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .ambientLiquidGlass(
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                    tint = LocalPalette.current.panel.copy(alpha = 0.25f),
-                    fallback = Color(0xFF14141F),
-                )
-        ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Text(
                 "Channels",
                 style = MaterialTheme.typography.titleLarge,
