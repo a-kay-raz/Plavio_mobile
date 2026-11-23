@@ -155,10 +155,6 @@ internal class PlayerScreenState(
     var accumulatedSeekBaselineMs by mutableLongStateOf(0L)
     var accumulatedSeekAmountMs by mutableLongStateOf(0L)
     var accumulatedSeekResetJob by mutableStateOf<Job?>(null)
-    /** Pinch zoom factor on the video surface (Nuvio pinchVideoZoom):
-     * 0.8–2.0x, snapped to 1.0x within 0.04. */
-    var videoZoom by mutableFloatStateOf(1f)
-    var rawVideoZoom by mutableFloatStateOf(1f)
     /** Pre-resolved next-episode streams (Nuvio preloadNextEpisodeSources):
      * fetched while the countdown card shows, consumed by playEpisode. */
     var prefetchedNextStreams by mutableStateOf<Pair<String, com.pulsestream.app.data.StreamResult>?>(null)
