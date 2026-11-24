@@ -237,6 +237,7 @@ import java.util.concurrent.TimeUnit
 import com.aviostream.app.data.SkipSegment
 import com.aviostream.app.data.StreamItem
 import com.aviostream.app.data.StreamRepository
+import com.aviostream.app.data.FirstPartySubsClient
 import com.aviostream.app.data.Subtitle
 import com.aviostream.app.data.resolveSubtitleFiles
 import com.aviostream.app.data.shiftSubtitles
@@ -1578,11 +1579,19 @@ fun PlayerScreen(
 
     // ---- Subtitle panel plumbing (v0.14.2, owner's reference design) ----
 
+    // First-party subtitles (v0.14.30 port): Avio's own subtitle source —
+    // every language it has for this title (listed in the subtitle panel,
+    // labelled "Avio Subs") and the single auto-pick winner that is
+    // downloaded + applied without a tap.
+    var firstPartySubs by remember(state.currentRequest) { mutableStateOf(emptyList<Subtitle>()) }
+    var firstPartyAutoSub by remember(state.currentRequest) { mutableStateOf<Subtitle?>(null) }
+
     /** Every subtitle the panel can offer, instantly: the request's own
-     *  (straight from the addon response — no waiting), the user's
-     *  additions and online-search results, deduped by URL. */
+     *  (straight from the addon response — no waiting), the first-party
+     *  entries, the user's additions and online-search results, deduped
+     *  by URL. */
     fun panelSubs(): List<Subtitle> =
-        (state.currentRequest.subtitles + state.addedSubs + state.subSearchResults).distinctBy { it.url }
+        (state.currentRequest.subtitles + firstPartySubs + state.addedSubs + state.subSearchResults).distinctBy { it.url }
 
     fun panelTrackId(opt: TrackOption): String? =
         runCatching { opt.group.getFormat(opt.trackIndex).id }.getOrNull()
@@ -1658,9 +1667,11 @@ fun PlayerScreen(
         }
     }
 
-    fun panelHostLabel(url: String): String =
-        runCatching { android.net.Uri.parse(url).host }.getOrNull()
-            ?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: "Addon"
+    fun panelHostLabel(url: String): String {
+        val host = runCatching { android.net.Uri.parse(url).host }.getOrNull()
+            ?.removePrefix("www.")?.takeIf { it.isNotBlank() }
+        return if (host == FirstPartySubsClient.HOST) "Avio Subs" else host ?: "Addon"
+    }
 
     fun panelFileLabel(sub: Subtitle): String =
         sub.url.substringAfterLast('/').substringBefore('?')
@@ -1796,9 +1807,69 @@ fun PlayerScreen(
     // resolved list goes into state; a separate effect attaches it, so a
     // source switch can carry the subtitles into the fresh player instead of
     // re-preparing the video (#29).
-    LaunchedEffect(state.currentRequest, state.addedSubs, state.subReloadTick) {
+
+    // The first-party auto-pick winner: the best match under the user's
+    // subtitle rules (languages first; Always-on falls back to the first
+    // available; Off picks none — the entries still list in the panel).
+    fun pickFirstPartyAutoSub(sorted: List<Subtitle>): Subtitle? {
+        if (sorted.isEmpty()) return null
+        if (settings.subtitleDefaultMode == com.aviostream.app.data.SUB_DEFAULT_OFF) return null
+        val prefs = settings.subtitleLanguages
+        val match = sorted.firstOrNull { sub ->
+            prefs.any { pref -> subtitleLangMatches(sub.lang, pref) }
+        }
+        return match ?: if (settings.subtitleDefaultMode == com.aviostream.app.data.SUB_DEFAULT_ALWAYS_ON) sorted.first() else null
+    }
+
+    // First-party subtitles (v0.14.30 port): Avio's own subtitle addon is
+    // a BUILT-IN source in the player — on play, fetch its subtitles for
+    // this title, no manual step. The panel lists every language returned
+    // with the user's own languages first; the best match under the user's
+    // subtitle rules (languages / default mode) becomes [firstPartyAutoSub]
+    // and the resolver below downloads + applies it. Any other entry
+    // downloads only if the user taps it in the panel. Fully off the
+    // playback path: the site being unreachable or returning nothing
+    // changes nothing.
+    LaunchedEffect(state.currentRequest) {
+        val req = state.currentRequest
+        if (req.isLive || req.isTrailer || req.streamUrl.startsWith("file:", true) ||
+            req.imdbId.isNullOrBlank()
+        ) {
+            return@LaunchedEffect
+        }
+        val found = FirstPartySubsClient.fetch(
+            repository.api, req.type, req.imdbId!!, req.season, req.episode
+        )
+        if (found.isEmpty() || state.currentRequest != req || disposed.get()) {
+            return@LaunchedEffect
+        }
+        // Entries the playing addon already carries for this title
+        // (same file URL) are not duplicated.
+        val fresh = found.filter { candidate ->
+            req.subtitles.none { it.url == candidate.url }
+        }
+        // The user's own subtitle languages first (settings order,
+        // stable); everything else keeps the server's order.
+        val prefs = settings.subtitleLanguages
+        val sorted = if (prefs.isEmpty()) {
+            fresh
+        } else {
+            fresh.sortedBy { sub ->
+                val idx = prefs.indexOfFirst { pref -> subtitleLangMatches(sub.lang, pref) }
+                if (idx >= 0) idx else Int.MAX_VALUE
+            }
+        }
+        firstPartySubs = sorted
+        firstPartyAutoSub = pickFirstPartyAutoSub(sorted)
+    }
+
+    LaunchedEffect(state.currentRequest, state.addedSubs, state.subReloadTick, firstPartyAutoSub) {
         val reqAtStart = state.currentRequest
-        val all = reqAtStart.subtitles + state.addedSubs
+        // The first-party auto-pick winner rides along FIRST, so the
+        // shared auto-pick's stable ranking prefers it on ties inside
+        // the user's top language; a remembered manual pick still
+        // overrides it in subtitleConfigs.
+        val all = listOfNotNull(firstPartyAutoSub) + reqAtStart.subtitles + state.addedSubs
         state.subLoadError = false
         state.resolvedSubs = emptyList()
         state.rawResolvedSubs = emptyList()
