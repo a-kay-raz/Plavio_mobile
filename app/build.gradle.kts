@@ -67,6 +67,16 @@ android {
             "AVIO_SUPABASE_ANON_KEY",
             "\"${providers.gradleProperty("AVIO_SUPABASE_ANON_KEY").orNull ?: ""}\""
         )
+        // Anime-Skip (skip-segments provider) requires a per-app
+        // registered client id. None is registered for Avio, so the
+        // field is empty by default and the Anime-Skip provider stays
+        // inactive; IntroDB and AniSkip need no key and are always live.
+        // Passed at build time via -PANIME_SKIP_CLIENT_ID=... .
+        buildConfigField(
+            "String",
+            "ANIME_SKIP_CLIENT_ID",
+            "\"${providers.gradleProperty("ANIME_SKIP_CLIENT_ID").orNull ?: ""}\""
+        )
     }
 
     // Publishing is explicit and must never silently use an unsigned/debug artifact.

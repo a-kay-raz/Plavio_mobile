@@ -253,7 +253,7 @@ import com.aviostream.app.data.shiftSubtitles
 import com.aviostream.app.data.formatOffsetMs
 import com.aviostream.app.data.Video
 import com.aviostream.app.data.ASPECT_MODES
-import com.aviostream.app.data.IntroDbApi
+import com.aviostream.app.data.SkipSegmentRepository
 import com.aviostream.app.data.SdhFilteringTextOutput
 import com.aviostream.app.data.SubtitleSdhFilter
 import com.aviostream.app.data.detectTrackLanguageVariant
@@ -4313,14 +4313,24 @@ fun PlayerScreen(
     }
 
     // Skip segments follow the title, not the source — fetch once per episode.
+    // Merged repository (v0.14.30 port, #33): IntroDB by IMDb id plus, for
+    // anime, Anime-Skip and AniSkip by MAL id (resolved from a mal:/anilist:
+    // video id), merged IntroDB > Anime-Skip > AniSkip.
     LaunchedEffect(initialRequest.imdbId, initialRequest.season, initialRequest.episode) {
-        state.apiSkipSegments = if (!initialRequest.imdbId.isNullOrBlank()) {
+        val ids = listOf(initialRequest.metaId, initialRequest.videoId)
+        val hasMalId = ids.any {
+            val raw = it.trim().lowercase()
+            raw.startsWith("mal:") || raw.startsWith("anilist:")
+        }
+        state.apiSkipSegments = if (!initialRequest.imdbId.isNullOrBlank() || hasMalId) {
             runCatching {
-                IntroDbApi().fetchSegments(
-                    initialRequest.imdbId!!,
-                    initialRequest.season,
-                    initialRequest.episode,
-                    initialRequest.isMovie
+                SkipSegmentRepository().fetchMerged(
+                    imdbId = initialRequest.imdbId,
+                    candidateIds = ids,
+                    season = initialRequest.season,
+                    episode = initialRequest.episode,
+                    isMovie = initialRequest.isMovie,
+                    episodeLengthSec = (state.durationMs / 1000L).coerceAtLeast(0L)
                 )
             }.getOrDefault(emptyList())
         } else emptyList()
