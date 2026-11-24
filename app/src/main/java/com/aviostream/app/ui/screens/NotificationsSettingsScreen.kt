@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.NotificationImportant
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +49,7 @@ fun NotificationsSettingsScreen(
     val settings = repository.settings
     val context = LocalContext.current
     var episodeNotifs by remember { mutableStateOf(settings.episodeNotifications) }
+    var downloadDone by remember { mutableStateOf(settings.downloadFinishedNotifications) }
     var testNotifSent by remember { mutableStateOf(false) }
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -94,6 +96,25 @@ fun NotificationsSettingsScreen(
                                     ) {
                                         notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     }
+                                }
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Download,
+                            title = "Download finished",
+                            subtitle = "Notify when a download completes",
+                            checked = downloadDone,
+                            onCheckedChange = { enabled ->
+                                settings.downloadFinishedNotifications = enabled
+                                downloadDone = enabled
+                                if (enabled && Build.VERSION.SDK_INT >= 33 &&
+                                    ContextCompat.checkSelfPermission(
+                                        context, Manifest.permission.POST_NOTIFICATIONS
+                                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
                             }
                         )

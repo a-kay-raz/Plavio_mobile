@@ -10,6 +10,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.aviostream.app.data.PlaybackHeaders
+import com.aviostream.app.data.notifications.DownloadNotifications
 import com.aviostream.app.data.db.AppDatabase
 import com.aviostream.app.data.db.DownloadItem
 import kotlinx.coroutines.CancellationException
@@ -851,6 +852,7 @@ class DownloadManager private constructor(private val appContext: Context) {
             scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
             _activeDownloads.value = _activeDownloads.value - item.id
             Log.i(TAG, "Download completed: ${item.id} ($downloaded bytes)")
+            runCatching { DownloadNotifications.postDownloadFinished(appContext, item.id, item.title) }
             }
         } finally {
             cancellationWatcher.cancel()
@@ -1067,6 +1069,7 @@ class DownloadManager private constructor(private val appContext: Context) {
         scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
         _activeDownloads.value = _activeDownloads.value - item.id
         Log.i(TAG, "Download completed (segmented): ${item.id} (${probe.total} bytes)")
+        runCatching { DownloadNotifications.postDownloadFinished(appContext, item.id, item.title) }
     }
 
     private suspend fun downloadSegmentRange(
@@ -1361,6 +1364,7 @@ class DownloadManager private constructor(private val appContext: Context) {
         scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
         _activeDownloads.value = _activeDownloads.value - item.id
         Log.i(TAG, "Download completed (HLS): ${item.id} ($size bytes)")
+        runCatching { DownloadNotifications.postDownloadFinished(appContext, item.id, item.title) }
     }
 
     /** Stream-copy remux (no re-encode). Returns false when the container or codecs refuse. */

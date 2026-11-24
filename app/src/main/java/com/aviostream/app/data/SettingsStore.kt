@@ -504,6 +504,13 @@ class SettingsStore(
         set(value) = prefs.edit().putBoolean(KEY_EPISODE_NOTIFICATIONS, value).apply()
 
     /**
+     * "Download finished" alerts (v0.14.30 port): post a notification when a download completes. The live progress notification is separate and always runs while downloads are active. Default ON.
+     */
+    var downloadFinishedNotifications: Boolean
+        get() = prefs.getBoolean(KEY_DOWNLOAD_FINISHED_NOTIFICATIONS, true)
+        set(value) = prefs.edit().putBoolean(KEY_DOWNLOAD_FINISHED_NOTIFICATIONS, value).apply()
+
+    /**
      * Which player opens streams: the built-in Avio player, an external
      * app chosen by the system chooser, or ask every time.
      * Stored as [PlayerChoice.name]; defaults to built-in.
@@ -2143,6 +2150,7 @@ class SettingsStore(
         private const val KEY_SHUFFLE_EPISODES = "shuffle_episodes"
         private const val KEY_PIP_ENABLED = "pip_enabled"
         private const val KEY_EPISODE_NOTIFICATIONS = "episode_notifications"
+        private const val KEY_DOWNLOAD_FINISHED_NOTIFICATIONS = "download_finished_notifications"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
         private const val KEY_BUFFER_MIN_MS = "buffer_min_ms"
         private const val KEY_BUFFER_MAX_MS = "buffer_max_ms"
