@@ -86,6 +86,7 @@ import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
@@ -159,6 +160,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
@@ -209,6 +211,10 @@ import com.aviostream.app.data.db.CollectionFolder
 import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.Subtitle
 import com.aviostream.app.data.Video
+import com.aviostream.app.data.SmartInstant
+import com.aviostream.app.data.SmartStreamQuality
+import com.aviostream.app.data.debrid.DebridSupport
+import com.aviostream.app.data.parseReleaseYear
 import com.aviostream.app.data.streamQualityLabel
 import com.aviostream.app.data.SUBTITLE_LANGUAGE_OPTIONS
 import com.aviostream.app.ui.components.availableStreamQualities
@@ -221,11 +227,13 @@ import androidx.compose.ui.draw.alpha
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.components.LoadingState
 import com.aviostream.app.ui.components.AddonTabs
+import com.aviostream.app.ui.components.InstantPlayHeader
+import com.aviostream.app.ui.components.PlugTagChip
+import com.aviostream.app.ui.components.StreamBadgeChip
 import com.aviostream.app.ui.components.pickAutoplayStream
 import com.aviostream.app.ui.components.rememberStreamBrowserState
 import com.aviostream.app.ui.components.StreamCard
 import com.aviostream.app.ui.components.StreamList
-import com.aviostream.app.ui.components.streamListItems
 import com.aviostream.app.ui.components.DownloadConfirmDialog
 import com.aviostream.app.ui.components.SmartStreamSheet
 import com.aviostream.app.ui.components.StreamTab
@@ -2974,11 +2982,13 @@ private fun DetailContent(
     // Source picker (long-press Play): Bottom Sheet (Sample M;
     // owner's pick v0.12.14) — slides over the detail page, which
     // stays dimmed behind it. Same picker body, sheet mode.
+    // Screenshot sheet: near-black background (#0D0D0D) with the
+    // stream cards in panel (#1A1A1A) — container is background.
     if (fullPageSourceOpen) {
       ModalBottomSheet(
         onDismissRequest = { fullPageSourceOpen = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = LocalPalette.current.panel,
+        containerColor = LocalPalette.current.background,
         dragHandle = { BottomSheetDefaults.DragHandle() }
       ) {
         FullPageSourcePicker(
@@ -4324,6 +4334,175 @@ private fun PickerCardBody(
 }
 
 
+/**
+ * Screenshot stream card for the Detail Smart Streams sheet: the title +
+ * year, a green "<Provider> Cached" pill for debrid-resolved rows, a row
+ * of tag pills (quality / audio / source / codec / size), an inline
+ * Download pill, and the grey source line. Tap plays, Download downloads
+ * — the same callbacks as the shared card. The filename is deliberately
+ * NOT shown (the screenshot shows the title); the debrid name /
+ * description templates are not rendered here either — they still apply
+ * in the player Sources panel, which keeps the shared CompactStreamCard.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SheetStreamCard(
+    stream: StreamItem,
+    cardTitle: String,
+    onClick: () -> Unit,
+    onDownload: ((StreamItem) -> Unit)?,
+) {
+    val palette = LocalPalette.current
+    val unresolvedTorrent = stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)
+    val info = remember(stream) { parseStreamInfo(stream) }
+    val cachedLabel = remember(stream) { DebridSupport.cachedLabel(stream) }
+    val providerLabel = stream.sourceName?.takeIf { it.isNotBlank() } ?: stream.addonKey()
+    val isPlug = stream.sourceId?.startsWith(
+        com.aviostream.app.data.plugs.PlugService.PLUG_SOURCE_PREFIX
+    ) == true
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(palette.panel)
+                .border(1.dp, GlassBorder, shape)
+                .clickable(enabled = !unresolvedTorrent, onClick = onClick)
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = cardTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isPlug) {
+                    Spacer(Modifier.width(8.dp))
+                    PlugTagChip()
+                }
+            }
+            if (cachedLabel != null) {
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF22C55E).copy(alpha = 0.12f))
+                        .border(1.dp, Color(0xFF22C55E).copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = cachedLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF4ADE80)
+                    )
+                }
+            }
+            // Tag pills, screenshot order: quality, audio, source,
+            // codec, size — then the Download pill inline.
+            val pills = remember(info) {
+                listOfNotNull(
+                    info.quality?.uppercase()?.let { Triple(it, Color(0xFF2E2440), Color(0xFFC9B8FF)) },
+                    info.audio?.let { Triple(it, Color(0xFF3A2323), Color(0xFFFFB4A2)) },
+                    info.source?.let { Triple(it, Color(0xFF1F2A44), Color(0xFF9DC2FF)) },
+                    info.codec?.uppercase()?.let { Triple(it, Color(0xFF1F2A44), Color(0xFF9DC2FF)) },
+                    info.size?.let { Triple(it, Color(0xFF3A2E1F), Color(0xFFD9B48A)) },
+                )
+            }
+            if (pills.isNotEmpty() || (onDownload != null && !unresolvedTorrent)) {
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    pills.forEach { (label, bg, fg) ->
+                        SheetTagPill(label = label, background = bg, textColor = fg)
+                    }
+                    if (onDownload != null && !unresolvedTorrent) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.White.copy(alpha = 0.06f))
+                                .border(1.dp, GlassBorder, RoundedCornerShape(50))
+                                .clickable(role = Role.Button) { onDownload(stream) }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.Download,
+                                    contentDescription = null,
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "Download",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            // Step 61 badge chips: kept (user-configured match info),
+            // only when the stream has any — the screenshot has none.
+            if (stream.badges.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    stream.badges.forEach { badge ->
+                        StreamBadgeChip(badge = badge)
+                    }
+                }
+            }
+            if (providerLabel.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = providerLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/** One small tinted tag pill for a sheet stream card (screenshot). */
+@Composable
+private fun SheetTagPill(label: String, background: Color, textColor: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            maxLines = 1
+        )
+    }
+}
+
 /** Full-screen picker opened by long-pressing Play. All content scrolls on small screens. */
 @Composable
 internal fun FullPageSourcePicker(
@@ -4347,6 +4526,13 @@ internal fun FullPageSourcePicker(
     var smartSheetOpen by remember { mutableStateOf(false) }
     var smartVersion by remember { mutableStateOf(0) }
     val smartActiveCount = if (smartVersion >= 0) settings?.smartStreamSettings()?.filters?.activeCount ?: 0 else 0
+    // Screenshot card title: the title + year (e.g. "Clayface (2026)").
+    // The stream filename is NOT the card title here — the quality /
+    // source / size pills below carry the distinguishing details.
+    val sheetCardTitle = remember(meta) {
+        val year = parseReleaseYear(meta.releaseInfo)
+        if (year > 0) "${meta.name} ($year)" else meta.name
+    }
     androidx.activity.compose.BackHandler(onBack = onBack)
     val pickerBody: @Composable () -> Unit = {
         Column(
@@ -4354,19 +4540,51 @@ internal fun FullPageSourcePicker(
              else Modifier.fillMaxSize()).tvSheetFocus()
         ) {
             if (inSheet) {
-                // Sheet header: the title alone (owner's order
-                // 2026-10-25: the "choose a source" suffix removed).
+                // Sheet header (screenshot): the title alone (owner's
+                // order 2026-10-25: the "choose a source" suffix
+                // removed) plus a right-aligned "<n> streams" pill
+                // with a refresh icon that re-queries the addons.
                 // The sheet's drag handle sits above this; no back /
                 // close row and no banner inside the sheet.
-                Text(
-                    meta.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        meta.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(50))
+                            .clickable(role = Role.Button) { onRetry() }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${streams.size} streams",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextPrimary,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = "Refresh streams",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
             } else {
                 Row(
                     Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 8.dp),
@@ -4454,10 +4672,11 @@ internal fun FullPageSourcePicker(
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
-                    AddonTabs(browserState, compact = true)
+                    AddonTabs(browserState, compact = true, selectedWhite = true)
                     com.aviostream.app.ui.components.QualityPills(
                         browserState,
                         compact = true,
+                        selectedWhite = true,
                         modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
                     )
                     Row(
@@ -4526,13 +4745,43 @@ internal fun FullPageSourcePicker(
                             }) { Text("Clear filters", color = palette.accent) }
                         }
                     }
-                    else -> streamListItems(
-                        streams = browserState.filtered,
-                        onPick = onPick,
-                        onDownload = onDownload,
-                        compact = true,
-                        settings = settings
-                    )
+                    else -> {
+                        // Screenshot: instant (cached) streams group
+                        // first under an "Instant play" header, the rest
+                        // follow below. Order inside each group is the
+                        // existing filtered order; every stream keeps
+                        // its tap-to-play and Download behaviour.
+                        val (instant, rest) = browserState.filtered.partition {
+                            SmartStreamQuality.cached(it).instant == SmartInstant.YES
+                        }
+                        if (instant.isNotEmpty()) {
+                            val providers = instant.mapNotNull {
+                                DebridSupport.cachedLabel(it)?.removeSuffix(" Cached")
+                            }.distinct()
+                            val instantSubtitle = if (providers.size == 1) {
+                                "Cached on ${providers[0]} — plays right away"
+                            } else {
+                                "Cached — plays right away"
+                            }
+                            item(key = "instant-header") { InstantPlayHeader(instantSubtitle) }
+                            itemsIndexed(instant, key = { index, s -> "instant_${index}_${s.url}" }) { _, stream ->
+                                SheetStreamCard(
+                                    stream = stream,
+                                    cardTitle = sheetCardTitle,
+                                    onClick = { onPick(stream) },
+                                    onDownload = onDownload
+                                )
+                            }
+                        }
+                        itemsIndexed(rest, key = { index, s -> "rest_${index}_${s.url}" }) { _, stream ->
+                            SheetStreamCard(
+                                stream = stream,
+                                cardTitle = sheetCardTitle,
+                                onClick = { onPick(stream) },
+                                onDownload = onDownload
+                            )
+                        }
+                    }
                 }
             }
         }

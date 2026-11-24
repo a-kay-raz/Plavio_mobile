@@ -31,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
@@ -541,7 +542,15 @@ fun rememberStreamBrowserState(
 }
 
 @Composable
-fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact: Boolean = false) {
+fun AddonTabs(
+    state: StreamBrowserState,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    // Screenshot style (Detail Smart Streams sheet): the selected tab is
+    // a WHITE filled pill with black text, unselected tabs stay dark.
+    // Default (player Sources panel) keeps the accent fill.
+    selectedWhite: Boolean = false,
+) {
     if (!compact && state.tabs.size <= 2) return // Preserve the original non-compact behavior.
     val palette = LocalPalette.current
     val tabs = if (compact) state.tabs.sortedBy { tab ->
@@ -567,14 +576,16 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
                 modifier = Modifier
                     .clip(RoundedCornerShape(if (compact) 20.dp else 50.dp))
                     .background(
-                        if (selected && compact) palette.accent
+                        if (selected && compact && selectedWhite) Color.White
+                        else if (selected && compact) palette.accent
                         else if (selected) palette.accentTint
                         else if (compact) Color(0xFF222222)
                         else Color.White.copy(alpha = 0.06f)
                     )
                     .border(
                         1.dp,
-                        if (selected) palette.accent
+                        if (selected && compact && selectedWhite) Color.White
+                        else if (selected) palette.accent
                         else if (compact) Color(0xFF252A2A)
                         else GlassBorder,
                         RoundedCornerShape(if (compact) 20.dp else 50.dp)
@@ -592,7 +603,8 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     color = if (selected && compact) {
-                        if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
+                        if (selectedWhite) Color.Black
+                        else if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
                     } else if (selected) TextPrimary else TextSecondary,
                     maxLines = 1
                 )
@@ -606,7 +618,15 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
  * list get a pill. Tapping one filters across ALL addons.
  */
 @Composable
-fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compact: Boolean = false) {
+fun QualityPills(
+    state: StreamBrowserState,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    // Screenshot style (Detail Smart Streams sheet): the selected pill is
+    // a WHITE filled pill with black text, unselected pills stay dark.
+    // Default (player Sources panel) keeps the accent fill.
+    selectedWhite: Boolean = false,
+) {
     if (state.qualities.isEmpty() || (!compact && state.qualities.size <= 1)) return // Nothing useful to filter.
     val palette = LocalPalette.current
     LazyRow(
@@ -620,13 +640,18 @@ fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compa
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (selected && compact) palette.accent
+                        if (selected && compact && selectedWhite) Color.White
+                        else if (selected && compact) palette.accent
                         else if (selected) palette.accentTint
+                        else if (compact && selectedWhite) Color(0xFF222222)
                         else Color.White.copy(alpha = 0.06f)
                     )
                     .border(
                         1.dp,
-                        if (selected) palette.accent else GlassBorder,
+                        if (selected && compact && selectedWhite) Color.White
+                        else if (selected) palette.accent
+                        else if (compact && selectedWhite) Color(0xFF252A2A)
+                        else GlassBorder,
                         RoundedCornerShape(50)
                     )
                     .clickable(role = Role.RadioButton) { state.onSelectQuality(null) }
@@ -649,13 +674,18 @@ fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compa
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (selected && compact) palette.accent
+                        if (selected && compact && selectedWhite) Color.White
+                        else if (selected && compact) palette.accent
                         else if (selected) palette.accentTint
+                        else if (compact && selectedWhite) Color(0xFF222222)
                         else Color.White.copy(alpha = 0.06f)
                     )
                     .border(
                         1.dp,
-                        if (selected) palette.accent else GlassBorder,
+                        if (selected && compact && selectedWhite) Color.White
+                        else if (selected) palette.accent
+                        else if (compact && selectedWhite) Color(0xFF252A2A)
+                        else GlassBorder,
                         RoundedCornerShape(50)
                     )
                     .clickable(role = Role.RadioButton) { state.onSelectQuality(if (selected) null else quality) }
@@ -688,7 +718,7 @@ fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compa
  * the filename line.
  */
 @Composable
-private fun PlugTagChip() {
+internal fun PlugTagChip() {
     Box(
         Modifier
             .clip(RoundedCornerShape(4.dp))
@@ -1033,6 +1063,43 @@ fun LazyListScope.streamListItems(
             onDownload = onDownload,
             compact = compact,
             settings = settings
+        )
+    }
+}
+
+/**
+ * "Instant play" section header for the Detail Smart Streams sheet
+ * (screenshot): a green lightning bolt + "Instant play" on the left, the
+ * cached-provider note on the right. Shown only when the filtered list
+ * holds at least one instant (cached) stream.
+ */
+@Composable
+internal fun InstantPlayHeader(subtitle: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.Bolt,
+            contentDescription = null,
+            tint = Color(0xFF22C55E),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "Instant play",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
