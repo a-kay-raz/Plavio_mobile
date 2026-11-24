@@ -12,6 +12,7 @@ import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -364,6 +365,7 @@ fun PlayerScreen(
     val activity = context as? Activity
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val initialRequest = repository.pendingPlayback
+    Log.d("AvioPlay", "PlayerScreen entered, initialRequest null=" + (initialRequest == null))
     val settings = repository.settings
 
     // Step 63: player toolbar layouts (order + visibility), decoded from
@@ -761,6 +763,7 @@ fun PlayerScreen(
         subs: List<ResolvedSubtitle> = emptyList(),
         forcedMime: String? = null
     ): ExoPlayer {
+        Log.d("AvioPlay", "buildExo called")
         val prefs = settings.subtitleLanguages
         val audioPref = settings.preferredAudioLanguage
         // Memory-conscious buffering: on low-RAM devices (e.g. 48MB-heap TVs)

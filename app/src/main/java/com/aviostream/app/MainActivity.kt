@@ -1,6 +1,7 @@
 package com.aviostream.app
 
 import android.app.PictureInPictureParams
+import android.util.Log
 import android.app.PendingIntent
 import android.app.RemoteAction
 import android.content.BroadcastReceiver
@@ -1240,9 +1241,11 @@ private fun AvioNavGraph(
      * only divert when the user chose them.
      */
     fun playRequest(req: PlaybackRequest) {
+        Log.d("AvioPlay", "playRequest choice=" + PlayerChoice.fromName(repository.settings.preferredPlayer))
         when (PlayerChoice.fromName(repository.settings.preferredPlayer)) {
             PlayerChoice.BUILT_IN -> {
                 repository.pendingPlayback = req
+                Log.d("AvioPlay", "playRequest BUILT_IN, navigating PLAYER")
                 navController.navigate(Routes.PLAYER)
             }
             PlayerChoice.EXTERNAL -> playExternal(req)

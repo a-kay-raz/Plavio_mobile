@@ -1,5 +1,6 @@
 package com.aviostream.app.ui.screens
 
+import android.util.Log
 import android.view.ViewGroup
 import java.time.LocalDate
 import androidx.compose.animation.animateContentSize
@@ -480,6 +481,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
 
     fun onPlayPressed(fromStart: Boolean = false) {
         playFromStartRequest = fromStart
+        Log.d("AvioPlay", "onPlayPressed fromStart=" + fromStart + " streamsState=" + streamsState::class.simpleName)
         when (val s = streamsState) {
             is StreamsUiState.Content -> playBestOrFirst()
             is StreamsUiState.Error -> { /* nothing playable — leave the error visible */ }
@@ -604,6 +606,7 @@ fun DetailScreen(
     // Play button: autoplay the first available stream as soon as it's ready.
     LaunchedEffect(vm.autoPlayEvent) {
         vm.consumeAutoPlay()?.let { autoplay ->
+            Log.d("AvioPlay", "autoPlay consumed, starting playback")
             // #12: streams may finish loading after the user already backed
             // out — never navigate to the player from a dead screen.
             if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
@@ -658,6 +661,7 @@ private fun startPlayback(
     fromStart: Boolean = false
 ) {
     if (stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)) return
+    Log.d("AvioPlay", "startPlayback: stashing request, calling onPlay")
     val meta = (vm.metaState as? MetaUiState.Content)?.meta ?: return
     val isSeries = meta.type == "series" && vm.selectedVideo != null
     val title = if (isSeries) {
