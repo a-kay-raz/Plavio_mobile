@@ -322,7 +322,6 @@ fun PlayerLoadingOverlay(
  * element; the backdrop poster stays static. The block it sits
  * in is the poster's dead centre since v0.14.38.
  */
-@Composable
 /**
  * The loading heartbeat's scale (H1's lub-dub keyframes from the
  * locked sample, rises attacking expo-out, falls easing away) —
@@ -380,6 +379,7 @@ fun BufferingTitleLogo(title: String, logo: String?) {
     LoadingTitleName(title = title, logo = logo, beatScale = rememberHeartbeatScale())
 }
 
+@Composable
 private fun LoadingTitleName(title: String, logo: String?, beatScale: Float) {
     var logoFailed by remember(logo) { mutableStateOf(false) }
     val breathing = Modifier.graphicsLayer {
