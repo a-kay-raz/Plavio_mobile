@@ -219,6 +219,7 @@ import com.aviostream.app.data.streamQualityLabel
 import com.aviostream.app.data.SUBTITLE_LANGUAGE_OPTIONS
 import com.aviostream.app.ui.components.availableStreamQualities
 import com.aviostream.app.ui.components.parseStreamInfo
+import com.aviostream.app.ui.components.streamDisplayModel
 import com.aviostream.app.ui.components.ErrorState
 import com.aviostream.app.ui.components.ExpandableDescription
 import com.aviostream.app.ui.components.GlassCard
@@ -4381,13 +4382,15 @@ private fun PickerCardBody(
 @Composable
 private fun SheetStreamCard(
     stream: StreamItem,
-    cardTitle: String,
     onClick: () -> Unit,
     onDownload: ((StreamItem) -> Unit)?,
 ) {
     val palette = LocalPalette.current
     val unresolvedTorrent = stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)
     val info = remember(stream) { parseStreamInfo(stream) }
+    // Links description (user's order, Nuvio screenshot): the full
+    // filename is the card's main text, not the shared title + year.
+    val display = remember(stream) { streamDisplayModel(stream) }
     val cachedLabel = remember(stream) { DebridSupport.cachedLabel(stream) }
     val providerLabel = stream.sourceName?.takeIf { it.isNotBlank() } ?: stream.addonKey()
     val isPlug = stream.sourceId?.startsWith(
@@ -4410,12 +4413,11 @@ private fun SheetStreamCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = cardTitle,
-                    style = MaterialTheme.typography.titleMedium,
+                    text = display.headline,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 24.sp,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (isPlug) {
@@ -4508,7 +4510,7 @@ private fun SheetStreamCard(
                 Text(
                     text = providerLabel,
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
+                    color = palette.accent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -4562,10 +4564,6 @@ internal fun FullPageSourcePicker(
     // Screenshot card title: the title + year (e.g. "Clayface (2026)").
     // The stream filename is NOT the card title here — the quality /
     // source / size pills below carry the distinguishing details.
-    val sheetCardTitle = remember(meta) {
-        val year = parseReleaseYear(meta.releaseInfo)
-        if (year > 0) "${meta.name} ($year)" else meta.name
-    }
     androidx.activity.compose.BackHandler(onBack = onBack)
     val pickerBody: @Composable () -> Unit = {
         Column(
@@ -4800,7 +4798,6 @@ internal fun FullPageSourcePicker(
                             itemsIndexed(instant, key = { index, s -> "instant_${index}_${s.url}" }) { _, stream ->
                                 SheetStreamCard(
                                     stream = stream,
-                                    cardTitle = sheetCardTitle,
                                     onClick = { onPick(stream) },
                                     onDownload = onDownload
                                 )
@@ -4809,7 +4806,6 @@ internal fun FullPageSourcePicker(
                         itemsIndexed(rest, key = { index, s -> "rest_${index}_${s.url}" }) { _, stream ->
                             SheetStreamCard(
                                 stream = stream,
-                                cardTitle = sheetCardTitle,
                                 onClick = { onPick(stream) },
                                 onDownload = onDownload
                             )
