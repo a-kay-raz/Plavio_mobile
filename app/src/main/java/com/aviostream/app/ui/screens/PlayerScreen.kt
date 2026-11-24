@@ -244,7 +244,6 @@ import com.aviostream.app.data.FirstPartySubsClient
 import com.aviostream.app.data.Subtitle
 import com.aviostream.app.data.UserRatings
 import com.aviostream.app.data.trakt.TraktApi
-import com.aviostream.app.data.trakt.TraktManager
 import com.aviostream.app.data.resolveSubtitleFiles
 import com.aviostream.app.data.shiftSubtitles
 import com.aviostream.app.data.formatOffsetMs
@@ -734,11 +733,9 @@ fun PlayerScreen(
             // Matroska sources are parsed by the tail-cues fork, so
             // muxes whose head SeekHead omits the Cues index stay
             // seekable. Every other format keeps its stock extractor.
-            DefaultMediaSourceFactory(cacheDataSourceFactory)
-                .setExtractorsFactory(AvioExtractorsFactory())
+            DefaultMediaSourceFactory(cacheDataSourceFactory, AvioExtractorsFactory())
         } else {
-            DefaultMediaSourceFactory(dataSourceFactory)
-                .setExtractorsFactory(AvioExtractorsFactory())
+            DefaultMediaSourceFactory(dataSourceFactory, AvioExtractorsFactory())
         }
     }
 
