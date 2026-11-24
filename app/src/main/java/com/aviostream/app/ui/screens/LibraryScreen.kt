@@ -1134,9 +1134,10 @@ private fun DownloadCard(
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .background(palette.accent, RoundedCornerShape(50))
-                    .size(20.dp),
+                    .padding(end = 6.dp, bottom = 6.dp)
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(palette.accent),
                 contentAlignment = Alignment.Center
             ) {
                 Text("↓", color = Color(0xFF04140B), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
@@ -1288,12 +1289,13 @@ private fun UpNextRow(card: UpNextCard, onClick: () -> Unit) {
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(5.dp)
-                    .background(palette.accent, RoundedCornerShape(50))
-                    .size(19.dp),
+                    .padding(end = 6.dp, bottom = 6.dp)
+                    .size(17.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(palette.accent),
                 contentAlignment = Alignment.Center
             ) {
-                Text("▶", color = Color(0xFF04140B), fontSize = 8.sp)
+                Text("▶", color = Color(0xFF04140B), fontSize = 7.sp)
             }
         }
         Spacer(Modifier.width(11.dp))

@@ -340,7 +340,7 @@ fun StreamsSettingsScreen(
                     "Top = highest priority in the stream list.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = V117Muted,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 )
             }
 

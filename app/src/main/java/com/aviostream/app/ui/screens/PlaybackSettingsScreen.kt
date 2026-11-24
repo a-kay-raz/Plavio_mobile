@@ -1903,7 +1903,11 @@ fun SubtitleStyleDialog(
         containerColor = LocalPalette.current.background,
         title = { Text("Subtitle appearance", color = TextPrimary) },
         text = {
-            Column {
+            Column(
+                Modifier
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 // ---- System default ----
                 Row(
                     modifier = Modifier

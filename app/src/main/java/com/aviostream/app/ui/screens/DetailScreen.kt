@@ -2675,6 +2675,7 @@ private fun DetailContent(
                         modifier = Modifier
                             .size(36.dp)
                             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
                             .clickable(onClick = onBack),
                         contentAlignment = Alignment.Center
                     ) {
@@ -2685,6 +2686,7 @@ private fun DetailContent(
                         modifier = Modifier
                             .size(36.dp)
                             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
                             .combinedClickable(
                                 onClick = {
                                     scope.launch {
@@ -2710,6 +2712,7 @@ private fun DetailContent(
                             modifier = Modifier
                                 .size(36.dp)
                                 .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
                                 .clickable(onClick = { toggleHeroMute() }),
                             contentAlignment = Alignment.Center
                         ) {
@@ -2726,6 +2729,7 @@ private fun DetailContent(
                         modifier = Modifier
                             .size(36.dp)
                             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
                             .clickable(onClick = { showAddToList = true }),
                         contentAlignment = Alignment.Center
                     ) {
@@ -4940,9 +4944,9 @@ private fun EpisodeCardA(
                 }
             }
             Box(
-                Modifier.padding(9.dp)
-                    .background(Color(0xBF05080E), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                Modifier.padding(7.dp)
+                    .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 7.dp, vertical = 3.dp)
             ) {
                 Text(
                     "S${video.season} \u00b7 E${video.episode}",
@@ -5326,9 +5330,9 @@ private fun EpisodeListCard(
                     }
                 }
                 Box(
-                    Modifier.padding(9.dp)
-                        .background(Color(0xBF05080E), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                    Modifier.padding(7.dp)
+                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
                     Text(
                         "S${video.season} · E${video.episode}",

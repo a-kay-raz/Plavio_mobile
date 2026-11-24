@@ -311,8 +311,12 @@ private fun ListToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.05f))
+            .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(14.dp))
             .clickable { onToggle(!checked) }
-            .padding(vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(

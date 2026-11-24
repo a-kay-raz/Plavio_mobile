@@ -457,7 +457,7 @@ fun GradientButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.sizeIn(minHeight = 48.dp),
+        modifier = modifier.sizeIn(minHeight = 52.dp),
         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
         contentPadding = androidx.compose.foundation.layout.PaddingValues()
     ) {
