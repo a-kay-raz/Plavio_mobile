@@ -62,6 +62,7 @@
     <string name="settings_installs_many">%1$s installs</string>
 
     <!-- Common actions -->
+    <string name="app_widget_cw_description">Your in-progress movies and shows — tap one to jump back in</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_done">Done</string>
     <string name="action_retry">Retry</string>

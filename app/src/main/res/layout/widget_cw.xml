@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Continue Watching home-screen widget (v0.14.13, item 10):
+     header (tap opens the app) + a grid of in-progress titles fed
+     by CwWidgetService; item taps go through the fill-in intent. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#141419"
+    android:padding="10dp">
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Continue Watching"
+        android:textColor="#F2F0EC"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <GridView
+        android:id="@+id/widget_grid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:numColumns="3"
+        android:horizontalSpacing="8dp"
+        android:verticalSpacing="8dp"
+        android:clipToPadding="false" />
+
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Nothing in progress yet — start watching in Avio"
+        android:textColor="#9B97A3"
+        android:textSize="12sp"
+        android:visibility="gone" />
+</LinearLayout>

@@ -53,6 +53,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="stremio" />
             </intent-filter>
+            <!-- Title deep links (avio://title/<type>/<id>): the Continue
+                 Watching widget's card taps open the title's detail page.
+                 MainActivity routes the VIEW intent via handleTitleLink. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="avio" android:host="title" />
+            </intent-filter>
         </activity>
         <!-- Step 70: app-icon variants (AppIcon.kt). Each alias targets
              MainActivity with the same foreground on a different background;
@@ -104,6 +113,22 @@
         <receiver
             android:name=".BackgroundAudioActionReceiver"
             android:exported="false" />
+        <!-- Continue Watching home-screen widget (v0.14.30 port, feature #19). -->
+        <receiver
+            android:name=".ui.widget.CwWidgetProvider"
+            android:exported="false"
+            android:label="Continue Watching">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/cw_widget_info" />
+        </receiver>
+        <service
+            android:name=".ui.widget.CwWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
     </application>
 
 </manifest>

@@ -136,6 +136,7 @@ import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.notifications.EpisodeNotifications
 import com.aviostream.app.data.notifications.MovieNotifications
 import com.aviostream.app.data.notifications.NotificationNav
+import com.aviostream.app.ui.widget.CwWidgetUpdater
 import com.aviostream.app.util.ExternalPlayer
 import com.aviostream.app.data.update.UpdateInfo
 import com.aviostream.app.ui.components.CrashReportDialog
@@ -382,6 +383,7 @@ class MainActivity : ComponentActivity() {
         }
         handleAddonDeepLink(intent)
         handleNotificationRoute(intent)
+        handleTitleLink(intent)
         // Safety net: (re)schedule the episode check on cold start.
         // Idempotent (KEEP) and a no-op when alerts are disabled.
         EpisodeNotifications.ensureScheduled(this)
@@ -460,6 +462,14 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleAddonDeepLink(intent)
         handleNotificationRoute(intent)
+        handleTitleLink(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Continue Watching widget (v0.14.30 port, feature #19):
+        // re-read the rows whenever the app comes to the foreground.
+        CwWidgetUpdater.refresh(this)
     }
 
     override fun onDestroy() {
@@ -615,6 +625,38 @@ class MainActivity : ComponentActivity() {
             ?: return
         intent.removeExtra(EXTRA_OPEN_ROUTE)
         NotificationNav.pendingRoute.value = route
+    }
+
+    /** Last title link consumed, so a redelivered intent can't re-route. */
+    private var lastTitleLink: String? = null
+
+    /**
+     * Title deep links (v0.14.30 port, feature #19):
+     *   avio://title/<type>/<id>
+     * Opens the title's detail page through the same
+     * NotificationNav stash the episode notifications use; the
+     * detail resolves with addonId "" (the any-addon meta walk),
+     * exactly like a Library Upcoming tap. <id> is the title's meta
+     * id (an IMDb tt id wherever the title has one).
+     */
+    private fun handleTitleLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        val link = data.toString()
+        if (link == lastTitleLink) return
+        val segments = data.pathSegments
+        val type: String?
+        val id: String?
+        when {
+            data.scheme == "avio" && data.host == "title" -> {
+                type = segments.getOrNull(0)
+                id = segments.getOrNull(1)
+            }
+            else -> return
+        }
+        if ((type != "movie" && type != "series") || id.isNullOrBlank()) return
+        lastTitleLink = link
+        NotificationNav.pendingRoute.value =
+            Routes.detail("", type, id)
     }
 }
 

@@ -154,6 +154,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import com.aviostream.app.ui.widget.CwWidgetUpdater
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -2980,6 +2981,8 @@ fun PlayerScreen(
                 season = req.season,
                 episode = req.episode
             )
+            // CW widget (v0.14.30 port, feature #19): the row just changed.
+            CwWidgetUpdater.refresh(context)
         }
     }
 
