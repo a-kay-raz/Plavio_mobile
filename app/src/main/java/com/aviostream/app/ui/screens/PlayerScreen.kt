@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
 import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
@@ -468,6 +469,13 @@ fun PlayerScreen(
     // `remember` instead of 130 `by remember` delegates, so D8's register
     // allocator stops producing invalid dex for this giant composable.
     val state = remember { PlayerScreenState(settings, initialRequest, isTv) }
+    // Sleep timer label (v0.14.30 port): time left while a timed deadline
+    // runs, "Ep. end" for end-of-episode, else "Sleep".
+    val sleepTimerLabel = when {
+        state.sleepDeadlineMs > 0L -> "%d:%02d".format(state.sleepRemainingSec / 60, state.sleepRemainingSec % 60)
+        state.sleepAtEpisodeEnd -> "Ep. end"
+        else -> "Sleep"
+    }
     /** Invalidates callbacks from listeners attached to released/replaced players. */
     val activePlayerListenerGeneration = remember { AtomicInteger(0) }
     /**
@@ -2985,7 +2993,49 @@ fun PlayerScreen(
         state.nextEpisodeCountdown = null
         state.nextEpisodeCard = null
         state.endedHandledFor = state.currentRequest.videoId
+        if (state.sleepAtEpisodeEnd) {
+            // Sleep timer armed while the card was showing: don't advance —
+            // the episode plays to its natural end, where the sleep stop fires.
+            return@LaunchedEffect
+        }
         playEpisode(next)
+    }
+
+    // Sleep timer ticker (v0.14.30 port): counts the deadline down for the
+    // chip; at zero it pauses and clears itself.
+    LaunchedEffect(state.sleepDeadlineMs) {
+        if (state.sleepDeadlineMs <= 0L) {
+            state.sleepRemainingSec = 0
+            return@LaunchedEffect
+        }
+        while (true) {
+            val leftMs = state.sleepDeadlineMs - System.currentTimeMillis()
+            if (leftMs <= 0L) {
+                state.sleepDeadlineMs = 0L
+                state.sleepRemainingSec = 0
+                state.sleepChosenMinutes = 0
+                runCatching { latestPlayer.value.pause() }
+                // Release the screen hold with the pause — the PlayerView's
+                // keepScreenOn is set once at creation and nothing else ever
+                // clears it, so a timer pause used to leave the screen lit.
+                state.sleepScreenReleased = true
+                state.playerView?.keepScreenOn = false
+                pokeIndicator(PlayerIndicator.Message("Sleep timer — playback paused"))
+                break
+            }
+            state.sleepRemainingSec = ((leftMs + 999L) / 1000L).toInt()
+            delay(500)
+        }
+    }
+
+    // When playback resumes after a sleep-timer pause, restore the
+    // Keep-screen-on toggle's hold exactly as the factory set it — the
+    // release above belongs to the sleep stop only.
+    LaunchedEffect(state.isPlaying) {
+        if (state.isPlaying && state.sleepScreenReleased) {
+            state.sleepScreenReleased = false
+            state.playerView?.keepScreenOn = settings.keepScreenOn
+        }
     }
 
     // Movie recommendations auto-hide 10s after appearing while the
@@ -3116,6 +3166,7 @@ fun PlayerScreen(
                 )
             } else null
             if (nextEp != null && state.nextEpisodeCard == null &&
+                !state.sleepAtEpisodeEnd &&
                 state.nextEpisodeDismissedFor != state.currentRequest.videoId &&
                 shouldShowNextEpisodeCard(
                     state.positionMs, state.durationMs, skipSegments,
@@ -3156,11 +3207,30 @@ fun PlayerScreen(
                 state.nextEpisodeCountdown = null
                 state.prefetchedNextStreams = null
             }
+            // Sleep timer (v0.14.30 port), "End of episode": the episode
+            // finished — stop here instead of advancing, and consume the
+            // timer. The player is already stopped at STATE_ENDED; the
+            // screen hold is released so the screen can sleep.
+            if (c.playbackState == Player.STATE_ENDED &&
+                state.sleepAtEpisodeEnd &&
+                !state.currentRequest.isMovie &&
+                !state.currentRequest.isTrailer &&
+                state.currentRequest.episodes.isNotEmpty()
+            ) {
+                state.sleepAtEpisodeEnd = false
+                state.sleepChosenMinutes = 0
+                runCatching { latestPlayer.value.pause() }
+                state.sleepScreenReleased = true
+                state.playerView?.keepScreenOn = false
+                pokeIndicator(PlayerIndicator.Message("Sleep timer — playback paused"))
+            }
             // Auto-play next episode: when a series episode ends and the
             // setting is on, advance automatically — unless the countdown
-            // card is showing (it advances itself) or was cancelled.
+            // card is showing (it advances itself) or was cancelled, or a
+            // sleep timer is armed for end of episode.
             if (c.playbackState == Player.STATE_ENDED &&
                 settings.autoPlayNext &&
+                !state.sleepAtEpisodeEnd &&
                 !state.currentRequest.isMovie &&
                 !state.currentRequest.isTrailer &&
                 state.currentRequest.episodes.isNotEmpty() &&
@@ -3828,6 +3898,49 @@ fun PlayerScreen(
                 isVisible = state.parentalGuideVisible,
                 onAnimationComplete = { state.parentalGuideVisible = false }
             )
+        }
+
+        // Sleep timer chip (v0.14.30 port): while a sleep timer runs, a
+        // small pill at the top-centre shows what's left — tapping it
+        // cancels the timer (change it from the Sleep menu in the pill).
+        // It fades with the controls — it renders only while they show.
+        if ((state.sleepDeadlineMs > 0L || state.sleepAtEpisodeEnd) && state.showControls && !state.locked) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.78f),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 84.dp)
+                    .clickable {
+                        state.sleepDeadlineMs = 0L
+                        state.sleepAtEpisodeEnd = false
+                        state.sleepChosenMinutes = 0
+                        pokeIndicator(PlayerIndicator.Message("Sleep timer off"))
+                    }
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Bedtime,
+                        contentDescription = null,
+                        tint = TextPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        if (state.sleepDeadlineMs > 0L) {
+                            "Sleep in $sleepTimerLabel"
+                        } else {
+                            "Sleep at episode end"
+                        },
+                        color = TextPrimary,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
 
         // Startup presentation (owner's pick 2026-10-24 — "Backdrop
@@ -4828,6 +4941,12 @@ fun PlayerScreen(
                                         SpeedMenuButton(
                                             speed = state.speed,
                                             onClick = { state.speedMenuOpen = true }
+                                        )
+                                    }
+                                    com.aviostream.app.data.PlayerBottomButton.SLEEP -> {
+                                        SleepTimerButton(
+                                            label = sleepTimerLabel,
+                                            onClick = { state.sleepMenuOpen = true }
                                         )
                                     }
                                     com.aviostream.app.data.PlayerBottomButton.SOURCES -> {
@@ -6242,6 +6361,84 @@ fun PlayerScreen(
                                     player.setPlaybackSpeed(s)
                                     state.speedMenuOpen = false
                                     pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sleep timer dialog (v0.14.30 port, centered like Speed): Off,
+        // 15/30/45/60 minutes, or End of episode.
+        if (state.sleepMenuOpen) {
+            com.aviostream.app.ui.screens.player.PlayerCenteredDialog(
+                onDismiss = { state.sleepMenuOpen = false }
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Sleep timer",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.aviostream.app.ui.screens.player.PlayerDialogCloseButton(
+                            onClick = { state.sleepMenuOpen = false }
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(bottom = 2.dp)
+                    ) {
+                        item {
+                            com.aviostream.app.ui.screens.player.QualityOptionRow(
+                                title = "Off",
+                                subtitle = null,
+                                selected = state.sleepDeadlineMs <= 0L && !state.sleepAtEpisodeEnd,
+                                onClick = {
+                                    state.sleepDeadlineMs = 0L
+                                    state.sleepAtEpisodeEnd = false
+                                    state.sleepChosenMinutes = 0
+                                    state.sleepMenuOpen = false
+                                }
+                            )
+                        }
+                        items(listOf(15, 30, 45, 60)) { minutes ->
+                            com.aviostream.app.ui.screens.player.QualityOptionRow(
+                                title = "$minutes minutes",
+                                subtitle = null,
+                                selected = state.sleepDeadlineMs > 0L && state.sleepChosenMinutes == minutes,
+                                onClick = {
+                                    state.sleepAtEpisodeEnd = false
+                                    state.sleepChosenMinutes = minutes
+                                    state.sleepDeadlineMs = System.currentTimeMillis() + minutes * 60_000L
+                                    state.sleepMenuOpen = false
+                                    pokeIndicator(PlayerIndicator.Message("Sleep timer — $minutes minutes"))
+                                }
+                            )
+                        }
+                        item {
+                            com.aviostream.app.ui.screens.player.QualityOptionRow(
+                                title = "End of episode",
+                                subtitle = null,
+                                selected = state.sleepAtEpisodeEnd,
+                                onClick = {
+                                    state.sleepDeadlineMs = 0L
+                                    state.sleepChosenMinutes = 0
+                                    state.sleepAtEpisodeEnd = true
+                                    state.sleepMenuOpen = false
+                                    pokeIndicator(PlayerIndicator.Message("Sleep timer — end of episode"))
                                 }
                             )
                         }

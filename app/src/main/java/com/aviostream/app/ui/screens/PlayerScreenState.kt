@@ -143,6 +143,18 @@ internal class PlayerScreenState(
     var volumeBoost by mutableFloatStateOf(settings.audioBoostDb / 10f)
     var speed by mutableFloatStateOf(1f)
     var speedMenuOpen by mutableStateOf(false)
+    /** Sleep timer (v0.14.30 port): wall-clock deadline for the timed options, 0 = none. */
+    var sleepDeadlineMs by mutableLongStateOf(0L)
+    /** Sleep timer: true while "End of episode" is armed. */
+    var sleepAtEpisodeEnd by mutableStateOf(false)
+    /** Sleep timer: seconds left on the timed deadline, for the chip + pill label. */
+    var sleepRemainingSec by mutableIntStateOf(0)
+    /** Sleep timer: true once a sleep pause released the screen hold (restored on resume). */
+    var sleepScreenReleased by mutableStateOf(false)
+    /** Sleep timer menu (centered dialog) open. */
+    var sleepMenuOpen by mutableStateOf(false)
+    /** Sleep timer: the minutes option chosen for the timed deadline, 0 = none. */
+    var sleepChosenMinutes by mutableIntStateOf(0)
     /** True while the hold-for-speed gesture is boosting playback (v0.12.0). */
     var holdSpeedActive by mutableStateOf(false)
     /** Current hold-boost speed shown in the hold pill: the Hold speed

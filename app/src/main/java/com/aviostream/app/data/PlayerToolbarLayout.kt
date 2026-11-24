@@ -27,6 +27,7 @@ enum class PlayerBottomButton(val storageId: String, val label: String) {
     AUDIO("audio", "Audio tracks"),
     RESIZE("resize", "Resize mode"),
     SPEED("speed", "Playback speed"),
+    SLEEP("sleep", "Sleep timer"),
     SOURCES("sources", "Sources"),
     CHAPTERS("chapters", "Chapters"),
     NEXT_EPISODE("next_episode", "Next episode"),

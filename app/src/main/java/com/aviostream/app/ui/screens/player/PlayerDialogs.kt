@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -73,6 +74,21 @@ internal fun SpeedMenuButton(
     PillBarButton(
         icon = Icons.Filled.Speed,
         label = speedLabel(speed),
+        onClick = onClick
+    )
+}
+
+/** Sleep pill in the bottom toolbar — opens the centered sleep-timer
+ * dialog (same pattern as Speed). The label shows the time left while
+ * a timer runs, "Ep. end" for end-of-episode, else "Sleep". */
+@Composable
+internal fun SleepTimerButton(
+    label: String,
+    onClick: () -> Unit
+) {
+    PillBarButton(
+        icon = Icons.Filled.Bedtime,
+        label = label,
         onClick = onClick
     )
 }
