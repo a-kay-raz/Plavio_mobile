@@ -8095,7 +8095,13 @@ private fun StyleChip(
             label,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            color = if (on) palette.accentText else TextPrimary
+            color = if (on) palette.accentText else TextPrimary,
+            // A chip label NEVER wraps — the Style card's FONT row
+            // squeezed "Serif" into a tall circle with the word
+            // broken in two. The label stays on one line and the
+            // chip sizes to it; the row scrolls sideways instead.
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

@@ -19,10 +19,10 @@
     <string name="settings_streams_title">Streams</string>
     <string name="settings_streams_sub">Source limits, quality order, autoplay rule</string>
     <string name="settings_subtitles_title">Subtitles</string>
-    <string name="settings_subtitles_sub">Preferred languages and appearance</string>
+    <string name="settings_subtitles_sub">Languages, size, colour and timing</string>
 
     <string name="settings_addons_title">Manage addons</string>
-    <string name="settings_addons_sub">%1$d installed • %2$d enabled</string>
+    <string name="settings_addons_sub">%1$d installed, %2$d on</string>
     <string name="settings_home_catalogs_title">Home catalogs</string>
     <string name="settings_home_catalogs_sub">Choose and arrange catalogs on the Home screen</string>
     <string name="settings_episode_notif_title">New episode alerts</string>

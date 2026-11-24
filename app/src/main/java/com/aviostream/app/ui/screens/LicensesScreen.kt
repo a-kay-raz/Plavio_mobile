@@ -171,7 +171,7 @@ fun LicensesScreen(
                     }
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        text = "Open source licenses",
+                        text = "Open-source licenses",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary

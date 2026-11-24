@@ -355,14 +355,9 @@ fun PosterCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val sub = meta.releaseInfo?.take(4)
-            if (sub != null) {
-                Text(
-                    text = sub,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-            }
+            // Title only under posters: the year sub-line is gone
+            // on every PosterCard surface — the year still lives
+            // on the detail page.
         }
     }
 }

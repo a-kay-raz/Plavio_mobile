@@ -2935,7 +2935,7 @@ private fun SetupStepRow(
                     .padding(horizontal = 13.dp, vertical = 7.dp)
             ) {
                 Text(
-                    if (state == SetupStepState.Failed) "Retry" else "Add",
+                    if (state == SetupStepState.Failed) "Retry" else "+ Add",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF04120B)

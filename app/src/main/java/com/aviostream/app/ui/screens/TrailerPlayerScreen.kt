@@ -156,6 +156,12 @@ fun TrailerPlayerScreen(
         onDispose {
             if (ownsPlayer) player.release()
             activity?.requestedOrientation = prev
+            // Leaving the trailer restores the system bars it may
+            // have hidden in fullscreen. Show only — never hide.
+            activity?.window?.let { window ->
+                WindowCompat.getInsetsController(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
 
