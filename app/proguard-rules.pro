@@ -1,6 +1,15 @@
 # Project-specific ProGuard rules.
 # R8 minification is ON for release builds (isMinifyEnabled = true).
 
+# ── Native (JNI) bridges — R8 must not rename or strip these ─────────────
+# Native code calls these Java/Kotlin methods by name, so R8 renaming them
+# breaks the bridge and the feature crashes on first use. Dev-76 proved
+# it: selecting MPV crashed (and the process died before the Java crash
+# reporter could write a report). Keep all three bridges.
+-keep class is.xyz.mpv.** { *; }
+-keep class com.dokar.quickjs.** { *; }
+-keep class com.frostwire.jlibtorrent.** { *; }
+
 # ── CloudStream (CS3) runtime ─────────────────────────────────────────────────
 # Plugins are loaded at runtime via PathClassLoader and reflect into the
 # runtime API, so their classes and the host's CS3 layer must survive R8.
