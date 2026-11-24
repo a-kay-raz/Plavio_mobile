@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.extractor.text.CuesWithTiming
 import androidx.media3.ui.PlayerView
 import com.aviostream.app.data.MetaPreview
 import com.aviostream.app.data.ParentalWarning
@@ -21,6 +22,7 @@ import com.aviostream.app.data.StreamResult
 import com.aviostream.app.data.Subtitle
 import com.aviostream.app.data.Video
 import com.aviostream.app.ui.screens.player.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Job
 
 /**
@@ -122,6 +124,24 @@ internal class PlayerScreenState(
      * Attaching the same set twice would re-prepare the video for nothing.
      */
     var subsAttached by mutableStateOf<Pair<ExoPlayer, String>?>(null)
+    /**
+     * Sidecar subtitle engine (#26): the URL of the subtitle currently
+     * rendered off-player by AvioSidecarSubtitles, or null when the
+     * sidecar is idle (the media path, MPV, or an embedded track owns
+     * the captions instead).
+     */
+    var sidecarSubUrl by mutableStateOf<String?>(null)
+    /** Parsed cues for the active sidecar subtitle, ordered by start time. */
+    var sidecarCues by mutableStateOf(emptyList<CuesWithTiming>())
+    /**
+     * True once the user made an explicit subtitle choice for this
+     * title (a manual pick — including "None" — or an embedded pick):
+     * the automatic default must not override it on a later republish.
+     * Reset when the title changes.
+     */
+    var sidecarTouched by mutableStateOf(false)
+    /** Monotonic generation: a stale sidecar parse may never overwrite a newer activation. */
+    val sidecarGeneration = AtomicInteger(0)
     var showControls by mutableStateOf(true)
     var controlsTick by mutableIntStateOf(0)
     var locked by mutableStateOf(false)

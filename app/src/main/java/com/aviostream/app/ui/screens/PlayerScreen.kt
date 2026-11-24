@@ -235,6 +235,7 @@ import com.aviostream.app.data.PlaybackHeaders
 import com.aviostream.app.data.PlaybackRequest
 import com.aviostream.app.util.ExternalPlayer
 import com.aviostream.app.data.TvChannelRef
+import com.aviostream.app.data.AvioSidecarSubtitles
 import com.aviostream.app.data.ResolvedSubtitle
 import java.util.concurrent.TimeUnit
 import com.aviostream.app.data.SkipSegment
@@ -251,6 +252,7 @@ import com.aviostream.app.data.Video
 import com.aviostream.app.data.ASPECT_MODES
 import com.aviostream.app.data.IntroDbApi
 import com.aviostream.app.data.SdhFilteringTextOutput
+import com.aviostream.app.data.SubtitleSdhFilter
 import com.aviostream.app.data.detectTrackLanguageVariant
 import com.aviostream.app.data.subtitleLangMatches
 import com.aviostream.app.data.subtitleTypeface
@@ -652,6 +654,34 @@ fun PlayerScreen(
     }
 
     /**
+     * The index of the subtitle [subtitleConfigs] flags as default —
+     * and the sidecar engine (#26) auto-activates: the explicitly
+     * requested URL first, else the first track in a preferred
+     * language, else the first subtitle when no preference is set,
+     * or -1 when a preference is set but nothing matches. One source
+     * of truth for both paths, so the media-item path and the sidecar
+     * can never pick different defaults. (The "Subtitles by default"
+     * mode is deliberately NOT consulted here: the media path never
+     * consulted it for addon subtitles, and the sidecar mirrors the
+     * media path exactly.)
+     */
+    fun subtitleDefaultIndex(
+        resolved: List<ResolvedSubtitle>,
+        defaultUrl: String? = null
+    ): Int {
+        if (resolved.isEmpty()) return -1
+        val prefs = settings.subtitleLanguages
+        return when {
+            defaultUrl != null ->
+                resolved.indexOfFirst { it.sub.url == defaultUrl }.takeIf { it >= 0 } ?: -1
+            prefs.isEmpty() -> 0
+            else -> resolved.indexOfFirst { r ->
+                prefs.any { pref -> subtitleLangMatches(r.sub.lang, pref) }
+            }
+        }
+    }
+
+    /**
      * Builds subtitle configurations from already-resolved (downloaded +
      * format-sniffed) subtitle files, with the same default-selection rules
      * as [attachResolvedSubtitles].
@@ -661,15 +691,7 @@ fun PlayerScreen(
         defaultUrl: String? = null
     ): List<MediaItem.SubtitleConfiguration> {
         if (resolved.isEmpty()) return emptyList()
-        val prefs = settings.subtitleLanguages
-        val defaultIndex = when {
-            defaultUrl != null ->
-                resolved.indexOfFirst { it.sub.url == defaultUrl }.takeIf { it >= 0 } ?: -1
-            prefs.isEmpty() -> 0
-            else -> resolved.indexOfFirst { r ->
-                prefs.any { pref -> subtitleLangMatches(r.sub.lang, pref) }
-            }
-        }
+        val defaultIndex = subtitleDefaultIndex(resolved, defaultUrl)
         return resolved.mapIndexed { index, r ->
             MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(r.file))
                 .setMimeType(r.mimeType)
@@ -974,6 +996,69 @@ fun PlayerScreen(
     }
     val latestPlayer = rememberUpdatedState(player)
     val latestRequest = rememberUpdatedState(state.currentRequest)
+
+    // ---- Sidecar subtitle engine (#26) ----
+    // Addon subtitles do NOT ride the media item here: the picked
+    // subtitle is parsed off-player by AvioSidecarSubtitles and the
+    // 100 ms render loop below pushes the active cues straight into
+    // the PlayerView's SubtitleView. The media period is never
+    // touched — no re-prepare, no rebuffer — and the subtitle delay
+    // is a render offset (the loop reads effectiveSubOffsetMs() on
+    // every pass), never a file rewrite. A subtitle that parses to
+    // nothing deactivates the sidecar quietly; it never falls back
+    // to a media reload. MPV keeps its own sub-add path, and a
+    // player built carrying subtitles in its media item keeps the
+    // media path (see attachResolvedSubtitles) — the sidecar stands
+    // down there so the same cues are never painted twice.
+
+    /** The sidecar subtitle URL that is actually rendering right now (null while MPV owns playback). */
+    fun activeSidecarUrl(): String? = if (mpvActive()) null else state.sidecarSubUrl
+
+    /**
+     * Renders [resolved] through the sidecar: parse off-player, then
+     * the render loop pushes the active cues into the SubtitleView.
+     * The player's own text renderer is disabled while the sidecar
+     * shows, so the same track cannot double up.
+     */
+    fun activateSidecarSubtitle(resolved: ResolvedSubtitle) {
+        val generation = state.sidecarGeneration.incrementAndGet()
+        state.sidecarSubUrl = resolved.sub.url
+        state.sidecarCues = emptyList()
+        ioScope.launch {
+            val parsed = withContext(Dispatchers.IO) {
+                AvioSidecarSubtitles.loadCues(resolved)
+            }
+            withContext(Dispatchers.Main) {
+                if (disposed.get() || state.sidecarGeneration.get() != generation) {
+                    return@withContext
+                }
+                if (parsed.cues.isEmpty()) {
+                    // Downloaded but unusable (no cues parsed): go dark
+                    // quietly — never a media reload as a "fallback".
+                    state.sidecarSubUrl = null
+                    state.sidecarCues = emptyList()
+                    state.playerView?.subtitleView?.setCues(emptyList())
+                } else {
+                    state.sidecarCues = parsed.cues
+                }
+            }
+        }
+        // The player's own text renderer must not double up with the
+        // sidecar — text tracks are disabled while the sidecar shows.
+        runCatching {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .build()
+        }
+    }
+
+    /** Stops sidecar rendering and clears the caption view. */
+    fun deactivateSidecarSubtitle() {
+        state.sidecarGeneration.incrementAndGet()
+        state.sidecarSubUrl = null
+        state.sidecarCues = emptyList()
+        state.playerView?.subtitleView?.setCues(emptyList())
+    }
 
     // --- Second engine (MPV) helpers ---------------------------------
     // The UI never talks to a parked engine: every position /
@@ -1413,10 +1498,16 @@ fun PlayerScreen(
      * languages, else the first subtitle (or none when a preference is set
      * but nothing matches).
      *
+     * Exo side-loaded subtitles render through the sidecar engine (#26) —
+     * parsed off-player and pushed to the caption view — so attaching them
+     * never calls setMediaItem+prepare() again and never visibly rebuffers
+     * the video (#29). A fresh player built carrying the same subtitles
+     * (source switch) keeps the media path: the sidecar stands down there.
+     *
      * Skips silently when this exact set is already attached to this player
      * instance — re-attaching would call setMediaItem+prepare() again and
      * visibly rebuffer the video (#29). A fresh player built carrying the
-     * same subtitles (source switch) never reaches the re-prepare path below.
+     * same subtitles (source switch) never reaches the sidecar path below.
      */
     fun attachResolvedSubtitles(resolved: List<ResolvedSubtitle>, defaultUrl: String? = null) {
         if (resolved.isEmpty()) return
@@ -1440,30 +1531,49 @@ fun PlayerScreen(
         }
         val key = subtitleIdentity(resolved)
         val attached = state.subsAttached
-        if (attached != null && attached.first === player && attached.second == key) return
-        val pos = player.currentPosition
-        val wasPlaying = player.isPlaying
-        // YouTube DASH keeps its merged audio via the shared builder;
-        // everything else keeps the setMediaItem path.
-        if (state.currentRequest.mergeAudioUrl != null) {
-            player.setMediaSource(buildPlaybackMediaSource(state.currentRequest, resolved, null), pos)
-        } else {
-            player.setMediaItem(
-                MediaItem.Builder()
-                    .setUri(state.currentRequest.streamUrl)
-                    .apply {
-                        (com.aviostream.app.data.PlaybackContentProbe.recognizedMime(state.currentRequest.mimeType)
-                            ?: PlaybackHeaders.inferMimeType(state.currentRequest.streamUrl))?.let { setMimeType(it) }
-                    }
-                    .setSubtitleConfigurations(subtitleConfigs(resolved, defaultUrl))
-                    .build(),
-                pos
-            )
+        if (attached != null && attached.first === player && attached.second == key) {
+            // This player was already built carrying this exact set:
+            // its own text renderer owns the subtitles — the sidecar
+            // stands down so the same cues are never painted twice.
+            deactivateSidecarSubtitle()
+            return
         }
-        player.prepare()
-        player.playWhenReady = wasPlaying
-        state.subsAttached = player to key
-        state.trackTick++
+        // Sidecar subtitle engine (#26): side-loaded subtitles render
+        // off-player instead of riding a setMediaItem+prepare() (which
+        // visibly rebuffers). The default pick mirrors
+        // subtitleConfigs' rules exactly.
+        if (state.sidecarSubUrl != null) {
+            // The sidecar owns caption rendering: a rebuilt player
+            // that carries the same subtitles in its media item must
+            // not paint them a second time through its own text
+            // renderer.
+            runCatching {
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+            }
+        }
+        val defaultIndex = subtitleDefaultIndex(resolved, defaultUrl)
+        if (defaultIndex < 0) {
+            // No default (a preference is set but nothing matches):
+            // mirror the media path showing nothing — unless this is
+            // a manual pick that simply has not resolved yet.
+            if (defaultUrl == null && !state.sidecarTouched) deactivateSidecarSubtitle()
+            return
+        }
+        val defaultSub = resolved[defaultIndex]
+        if (defaultSub.sub.url == state.sidecarSubUrl) return
+        if (defaultUrl == null && state.sidecarTouched) return
+        if (defaultUrl != null) state.sidecarTouched = true
+        // The sidecar parses the RAW (unshifted) file: the render
+        // loop applies the delay as a live offset, so parsing a
+        // shifted file would apply the delay twice.
+        val raw = state.rawResolvedSubs.firstOrNull { it.sub.url == defaultSub.sub.url } ?: defaultSub
+        if (!AvioSidecarSubtitles.canAttachViaSidecar(raw.sub, keepAssOnMediaPath = false)) {
+            if (defaultUrl == null && !state.sidecarTouched) deactivateSidecarSubtitle()
+            return
+        }
+        activateSidecarSubtitle(raw)
     }
 
     val shuffleWatchedKeys by com.aviostream.app.data.WatchedMarks.keys.collectAsState()
@@ -1601,9 +1711,9 @@ fun PlayerScreen(
             }
         }.ifEmpty { textOpts }
     }
-    val subtitlesOff = remember(state.trackTick, player, mpvTracksUi) {
+    val subtitlesOff = remember(state.trackTick, player, mpvTracksUi, state.sidecarSubUrl) {
         if (mpvActive()) mpvTracksUi.none { it.type == "sub" && it.selected }
-        else !hasSelectedTrack(player, C.TRACK_TYPE_TEXT)
+        else state.sidecarSubUrl == null && !hasSelectedTrack(player, C.TRACK_TYPE_TEXT)
     }
 
     fun pokeIndicator(i: PlayerIndicator) {
@@ -1913,6 +2023,11 @@ fun PlayerScreen(
     }
 
     fun applySubtitleSelection(opt: TrackOption?) {
+        // Picking an embedded track (or "None") hands rendering back
+        // from the sidecar engine to the player's own text renderer.
+        // (MPV picks never touch the sidecar: its URL is preserved so
+        // switching back to Exo resumes the same subtitle.)
+        if (!mpvActive() && state.sidecarSubUrl != null) deactivateSidecarSubtitle()
         // Second engine: MPV tracks select by language, then title.
         if (mpvActive()) {
             if (opt == null) mpvEngine?.selectSubtitle(null)
@@ -1927,6 +2042,7 @@ fun PlayerScreen(
             )
             return
         }
+        state.sidecarTouched = true
         val params = player.trackSelectionParameters.buildUpon()
         if (opt == null) {
             params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -2014,8 +2130,8 @@ fun PlayerScreen(
     fun launchExternalPlayer(ctx: Context, req: PlaybackRequest) {
         val posAtClick = state.positionMs
         ioScope.launch {
-            val selectedUrl = textOpts.firstOrNull { it.selected }
-                ?.let { panelTrackId(it) }
+            val selectedUrl = activeSidecarUrl()
+                ?: textOpts.firstOrNull { it.selected }?.let { panelTrackId(it) }
             val extras = ExternalPlayer.prepareLaunch(
                 ctx, req, settings,
                 alreadyResolved = state.resolvedSubs,
@@ -2076,6 +2192,19 @@ fun PlayerScreen(
         val opt = textOpts.firstOrNull { panelTrackId(it) == sub.url }
         when {
             opt != null -> applySubtitleSelection(opt)
+            state.rawResolvedSubs.any { it.sub.url == sub.url } -> {
+                // Already downloaded: render it through the sidecar at
+                // once — no re-prepare, no waiting on a republish.
+                val raw = state.rawResolvedSubs.first { it.sub.url == sub.url }
+                state.sidecarTouched = true
+                state.pendingDefaultSubUrl = null
+                activateSidecarSubtitle(raw)
+                pokeIndicator(
+                    PlayerIndicator.Message(
+                        "Subtitles: ${displayLanguage(sub.lang) ?: sub.lang.uppercase()}"
+                    )
+                )
+            }
             state.addedSubs.any { it.url == sub.url } ||
                 state.currentRequest.subtitles.any { it.url == sub.url } -> {
                 state.pendingDefaultSubUrl = sub.url
@@ -2194,7 +2323,8 @@ fun PlayerScreen(
      *  subtitle around the current position; the user then taps the
      *  line they are hearing and the delay is set from it. */
     fun startCaptureSync() {
-        val selectedUrl = textOpts.firstOrNull { it.selected }?.let { panelTrackId(it) }
+        val selectedUrl = activeSidecarUrl()
+            ?: textOpts.firstOrNull { it.selected }?.let { panelTrackId(it) }
         val raw = state.rawResolvedSubs.firstOrNull { it.sub.url == selectedUrl }
             ?: state.rawResolvedSubs.firstOrNull()
         if (raw == null) {
@@ -2322,6 +2452,11 @@ fun PlayerScreen(
     // title/episode changes; adding a subtitle or switching source does
     // not discard the user's delay.
     LaunchedEffect(state.currentRequest.metaId, state.currentRequest.videoId, state.currentRequest.season, state.currentRequest.episode) {
+        // A new title starts the sidecar clean: the old title's cues
+        // must never paint over the new one, and its manual choice
+        // must not veto the new title's default.
+        deactivateSidecarSubtitle()
+        state.sidecarTouched = false
         state.subOffsetOverrideMs = settings.subtitleDelayMsFor(state.currentRequest.videoId)
         // A new title invalidates any half-finished sync-by-ear capture.
         state.syncByEarHeardMs = null
@@ -2336,6 +2471,65 @@ fun PlayerScreen(
         val wantDefault = state.pendingDefaultSubUrl
         state.pendingDefaultSubUrl = null
         attachResolvedSubtitles(state.resolvedSubs, wantDefault)
+    }
+
+    // Sidecar render loop (#26): every 100 ms, push the cues active at
+    // (position − subtitle delay) into the PlayerView's SubtitleView.
+    // The delay is a render offset here — changing it never re-shifts a
+    // file and never touches the media item. Unchanged cue sets are
+    // never re-pushed (signature check). MPV owns playback while it is
+    // active, so the loop idles there; the sidecar URL is preserved
+    // and resumes when Exo takes over again.
+    LaunchedEffect(player, state.sidecarSubUrl) {
+        if (state.sidecarSubUrl == null) return@LaunchedEffect
+        var lastSignature = Long.MIN_VALUE
+        while (!disposed.get()) {
+            if (!mpvActive()) {
+                val pv = state.playerView
+                val cues = state.sidecarCues
+                if (pv != null) {
+                    if (cues.isEmpty()) {
+                        if (lastSignature != 0L) {
+                            lastSignature = 0L
+                            pv.subtitleView?.setCues(emptyList())
+                        }
+                    } else {
+                        // The lookup position carries the per-title
+                        // offset — render-time only, the stored cues
+                        // stay pristine. No drift correction: the fork
+                        // has no per-title speed store, so 1000 (1x).
+                        val positionUs =
+                            AvioSidecarSubtitles.scaledLookupPositionUs(
+                                runCatching { player.currentPosition }.getOrDefault(0L),
+                                effectiveSubOffsetMs(),
+                                1000
+                            )
+                        val active = AvioSidecarSubtitles.collectActiveCues(cues, positionUs)
+                        val merged = AvioSidecarSubtitles.mergeOverlappingCues(active)
+                        // Step 38 SDH filtering applies to sidecar cues
+                        // too — the Exo onCues path never fires while
+                        // the text renderer is disabled.
+                        val shown = if (settings.subtitleSdhFilter) {
+                            merged.mapNotNull { cue ->
+                                val text = cue.text?.toString() ?: return@mapNotNull cue
+                                val clean = SubtitleSdhFilter.filter(text)
+                                    ?: return@mapNotNull null
+                                if (clean == text) cue
+                                else cue.buildUpon().setText(clean).build()
+                            }
+                        } else {
+                            merged
+                        }
+                        val signature = AvioSidecarSubtitles.activeCueSignature(shown)
+                        if (signature != lastSignature) {
+                            lastSignature = signature
+                            pv.subtitleView?.setCues(shown)
+                        }
+                    }
+                }
+            }
+            delay(AvioSidecarSubtitles.RENDER_INTERVAL_MS)
+        }
     }
 
     // Step 68: parental guide — fetch once playback starts; the overlay
@@ -5921,8 +6115,9 @@ fun PlayerScreen(
                 if (state.tracksMode == "subs") {
                     // Seed the Style rail's visibility from the track
                     // that is already playing when the overlay opens.
-                    state.panelPickedUrl = textOpts.firstOrNull { it.selected }
-                        ?.let { panelTrackId(it) }
+                    state.panelPickedUrl = activeSidecarUrl()
+                        ?: textOpts.firstOrNull { it.selected }
+                            ?.let { panelTrackId(it) }
                 }
                 if (isTv) {
                     delay(300)
@@ -6220,6 +6415,9 @@ fun PlayerScreen(
                     prefLangNames.indexOf(name).let { if (it < 0) Int.MAX_VALUE else it }
                 }
                 val activeLang = state.panelLang?.takeIf { ln -> sortedLangs.any { it.first == ln } }
+                    ?: activeSidecarUrl()?.let { url ->
+                        panelSubs().firstOrNull { it.url == url }?.let { panelLangName(it.lang) }
+                    }
                     ?: textOpts.firstOrNull { it.selected }?.let {
                         panelLangName(
                             runCatching { it.group.getFormat(it.trackIndex).language }
@@ -6234,8 +6432,9 @@ fun PlayerScreen(
                             .getOrNull()
                     ) == activeLang
                 }
-                val selectedSubUrl = textOpts.firstOrNull { it.selected }
-                    ?.let { panelTrackId(it) }
+                val selectedSubUrl = activeSidecarUrl()
+                    ?: textOpts.firstOrNull { it.selected }
+                        ?.let { panelTrackId(it) }
                 val selectedIsAddon = selectedSubUrl != null &&
                     panelSubs().any { it.url == selectedSubUrl }
                 val styleVisible = !subtitlesOff || state.panelPickedUrl != null
