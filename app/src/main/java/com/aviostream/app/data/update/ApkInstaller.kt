@@ -2,6 +2,8 @@ package com.aviostream.app.data.update
 
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
+import android.os.Handler
+import android.os.Looper
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -16,6 +18,16 @@ import java.io.File
  * installer once it finishes. The APK is stored in the app's private
  * external downloads dir and re-shared through FileProvider.
  *
+ * v0.14.30 #49: the download now REPORTS progress and can be
+ * CANCELLED. A short-lived poller thread reads DownloadManager's
+ * byte counters (~every 500 ms, off the UI thread) and posts
+ * [onProgress] callbacks to the main thread, so the update popup
+ * shows a live bar/percentage and stays responsive. The returned
+ * [DownloadHandle]'s cancel() actually aborts the transfer —
+ * DownloadManager.remove() kills the download and deletes the
+ * partial file, the completion receiver is unregistered, and the
+ * poller stops — it never just hides the popup.
+ *
  * [onDone] fires only on a verified-good download (installer launched).
  * [onError] fires with a human-readable message on any failure — the
  * caller keeps its dialog open and shows it instead of dismissing
@@ -24,17 +36,33 @@ import java.io.File
  */
 object ApkInstaller {
 
+    /** One in-flight update download; [cancel] aborts it for real. */
+    class DownloadHandle internal constructor(
+        private val cancelAction: () -> Unit
+    ) {
+        @Volatile
+        var isCancelled: Boolean = false
+            private set
+
+        fun cancel() {
+            if (isCancelled) return
+            isCancelled = true
+            cancelAction()
+        }
+    }
+
     fun download(
         context: Context,
         url: String,
         version: String,
+        onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
         onDone: () -> Unit,
         onError: (String) -> Unit = {}
-    ) {
+    ): DownloadHandle {
         val scheme = runCatching { Uri.parse(url).scheme }.getOrNull()?.lowercase()
         if (scheme != "http" && scheme != "https") {
             onError("That download link isn't a valid update URL ($url).")
-            return
+            return DownloadHandle {}
         }
         val fileName = "Avio-v$version.apk"
         context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { dir ->
@@ -54,16 +82,25 @@ object ApkInstaller {
             dm.enqueue(request)
         } catch (e: Exception) {
             onError("Couldn't start the download: ${e.message ?: "bad download link"}.")
-            return
+            return DownloadHandle {}
         }
+
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val finished = java.util.concurrent.atomic.AtomicBoolean(false)
+        val mainHandler = Handler(Looper.getMainLooper())
 
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
                 if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != downloadId) return
+                finished.set(true)
                 try {
                     context.unregisterReceiver(this)
                 } catch (_: Exception) {
                 }
+                // A cancelled download's completion broadcast (it
+                // can race the unregister) must not install or
+                // report — cancel already tore everything down.
+                if (cancelled.get()) return
                 try {
                     verifyAndInstall(context, dm, downloadId, fileName, onDone, onError)
                 } catch (e: Exception) {
@@ -78,6 +115,74 @@ object ApkInstaller {
             IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
             ContextCompat.RECEIVER_EXPORTED
         )
+
+        // Progress poller: DownloadManager has no progress listener,
+        // so poll its counters on a background thread and post the
+        // numbers to the main thread for the popup. Stops when the
+        // download finishes (the receiver owns the outcome) or when
+        // cancelled.
+        val poller = Thread {
+            while (!cancelled.get() && !finished.get()) {
+                var downloaded = -1L
+                var total = -1L
+                // No row yet (the query can beat DownloadManager's
+                // insert) counts as still running — only a row in
+                // a terminal state ends the polling.
+                var running = true
+                runCatching {
+                    dm.query(DownloadManager.Query().setFilterById(downloadId))?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val status = cursor.getInt(
+                                cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
+                            )
+                            running = status == DownloadManager.STATUS_RUNNING ||
+                                status == DownloadManager.STATUS_PENDING ||
+                                status == DownloadManager.STATUS_PAUSED
+                            downloaded = cursor.getLong(
+                                cursor.getColumnIndexOrThrow(
+                                    DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
+                                )
+                            )
+                            total = cursor.getLong(
+                                cursor.getColumnIndexOrThrow(
+                                    DownloadManager.COLUMN_TOTAL_SIZE_BYTES
+                                )
+                            )
+                        }
+                    }
+                }
+                if (!running) break
+                if (!cancelled.get() && !finished.get()) {
+                    val d = downloaded
+                    val t = total
+                    mainHandler.post {
+                        if (!cancelled.get() && !finished.get()) onProgress(d, t)
+                    }
+                }
+                try {
+                    Thread.sleep(500)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+        }
+        poller.isDaemon = true
+        poller.start()
+
+        return DownloadHandle {
+            // Abort for real: flag first (the poller and any racing
+            // completion broadcast stand down), unregister the
+            // receiver, then remove() — which stops the transfer
+            // and deletes DownloadManager's partial file; the
+            // deletePartial below covers the destination copy.
+            cancelled.set(true)
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Exception) {
+            }
+            runCatching { dm.remove(downloadId) }
+            deletePartial(context, fileName)
+        }
     }
 
     /**
