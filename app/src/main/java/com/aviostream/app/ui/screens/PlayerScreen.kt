@@ -248,6 +248,7 @@ import com.aviostream.app.data.FirstPartySubsClient
 import com.aviostream.app.data.Subtitle
 import com.aviostream.app.data.UserRatings
 import com.aviostream.app.data.trakt.TraktApi
+import com.aviostream.app.data.resolve
 import com.aviostream.app.data.resolveSubtitleFiles
 import com.aviostream.app.data.shiftSubtitles
 import com.aviostream.app.data.formatOffsetMs
@@ -1588,7 +1589,7 @@ fun PlayerScreen(
             val defaultSub = resolved.firstOrNull { it.sub.url == defaultUrl }
                 ?: resolved.firstOrNull { r -> prefs.any { pref -> subtitleLangMatches(r.sub.lang, pref) } }
             resolved.forEach { r ->
-                engine.addExternalSubtitle(r.file.absolutePath, select = r.sub.url == defaultSub?.sub.url)
+                engine.addExternalSubtitle(r.file.absolutePath, select = r.sub.url == defaultSub?.sub?.url)
             }
             mpvSubsKey = key
             state.trackTick++
