@@ -1287,11 +1287,20 @@ fun PlayerScreen(
         // missing/corrupt .so throws LinkageError (an Error, not an
         // Exception) on the main thread. Guard it: a dead engine must
         // fail over gracefully, never crash the app.
+        // 4K/2160p from the stream's quality label ("2160P"/"4K"):
+        // MPV's copy+filter path stalls on 4K (black screen, audio
+        // only — MPV-only, Exo plays the same video fine), so the
+        // engine bypasses it for 4K. Falls back to false when the
+        // label carries no quality.
+        val is4K = req.streamLabel?.let {
+            it.contains("2160", ignoreCase = true) || it.equals("4K", ignoreCase = true)
+        } == true
         val engine = try {
             com.aviostream.app.player.MpvPlayerEngine(
                 context,
                 hardwareDecoding = settings.mpvHardwareDecoding,
-                yuv420pFilter = settings.mpvYuv420pFilter
+                yuv420pFilter = settings.mpvYuv420pFilter,
+                is4K = is4K
             )
         } catch (e: Throwable) {
             Log.e("AvioPlay", "MPV engine construction failed", e)

@@ -36,6 +36,19 @@ class MpvPlayerEngine(
     context: Context,
     private val hardwareDecoding: Boolean,
     private val yuv420pFilter: Boolean,
+    /**
+     * True when the stream is 4K/2160p (from the request's quality
+     * label). 4K bypasses the copy+filter path below: copying 4K
+     * frames back to system memory for the vf chain stalls the
+     * decoder on this device (black screen, audio keeps playing —
+     * the same stall the mediacodec-copy fix was built for, but
+     * for 4K the copy itself is the bottleneck). Direct hardware
+     * decoding hands 4K frames to the GPU with no copy and no
+     * filter. THEORY (user, 2026-11-24: black screen only in MPV,
+     * especially 4K/2160p; Exo plays the same video fine) — needs
+     * phone proof.
+     */
+    private val is4K: Boolean = false,
 ) : MPV.EventObserver {
 
     /** One row of libmpv's track-list. */
@@ -139,11 +152,17 @@ class MpvPlayerEngine(
                 // frames and gpu-next uploads them normally.
                 val hwdecMode = when {
                     !hardwareDecoding -> "no"
+                    // 4K bypasses the copy+filter path (see is4K): direct
+                    // hardware decoding, no vf filter. The filter is
+                    // skipped too — with hwdec=auto the decoder hands
+                    // frames to the GPU before the vf chain runs, so a
+                    // filter would be bypassed anyway.
+                    is4K -> "auto"
                     yuv420pFilter -> "mediacodec-copy"
                     else -> "auto"
                 }
                 mpv.setOptionString("hwdec", hwdecMode)
-                if (yuv420pFilter) mpv.setOptionString("vf", "format=yuv420p")
+                if (yuv420pFilter && !is4K) mpv.setOptionString("vf", "format=yuv420p")
                 mpv.setOptionString("msg-level", "all=warn")
                 mpv.setOptionString("tls-verify", "yes")
                 mpv.setOptionString("tls-ca-file", File(filesDir, "cacert.pem").absolutePath)
@@ -171,7 +190,7 @@ class MpvPlayerEngine(
                 observe("height", FORMAT_INT64)
                 observe("track-list", FORMAT_NODE)
                 attachedSurface?.let { mpv.attachSurface(it) }
-                Log.d(TAG, "mpv init ok hwdec=$hwdecMode yuv420p=$yuv420pFilter")
+                Log.d(TAG, "mpv init ok hwdec=$hwdecMode yuv420p=$yuv420pFilter is4K=$is4K")
             } catch (e: Throwable) {
                 // A native load failure (LinkageError) is an Error, not
                 // an Exception — it must surface as a fatal error, not
