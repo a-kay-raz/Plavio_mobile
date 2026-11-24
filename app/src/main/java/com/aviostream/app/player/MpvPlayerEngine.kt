@@ -35,20 +35,6 @@ import kotlinx.coroutines.flow.update
 class MpvPlayerEngine(
     context: Context,
     private val hardwareDecoding: Boolean,
-    private val yuv420pFilter: Boolean,
-    /**
-     * True when the stream is 4K/2160p (from the request's quality
-     * label). 4K bypasses the copy+filter path below: copying 4K
-     * frames back to system memory for the vf chain stalls the
-     * decoder on this device (black screen, audio keeps playing —
-     * the same stall the mediacodec-copy fix was built for, but
-     * for 4K the copy itself is the bottleneck). Direct hardware
-     * decoding hands 4K frames to the GPU with no copy and no
-     * filter. THEORY (user, 2026-11-24: black screen only in MPV,
-     * especially 4K/2160p; Exo plays the same video fine) — needs
-     * phone proof.
-     */
-    private val is4K: Boolean = false,
 ) : MPV.EventObserver {
 
     /** One row of libmpv's track-list. */
@@ -139,30 +125,31 @@ class MpvPlayerEngine(
                 mpv.setOptionString("icc-cache-dir", cacheDir.absolutePath)
                 mpv.setOptionString("vo", "gpu-next")
                 mpv.setOptionString("profile", "fast")
-                // yuv420p filter + hwdec: with hwdec=auto the decoder
-                // hands frames to the GPU before the vf chain runs, so
-                // a format filter is bypassed — and on this device the
-                // hwdec+vf combination stalls the video decoder after
-                // the first frame (audio keeps playing, seeks do not
-                // revive the video). Full software decoding (hwdec=no)
-                // makes the filter apply but is too slow for HEVC
-                // 1080p. mediacodec-copy is the middle path: MediaCodec
-                // still decodes in hardware, but frames are copied back
-                // to system memory, so the vf chain sees ordinary CPU
-                // frames and gpu-next uploads them normally.
-                val hwdecMode = when {
-                    !hardwareDecoding -> "no"
-                    // 4K bypasses the copy+filter path (see is4K): direct
-                    // hardware decoding, no vf filter. The filter is
-                    // skipped too — with hwdec=auto the decoder hands
-                    // frames to the GPU before the vf chain runs, so a
-                    // filter would be bypassed anyway.
-                    is4K -> "auto"
-                    yuv420pFilter -> "mediacodec-copy"
-                    else -> "auto"
-                }
+                // hwdec: direct hardware decoding only, NO vf filter
+                // and NO mediacodec-copy path — on this device every
+                // form of the copy+filter path stalls the video
+                // decoder: frames decode but never render (the
+                // decoder's renderFps sits at 0), then the decoder
+                // starves (inputFps drops to 0) and the video is
+                // stuck on a black screen while audio keeps playing.
+                // It started as a 4K-only bypass (copying 4K frames
+                // back for the vf chain was the bottleneck), but the
+                // user now reports the same stuck + black screen on
+                // almost all qualities, and a 1080p HEVC title's
+                // Diagnostics shows the same stall signature
+                // (renderFps=0, then inputFps=0). So the copy+filter
+                // path is gone for every quality, not just 4K. The
+                // yuv420p colour filter goes with it — it can only
+                // run through the stalling path (hwdec=auto hands
+                // frames to the GPU before the vf chain runs, so a
+                // filter is bypassed there anyway; hwdec=no software
+                // decoding is too slow for HEVC 1080p). A rendered
+                // frame with possibly-off colours beats a black
+                // screen. THEORY — needs phone proof on a title
+                // that stuck/black-screened before, at 1080p and
+                // at 4K.
+                val hwdecMode = if (!hardwareDecoding) "no" else "auto"
                 mpv.setOptionString("hwdec", hwdecMode)
-                if (yuv420pFilter && !is4K) mpv.setOptionString("vf", "format=yuv420p")
                 mpv.setOptionString("msg-level", "all=warn")
                 mpv.setOptionString("tls-verify", "yes")
                 mpv.setOptionString("tls-ca-file", File(filesDir, "cacert.pem").absolutePath)
@@ -190,7 +177,7 @@ class MpvPlayerEngine(
                 observe("height", FORMAT_INT64)
                 observe("track-list", FORMAT_NODE)
                 attachedSurface?.let { mpv.attachSurface(it) }
-                Log.d(TAG, "mpv init ok hwdec=$hwdecMode yuv420p=$yuv420pFilter is4K=$is4K")
+                Log.d(TAG, "mpv init ok hwdec=$hwdecMode")
             } catch (e: Throwable) {
                 // A native load failure (LinkageError) is an Error, not
                 // an Exception — it must surface as a fatal error, not
@@ -289,11 +276,9 @@ class MpvPlayerEngine(
                     if (fields.isEmpty()) "" else fields.joinToString(","),
                 )
                 mpv.setPropertyString("aid", "auto")
-                // yuv420p filter: re-assert the vf chain at load time so
-                // it applies per-video even if the startup option was
-                // missed (and so a filter enabled after init still takes
-                // effect for the next file).
-                if (yuv420pFilter) mpv.setPropertyString("vf", "format=yuv420p")
+                // No vf re-assert here anymore: the yuv420p filter path
+                // is gone (it stalled the decoder across qualities —
+                // see the hwdec note in initialize()).
                 if (startMs > 0L) {
                     mpv.command("loadfile", url, "replace", "-1", "start=${startMs / 1000.0}")
                 } else {

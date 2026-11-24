@@ -1280,27 +1280,21 @@ fun PlayerScreen(
      * switch back — ever replaces it.
      */
     fun activateMpv(req: PlaybackRequest, startMs: Long, autoplay: Boolean) {
-        Log.d("AvioPlay", "activateMpv yuv420p=" + settings.mpvYuv420pFilter + " hwdec=" + settings.mpvHardwareDecoding)
+        Log.d("AvioPlay", "activateMpv hwdec=" + settings.mpvHardwareDecoding)
         // Stop the parked ExoPlayer's audio before MPV starts.
         runCatching { player.pause() }
         // The engine constructor loads the native libmpv class — a
         // missing/corrupt .so throws LinkageError (an Error, not an
         // Exception) on the main thread. Guard it: a dead engine must
         // fail over gracefully, never crash the app.
-        // 4K/2160p from the stream's quality label ("2160P"/"4K"):
-        // MPV's copy+filter path stalls on 4K (black screen, audio
-        // only — MPV-only, Exo plays the same video fine), so the
-        // engine bypasses it for 4K. Falls back to false when the
-        // label carries no quality.
-        val is4K = req.streamLabel?.let {
-            it.contains("2160", ignoreCase = true) || it.equals("4K", ignoreCase = true)
-        } == true
+        // No yuv420p/is4K args anymore: the copy+filter path is gone
+        // for every quality (it stalled the decoder across
+        // qualities, not just 4K — see MpvPlayerEngine), so the
+        // engine takes only the hardware-decoding setting now.
         val engine = try {
             com.aviostream.app.player.MpvPlayerEngine(
                 context,
-                hardwareDecoding = settings.mpvHardwareDecoding,
-                yuv420pFilter = settings.mpvYuv420pFilter,
-                is4K = is4K
+                hardwareDecoding = settings.mpvHardwareDecoding
             )
         } catch (e: Throwable) {
             Log.e("AvioPlay", "MPV engine construction failed", e)

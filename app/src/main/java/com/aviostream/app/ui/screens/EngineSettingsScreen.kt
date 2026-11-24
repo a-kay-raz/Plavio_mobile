@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -60,7 +59,6 @@ fun EngineSettingsScreen(
     var enginePickerOpen by remember { mutableStateOf(false) }
     var autoFailover by remember { mutableStateOf(settings.autoEngineFailover) }
     var mpvHwdec by remember { mutableStateOf(settings.mpvHardwareDecoding) }
-    var mpvYuv by remember { mutableStateOf(settings.mpvYuv420pFilter) }
     // Refresh key so the engine nav-row subtitle updates after
     // the picker dialog closes.
     var engineUiTick by remember { mutableStateOf(0) }
@@ -134,18 +132,15 @@ fun EngineSettingsScreen(
                             }
                         )
                     },
-                    {
-                        SettingsToggleRow(
-                            icon = Icons.Filled.Palette,
-                            title = "MPV compatibility filter",
-                            subtitle = "Fixes odd colours on some devices by converting the video in the MPV engine",
-                            checked = mpvYuv,
-                            onCheckedChange = {
-                                mpvYuv = it
-                                settings.mpvYuv420pFilter = it
-                            }
-                        )
-                    },
+                    // MPV compatibility filter row REMOVED 2026-11-24:
+                    // the filter (vf=format=yuv420p via mediacodec-copy)
+                    // stalled the video decoder across qualities — black
+                    // screen + stuck video — so the engine no longer
+                    // runs it at all; a toggle for a dead path would
+                    // only confuse. The setting stays in SettingsStore
+                    // (orphaned, unread) so no stored-prefs migration
+                    // is needed; the engine takes only hardware
+                    // decoding now.
                 )
             }
         }
