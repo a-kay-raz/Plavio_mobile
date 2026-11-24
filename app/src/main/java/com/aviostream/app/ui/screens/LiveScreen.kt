@@ -411,6 +411,8 @@ fun LiveScreen(
     var vodSeries by remember { mutableStateOf<com.aviostream.app.data.LiveTvVodItem?>(null) }
     /** Selected category chip; null = All. */
     var category by remember { mutableStateOf<String?>(null) }
+    /** Selected source chip (addon / M3U playlist); null = All. */
+    var sourceKey by remember { mutableStateOf<String?>(null) }
     /** Bumped to re-read favorites/recents after a toggle. */
     var favVersion by remember { mutableIntStateOf(0) }
 
@@ -789,14 +791,27 @@ fun LiveScreen(
                         })
                     }.filter { it.items.isNotEmpty() }
                 }
+                // Source chips (v0.14.30 #47): one per addon (label = addon
+                // name) or M3U playlist (label = the playlist host its rows
+                // carry as addonName); the key tells same-host playlists
+                // apart. Both chip lists come from the SEARCH-filtered rows
+                // only, so picking a chip never makes the other chips vanish.
+                fun rowSourceKey(row: CatalogRow) = "${row.addonId}|${row.baseUrl}"
+                val sources = remember(queryFiltered) {
+                    queryFiltered
+                        .map { rowSourceKey(it) to it.addonName }
+                        .distinctBy { it.first }
+                }
                 // Category chips derived from catalog names (e.g. M3U group-titles
                 // like News/Sports/Movies/Kids); tapping one shows ONLY those rows.
                 val categories = remember(queryFiltered) {
                     queryFiltered.map { it.catalogName }.distinct()
                 }
-                val visibleRows = remember(queryFiltered, category) {
-                    if (category == null) queryFiltered
-                    else queryFiltered.filter { it.catalogName == category }
+                val visibleRows = remember(queryFiltered, category, sourceKey) {
+                    queryFiltered.filter { row ->
+                        (sourceKey == null || rowSourceKey(row) == sourceKey) &&
+                            (category == null || row.catalogName == category)
+                    }
                 }
                 // Favorites + recents, resolved against the loaded rows.
                 val favorites = remember(allRows, favVersion) {
@@ -1129,8 +1144,8 @@ fun LiveScreen(
                 // as the wide card at the top of the tab only while
                 // browsing (no search text or category chip narrowing
                 // the list).
-                val featuredRow = remember(categories, visibleRows, query, category) {
-                    val browsing = query.isBlank() && category == null
+                val featuredRow = remember(categories, visibleRows, query, category, sourceKey) {
+                    val browsing = query.isBlank() && category == null && sourceKey == null
                     if (!browsing) null
                     else {
                         val sportsName = categories.firstOrNull {
@@ -1149,6 +1164,35 @@ fun LiveScreen(
                     // the floating dock (content now runs under it).
                     contentPadding = PaddingValues(bottom = 104.dp)
                 ) {
+                    // ---- Source chips (v0.14.30 #47) ----
+                    if (sources.size > 1 || (sources.size == 1 && sourceKey != null)) {
+                        item(key = "live|sources") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            ) {
+                                item(key = "src|all") {
+                                    FilterChip(
+                                        selected = sourceKey == null,
+                                        onClick = { sourceKey = null },
+                                        label = { Text("All") },
+                                        colors = chipColors()
+                                    )
+                                }
+                                sources.forEach { (key, label) ->
+                                    item(key = "src|$key") {
+                                        FilterChip(
+                                            selected = sourceKey == key,
+                                            onClick = { sourceKey = if (sourceKey == key) null else key },
+                                            label = { Text(label) },
+                                            colors = chipColors()
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // ---- Category chips ----
                     if (categories.size > 1 || (categories.size == 1 && category != null)) {
                         item(key = "live|chips") {
@@ -1218,7 +1262,7 @@ fun LiveScreen(
                         }
                     }
                     // ---- Channel rows ----
-                    if (visibleRows.isEmpty() && (q.isNotBlank() || category != null)) {
+                    if (visibleRows.isEmpty() && (q.isNotBlank() || category != null || sourceKey != null)) {
                         item(key = "live|noresult") {
                             EmptyState(
                                 title = "No channels found",
