@@ -355,7 +355,22 @@ fun paletteFor(accent: AccentTheme, amoled: Boolean, light: Boolean = false): Ap
  * The dark variant of this palette (same accent/AMOLED choices). Video
  * surfaces — the player, trailer players — are pinned to it in BOTH
  * modes: like the home/detail heroes, they stay cinematic.
+ *
+ * The video surfaces are ALSO pinned to the flat (non-frosted) glass:
+ * on a non-default theme the player's liquid-glass controls sample
+ * the backdrop — which re-records the whole screen, video TextureView
+ * included, into a GraphicsLayer every frame — and the player never
+ * opens (the app drops to the launcher; user 2026-11-24, phone-proven:
+ * the default ONYX theme works, non-default themes break the player).
+ * ONYX is the only theme with frosted=false / glowAlpha=0, so force
+ * those here for every theme: the video surfaces then render exactly
+ * as they do on ONYX, whatever the app theme is. Only DarkVideoSurface
+ * (player + trailer players) uses asDark(), so no other screen — and
+ * no theme's intended look elsewhere — is affected. The light branch
+ * already lands on ONYX (darkVariant) whose paletteForTheme forces
+ * frosted=false / glowAlpha=0; the dark branch is the one that used
+ * to keep the theme's frosted glass.
  */
 fun AppPalette.asDark(): AppPalette =
-    if (!light) this
+    if (!light) this.copy(frosted = false, glowAlpha = 0f)
     else paletteForTheme(appTheme.darkVariant(), accentTheme, frosted)
