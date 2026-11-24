@@ -98,41 +98,8 @@ fun PlayerLoadingOverlay(
 
     val onyx = Color(0xFF070707)
 
-    // The heartbeat: H1's lub-dub keyframes from the locked
-    // sample, rises attacking expo-out, falls easing away.
-    val beatTransition = rememberInfiniteTransition(label = "playerLoadingHeartbeat")
-    val riseEasing = remember {
-        CubicBezierEasing(
-            HEARTBEAT_RISE_EASING[0], HEARTBEAT_RISE_EASING[1],
-            HEARTBEAT_RISE_EASING[2], HEARTBEAT_RISE_EASING[3]
-        )
-    }
-    val fallEasing = remember {
-        CubicBezierEasing(
-            HEARTBEAT_FALL_EASING[0], HEARTBEAT_FALL_EASING[1],
-            HEARTBEAT_FALL_EASING[2], HEARTBEAT_FALL_EASING[3]
-        )
-    }
-    val beatScale by beatTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = HEARTBEAT_CYCLE_MS
-                HEARTBEAT_KEYFRAMES.forEachIndexed { index, (timeMs, scale) ->
-                    if (index == HEARTBEAT_KEYFRAMES.lastIndex) {
-                        scale at timeMs
-                    } else if (heartbeatSegmentIsRise(index)) {
-                        scale at timeMs with riseEasing
-                    } else {
-                        scale at timeMs with fallEasing
-                    }
-                }
-            },
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "playerLoadingHeartbeatScale"
-    )
+    // The heartbeat scale (shared — see rememberHeartbeatScale).
+    val beatScale = rememberHeartbeatScale()
 
     // Live elapsed wait — restarts each time the load gate opens.
     var elapsedMs by remember { mutableLongStateOf(0L) }
@@ -356,6 +323,63 @@ fun PlayerLoadingOverlay(
  * in is the poster's dead centre since v0.14.38.
  */
 @Composable
+/**
+ * The loading heartbeat's scale (H1's lub-dub keyframes from the
+ * locked sample, rises attacking expo-out, falls easing away) —
+ * shared by the initial-load overlay and the mid-playback buffer
+ * logo, so both breathe the same beat.
+ */
+@Composable
+fun rememberHeartbeatScale(): Float {
+    val beatTransition = rememberInfiniteTransition(label = "playerLoadingHeartbeat")
+    val riseEasing = remember {
+        CubicBezierEasing(
+            HEARTBEAT_RISE_EASING[0], HEARTBEAT_RISE_EASING[1],
+            HEARTBEAT_RISE_EASING[2], HEARTBEAT_RISE_EASING[3]
+        )
+    }
+    val fallEasing = remember {
+        CubicBezierEasing(
+            HEARTBEAT_FALL_EASING[0], HEARTBEAT_FALL_EASING[1],
+            HEARTBEAT_FALL_EASING[2], HEARTBEAT_FALL_EASING[3]
+        )
+    }
+    val beatScale by beatTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = HEARTBEAT_CYCLE_MS
+                HEARTBEAT_KEYFRAMES.forEachIndexed { index, (timeMs, scale) ->
+                    if (index == HEARTBEAT_KEYFRAMES.lastIndex) {
+                        scale at timeMs
+                    } else if (heartbeatSegmentIsRise(index)) {
+                        scale at timeMs with riseEasing
+                    } else {
+                        scale at timeMs with fallEasing
+                    }
+                }
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "playerLoadingHeartbeatScale"
+    )
+    return beatScale
+}
+
+/**
+ * The title logo/name with the heartbeat, for mid-playback
+ * buffers (seek rebuffer after a 10s skip, slow-network rebuffer,
+ * source switch): the same breathing logo (or breathing title
+ * text when no logo) as the loading screen, but with NO backdrop
+ * — the video stays visible behind it. Replaces the circle
+ * spinner the user asked to remove from the skip UI.
+ */
+@Composable
+fun BufferingTitleLogo(title: String, logo: String?) {
+    LoadingTitleName(title = title, logo = logo, beatScale = rememberHeartbeatScale())
+}
+
 private fun LoadingTitleName(title: String, logo: String?, beatScale: Float) {
     var logoFailed by remember(logo) { mutableStateOf(false) }
     val breathing = Modifier.graphicsLayer {

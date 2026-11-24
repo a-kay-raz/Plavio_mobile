@@ -101,7 +101,6 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.ExitToApp
-import com.aviostream.app.ui.components.AvioLoadingIndicator
 import com.aviostream.app.ui.components.OrbitDots
 import com.aviostream.app.ui.components.CustomPosterScreen
 import com.aviostream.app.ui.components.PosterCard
@@ -4052,9 +4051,16 @@ fun PlayerScreen(
             state.durationMs = snap?.durationMs ?: (c.duration.takeIf { it > 0 } ?: 0L)
             state.bufferedMs = activeBufferedMs()
             state.isPlaying = snap?.let { !it.paused } ?: c.isPlaying
-            if (state.isPlaying) hasStartedPlayback = true
             state.isBuffering = snap?.buffering ?: (c.playbackState == Player.STATE_BUFFERING ||
                 c.playbackState == Player.STATE_IDLE)
+            // Latch "started" only once the video is actually playing
+            // AND not buffering: MPV reports paused=false (playing)
+            // while still caching the first frames (paused-for-cache),
+            // so latching on isPlaying alone closed the initial-load
+            // gate at once and MPV showed the plain circle spinner
+            // instead of the logo loading screen. Exo is unaffected
+            // (its isPlaying is false while buffering).
+            if (state.isPlaying && !state.isBuffering) hasStartedPlayback = true
             // Step 59: the seek-preview prefetch pauses while buffering.
             seekPreviewController?.playbackBuffering = state.isBuffering
             state.loadingStep = when {
@@ -5126,11 +5132,20 @@ fun PlayerScreen(
                     )
                 )
             } else {
+                // Mid-playback buffer (seek rebuffer after a 10s skip,
+                // slow-network rebuffer, source switch): the title logo
+                // breathing, not the circle spinner — the user's order
+                // (the circle in the skip UI goes, logo breathing
+                // takes its place, on both engines). No backdrop here:
+                // the video stays visible behind the breathing logo.
+                // When the meta carries no logo, the breathing title
+                // text is the fallback (same as the loading screen).
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Official-style centre wheel (user's order):
-                        // Nuvio's sweeping arc, not the OrbitDots ring.
-                        AvioLoadingIndicator(size = 48.dp)
+                        BufferingTitleLogo(
+                            title = state.currentRequest.title,
+                            logo = state.currentRequest.logo
+                        )
                         Spacer(Modifier.height(12.dp))
                         Text(
                             "Buffering…",
