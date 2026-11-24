@@ -101,6 +101,7 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.ExitToApp
+import com.aviostream.app.ui.components.AvioLoadingIndicator
 import com.aviostream.app.ui.components.OrbitDots
 import com.aviostream.app.ui.components.CustomPosterScreen
 import com.aviostream.app.ui.components.PosterCard
@@ -4836,12 +4837,21 @@ fun PlayerScreen(
     // the zoom is back to 1x.
     val glassBackdrop = LocalAvioGlassBackdrop.current as? AvioBackdrop
     fun applyVideoZoom() {
-        val pv = state.playerView ?: return
-        val target = pv.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
-            ?: pv.videoSurfaceView
-            ?: return
-        target.scaleX = state.videoZoom
-        target.scaleY = state.videoZoom
+        if (mpvActive()) {
+            // MPV renders into its own plain SurfaceView, not the
+            // PlayerView — scaling the PlayerView alone leaves MPV
+            // unzoomed (pinch to zoom did nothing on the MPV engine).
+            val sv = state.mpvSurfaceView ?: return
+            sv.scaleX = state.videoZoom
+            sv.scaleY = state.videoZoom
+        } else {
+            val pv = state.playerView ?: return
+            val target = pv.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame)
+                ?: pv.videoSurfaceView
+                ?: return
+            target.scaleX = state.videoZoom
+            target.scaleY = state.videoZoom
+        }
         glassBackdrop?.suspendRecording = state.videoZoom != 1f
     }
     LaunchedEffect(state.videoZoom) { applyVideoZoom() }
@@ -4861,7 +4871,9 @@ fun PlayerScreen(
                 // Second engine (MPV port): MPV renders into a plain
                 // SurfaceView; the control shell around it is shared
                 // and unchanged. The engine owns the attach/detach
-                // ordering on its own thread.
+                // ordering on its own thread. The view is kept in
+                // state so pinch zoom (applyVideoZoom) can scale it —
+                // the PlayerView path does not cover MPV.
                 AndroidView(
                     factory = { ctx ->
                         android.view.SurfaceView(ctx).also { sv ->
@@ -4870,8 +4882,11 @@ fun PlayerScreen(
                                 ViewGroup.LayoutParams.MATCH_PARENT
                             )
                             sv.holder.addCallback(mpvSurfaceCallback)
+                            state.mpvSurfaceView = sv
                         }
                     },
+                    update = { applyVideoZoom() },
+                    onRelease = { state.mpvSurfaceView = null },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -5015,7 +5030,9 @@ fun PlayerScreen(
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        OrbitDots(Modifier.size(48.dp))
+                        // Official-style centre wheel (user's order):
+                        // Nuvio's sweeping arc, not the OrbitDots ring.
+                        AvioLoadingIndicator(size = 48.dp)
                         Spacer(Modifier.height(12.dp))
                         Text(
                             "Buffering…",
@@ -5771,44 +5788,18 @@ fun PlayerScreen(
                                 }
                                 com.aviostream.app.data.PlayerTopButton.ENGINE -> {
                                     // Manual mid-play engine switch (top
-                                    // bar, not the bottom pill): a glass
-                                    // pill showing the engine that owns
-                                    // playback right now; tapping opens
-                                    // the picker dialog. A header circle
-                                    // would hide the name — the pill
-                                    // keeps "MPV" / "ExoPlayer" visible.
-                                    Box(
-                                        Modifier
-                                            .height(36.dp)
-                                            .playerLiquidGlass(
-                                                shape = RoundedCornerShape(18.dp),
-                                                refractionHeight = 6.dp,
-                                                refractionAmount = 8.dp,
-                                            )
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .clickable(onClick = { state.engineMenuOpen = true })
-                                            .tvFocusRing(RoundedCornerShape(18.dp))
-                                            .padding(horizontal = 12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.SwapHoriz,
-                                                "Engine",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Text(
-                                                if (activeEngine == com.aviostream.app.player.PlaybackEngine.MPV) "MPV" else "ExoPlayer",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White,
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
+                                    // bar): the same circle button as the
+                                    // other top buttons (user's order
+                                    // 2026-11-24 — the pill did not match
+                                    // them). Tapping opens the picker
+                                    // dialog, which shows the current
+                                    // engine; the button itself no longer
+                                    // carries the "MPV" / "ExoPlayer" name.
+                                    PlayerHeaderButton(
+                                        icon = Icons.Filled.SwapHoriz,
+                                        label = "Switch engine",
+                                        onClick = { state.engineMenuOpen = true }
+                                    )
                                 }
                             }
                         }

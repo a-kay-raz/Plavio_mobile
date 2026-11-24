@@ -100,6 +100,13 @@ internal class PlayerScreenState(
     var scrubPositionMs by mutableStateOf<Long?>(null)
     var playerView by mutableStateOf<PlayerView?>(null)
     /**
+     * MPV's video surface. Exo renders inside [playerView]; MPV renders
+     * into its own plain SurfaceView, so pinch zoom ([PlayerScreen]
+     * applyVideoZoom) must scale this view on the MPV engine — scaling
+     * the PlayerView alone leaves MPV unzoomed.
+     */
+    var mpvSurfaceView by mutableStateOf<android.view.SurfaceView?>(null)
+    /**
      * Side-loaded subtitles, resolved (downloaded + format-sniffed) in the
      * background for the current request. Kept in state so a rebuilt player
      * (source switch) can carry them from its first prepare instead of

@@ -1,5 +1,6 @@
 package com.aviostream.app.ui.components
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -48,15 +49,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -67,8 +72,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import coil.compose.AsyncImage
 import com.aviostream.app.data.MetaPreview
 import androidx.compose.material3.Icon
@@ -770,6 +777,62 @@ fun WatchedPill(modifier: Modifier = Modifier) {
  * family, in circle form. Geometry is computed on one true circle
  * (design space 40 units, ring radius 13.5) so nothing wobbles.
  */
+/**
+ * Official-style loading arc (Nuvio's NuvioLoadingIndicator port): a
+ * single sweeping arc in the accent colour, 2s cycle, rounded stroke
+ * cap. Used for the centre buffering wheel in the player (user's
+ * order 2026-11-24: match official). OrbitDots stays for the other
+ * spinners.
+ */
+private val LoadingArcEasing = CubicBezierEasing(0.333f, 0f, 0.667f, 1f)
+
+@Composable
+fun AvioLoadingIndicator(
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    size: Dp = 40.dp,
+) {
+    val palette = LocalPalette.current
+    val brush = if (color == Color.Unspecified) SolidColor(palette.accent) else SolidColor(color)
+    val frame by rememberInfiniteTransition(label = "loading_indicator").animateFloat(
+        initialValue = 0f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 2000, easing = LinearEasing)),
+        label = "loading_frame",
+    )
+    Box(
+        modifier = modifier.size(size),
+        contentAlignment = Alignment.Center,
+    ) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val scale = this.size.minDimension * 0.75f / 350f
+                    val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                    val radius = 150f * scale
+                    val topLeft = center - Offset(radius, radius)
+                    val arcSize = Size(radius * 2f, radius * 2f)
+                    val stroke = Stroke(width = 50f * scale, cap = StrokeCap.Round)
+                    onDrawBehind {
+                        val currentFrame = frame.coerceIn(0f, 60f)
+                        val start = lerp(0f, 99f, LoadingArcEasing.transform(((currentFrame - 10f) / 50f).coerceIn(0f, 1f)))
+                        val end = lerp(1f, 100f, LoadingArcEasing.transform((currentFrame / 50f).coerceIn(0f, 1f)))
+                        drawArc(
+                            brush = brush,
+                            startAngle = -90f + currentFrame / 60f * 363f + start * 3.6f,
+                            sweepAngle = (end - start) * 3.6f,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = stroke,
+                        )
+                    }
+                },
+        )
+    }
+}
+
 @Composable
 fun OrbitDots(modifier: Modifier = Modifier) {
     val palette = LocalPalette.current
