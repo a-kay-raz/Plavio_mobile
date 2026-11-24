@@ -1623,6 +1623,18 @@ fun PlayerScreen(
         }
     }
     fun applyVolumeBoost() {
+        // MPV: there is no Exo audio session to attach the
+        // LoudnessEnhancer to, so the boost did nothing there (the
+        // volume gesture already drove libmpv's volume, but the
+        // Amplification stepper only called this function). Drive
+        // libmpv's own volume instead, mirroring the gesture:
+        // display percent (system + boost) into setVolumeFine.
+        // Routing it here covers every caller (stepper, gesture,
+        // boost reset, rebuilt-player re-attach).
+        if (mpvActive()) {
+            mpvEngine?.setVolumeFine(displayVolumePercent().toFloat())
+            return
+        }
         val sid = runCatching { player.audioSessionId }.getOrDefault(-1)
         if (sid <= 0) return
         if (boostHolder.enhancer == null || boostHolder.sessionId != sid) {
