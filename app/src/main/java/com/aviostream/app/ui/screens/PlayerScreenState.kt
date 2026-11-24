@@ -257,6 +257,10 @@ internal class PlayerScreenState(
     // so the silent end-of-playback advance never fires for it.
     var nextEpisodeCard by mutableStateOf<Video?>(null)
     var nextEpisodeCountdown by mutableStateOf<Int?>(null)
+    /** End-of-play rating prompt (v0.14.30 port): the prompt the finished video raised, or null. */
+    var ratingPrompt by mutableStateOf<EndRatingPrompt?>(null)
+    /** End-of-play rating prompt: video id the prompt was already evaluated for (once per video). */
+    var ratingPromptHandledFor by mutableStateOf<String?>(null)
     var nextEpisodeDismissedFor by mutableStateOf<String?>(null)
     // Movie recommendations (Nuvio MovieRecommendationCard): "More like
     // this" after a movie ends, loaded once per title.

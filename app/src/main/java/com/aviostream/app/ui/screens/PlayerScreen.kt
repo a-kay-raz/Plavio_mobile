@@ -240,6 +240,9 @@ import com.aviostream.app.data.StreamItem
 import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.FirstPartySubsClient
 import com.aviostream.app.data.Subtitle
+import com.aviostream.app.data.UserRatings
+import com.aviostream.app.data.trakt.TraktApi
+import com.aviostream.app.data.trakt.TraktManager
 import com.aviostream.app.data.resolveSubtitleFiles
 import com.aviostream.app.data.shiftSubtitles
 import com.aviostream.app.data.formatOffsetMs
@@ -370,6 +373,7 @@ fun PlayerScreen(
     val initialRequest = repository.pendingPlayback
     Log.d("AvioPlay", "PlayerScreen entered, initialRequest null=" + (initialRequest == null))
     val settings = repository.settings
+    val userRatings = remember(context) { UserRatings(context) }
     // Haptics (v0.14.30 port): one light tick shared by the player funnels below.
     val hapticTick = rememberHapticTick()
 
@@ -3078,6 +3082,52 @@ fun PlayerScreen(
         }
     }
 
+    // End-of-play rating prompt (v0.14.30 port): offer the rating card
+    // once per video when it ends — unless already rated locally or
+    // skipped twice for this title/episode. Ratings live in the fork's
+    // UserRatings (1–5 stars, keyed by meta id); the prompt key is per
+    // title (movies) or per episode (series).
+    fun maybeOfferRatingPrompt(req: PlaybackRequest) {
+        if (req.isTrailer || req.isLive) return
+        val metaId = req.metaId.takeIf { it.isNotBlank() } ?: return
+        if (userRatings.getRating(metaId) != null) return
+        val promptKey = if (req.isMovie) metaId
+            else "$metaId:S${req.season}E${req.episode}"
+        if (userRatings.promptSkipCount(promptKey) >= 2) return
+        state.ratingPrompt = EndRatingPrompt(
+            metaId = metaId,
+            promptKey = promptKey,
+            type = req.type,
+            imdbId = req.imdbId?.takeIf { it.isNotBlank() },
+            title = req.title,
+            forVideoId = req.videoId
+        )
+    }
+
+    // Rates from the end-of-play prompt: local 1–5 stars first (always
+    // sticks), then the Trakt push (1–10 scale, stars × 2) when Trakt is
+    // linked and the title has an IMDb id. Returns the line the card shows.
+    suspend fun rateFromPrompt(prompt: EndRatingPrompt, stars: Int): String {
+        userRatings.setRating(prompt.metaId, stars)
+        val imdbId = prompt.imdbId
+            ?: return "Saved on this device · Trakt needs an IMDb id."
+        val token = runCatching { TraktManager(settings).validAccessToken() }.getOrNull()
+            ?: return "Saved on this device · Trakt isn't linked."
+        val ok = runCatching {
+            TraktApi().setRating(token, prompt.type, imdbId, prompt.title, (stars * 2).coerceIn(1, 10))
+        }.getOrDefault(false)
+        return if (ok) "Rating saved · Synced to Trakt"
+        else "Saved on this device · Couldn't reach Trakt. Try again."
+    }
+
+    // The rating prompt belongs to the video whose end raised it — when
+    // playback moves on (e.g. auto-advance), retire it.
+    LaunchedEffect(state.currentRequest) {
+        if (state.ratingPrompt?.forVideoId != state.currentRequest.videoId) {
+            state.ratingPrompt = null
+        }
+    }
+
     LaunchedEffect(player) {
         // Previous tick's position, for manual-seek detection (a jump
         // over a segment marks it auto-skipped, Nuvio
@@ -3242,6 +3292,14 @@ fun PlayerScreen(
                     pokeIndicator(PlayerIndicator.Message("Playing next episode…"))
                     playEpisode(nextEp)
                 }
+            }
+            // End-of-play rating prompt (v0.14.30 port): once per video,
+            // when it ends, offer the rating card.
+            if (c.playbackState == Player.STATE_ENDED &&
+                state.ratingPromptHandledFor != state.currentRequest.videoId
+            ) {
+                state.ratingPromptHandledFor = state.currentRequest.videoId
+                maybeOfferRatingPrompt(state.currentRequest)
             }
             // Movie recommendations (Nuvio MovieRecommendationCard):
             // once per movie, when it ends, load "More like this".
@@ -4009,6 +4067,21 @@ fun PlayerScreen(
         // Fatal stream error (#4): Retry re-prepares this stream, Next source
         // advances to the next available stream, and the floating Sources
         // switcher stays openable underneath via "Browse all sources".
+        // End-of-play rating prompt (v0.14.30 port): the card shows at
+        // the bottom when the finished video raised it.
+        state.ratingPrompt?.let { prompt ->
+            PlayerRatingPrompt(
+                prompt = prompt,
+                nextEpisodeCardVisible = state.nextEpisodeCard != null,
+                onRate = { stars -> rateFromPrompt(prompt, stars) },
+                onSkip = {
+                    userRatings.notePromptSkip(prompt.promptKey)
+                    state.ratingPrompt = null
+                },
+                onDone = { state.ratingPrompt = null }
+            )
+        }
+
         state.playerError?.let { err ->
             Box(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.78f)),
