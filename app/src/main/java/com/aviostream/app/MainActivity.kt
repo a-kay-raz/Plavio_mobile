@@ -77,7 +77,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -702,7 +701,7 @@ private fun DarkVideoSurface(content: @Composable () -> Unit) {
 @Composable
 private fun appTabs() = listOf(
     Tab(Routes.HOME, stringResource(R.string.nav_home), Icons.Filled.Home),
-    Tab(Routes.LIBRARY, stringResource(R.string.nav_library), vectorResource(R.drawable.sidebar_library)),
+    Tab(Routes.LIBRARY, stringResource(R.string.nav_library), ImageVector.vectorResource(R.drawable.sidebar_library)),
     Tab(Routes.LIVE, stringResource(R.string.nav_live), Icons.Filled.LiveTv),
     Tab(Routes.SEARCH, stringResource(R.string.nav_search), Icons.Filled.Search),
     Tab(Routes.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings)
