@@ -803,7 +803,8 @@ fun PlayerScreen(
             .setTrackSelector(
                 DefaultTrackSelector(context).apply {
                     val params = buildUponParameters()
-                    if (prefs.isNotEmpty()) {
+                    // Subtitles by default (v0.14.30 port): OFF means no preferred text languages, so subtitles stay off until the user picks one. Otherwise the preferred languages are set as before (default: on in my languages).
+                    if (prefs.isNotEmpty() && settings.subtitleDefaultMode != com.aviostream.app.data.SUB_DEFAULT_OFF) {
                         params.setPreferredTextLanguages(*prefs.toTypedArray())
                     }
                     // Preferred audio language (Settings > Playback): when the

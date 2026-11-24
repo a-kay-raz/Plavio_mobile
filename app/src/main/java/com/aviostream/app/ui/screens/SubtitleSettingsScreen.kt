@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.AutoMode
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,10 +55,15 @@ import com.aviostream.app.data.formatOffsetMs
 import com.aviostream.app.data.subtitleColorName
 import com.aviostream.app.data.subtitleEdgeName
 import com.aviostream.app.data.subtitleFontLabel
+import com.aviostream.app.data.SUB_DEFAULT_ALWAYS_ON
+import com.aviostream.app.data.SUB_DEFAULT_OFF
+import com.aviostream.app.data.SUB_DEFAULT_ON_IN_MY_LANGUAGES
+import com.aviostream.app.data.subtitleDefaultModeName
 import com.aviostream.app.data.subtitleLanguageName
 import com.aviostream.app.data.subtitleSizeName
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.theme.TextPrimary
+import com.aviostream.app.ui.theme.TextSecondary
 import com.aviostream.app.ui.theme.LocalPalette
 
 /**
@@ -73,6 +80,8 @@ fun SubtitleSettingsScreen(
     val context = LocalContext.current
     var subLangs by remember { mutableStateOf(settings.subtitleLanguages) }
     var subLangPickerOpen by remember { mutableStateOf(false) }
+    var defaultMode by remember { mutableIntStateOf(settings.subtitleDefaultMode) }
+    var defaultModePickerOpen by remember { mutableStateOf(false) }
     var subStyleOpen by remember { mutableStateOf(false) }
     var subStyleVersion by remember { mutableIntStateOf(0) }
     // Step 38: subtitle font + SDH filter.
@@ -139,6 +148,15 @@ fun SubtitleSettingsScreen(
                                 subLangs.joinToString(", ") { subtitleLanguageName(it) }
                             },
                             onClick = { subLangPickerOpen = true },
+                            trailing = { V117Chevron() }
+                        )
+                    },
+                    {
+                        V117NavRow(
+                            icon = Icons.Filled.AutoMode,
+                            title = "Subtitles by default",
+                            subtitle = subtitleDefaultModeName(defaultMode),
+                            onClick = { defaultModePickerOpen = true },
                             trailing = { V117Chevron() }
                         )
                     },
@@ -251,6 +269,18 @@ fun SubtitleSettingsScreen(
                 }
             }
         }
+    }
+
+    if (defaultModePickerOpen) {
+        SubtitleDefaultModeDialog(
+            initial = defaultMode,
+            onDismiss = { defaultModePickerOpen = false },
+            onDone = { mode ->
+                settings.subtitleDefaultMode = mode
+                defaultMode = mode
+                defaultModePickerOpen = false
+            }
+        )
     }
 
     if (subLangPickerOpen) {
@@ -412,5 +442,81 @@ private fun SubtitleFontPickerDialog(
                 Text("Import font")
             }
         },
+    )
+}
+
+/** Single-choice dialog for the "Subtitles by default" behaviour. */
+@Composable
+private fun SubtitleDefaultModeDialog(
+    initial: Int,
+    onDismiss: () -> Unit,
+    onDone: (Int) -> Unit
+) {
+    var selected by remember { mutableIntStateOf(initial) }
+    val options = listOf(
+        Triple(
+            SUB_DEFAULT_ON_IN_MY_LANGUAGES,
+            "On in my languages",
+            "Subtitles turn on when they're in one of your preferred languages"
+        ),
+        Triple(
+            SUB_DEFAULT_ALWAYS_ON,
+            "Always on",
+            "A subtitle always turns on — your languages first, otherwise the first available"
+        ),
+        Triple(
+            SUB_DEFAULT_OFF,
+            "Off",
+            "Subtitles never turn on by themselves — pick one in the player when you want it"
+        )
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Subtitles by default", color = TextPrimary) },
+        text = {
+            Column {
+                options.forEach { (mode, label, blurb) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = mode }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected == mode,
+                            onClick = { selected = mode },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = LocalPalette.current.accent
+                            )
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(label, color = TextPrimary)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                blurb,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onDone(selected) }) {
+                Text(
+                    "Done",
+                    color = LocalPalette.current.accent,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
     )
 }

@@ -79,6 +79,17 @@ val SUBTITLE_LANGUAGE_OPTIONS: List<Pair<String, String>> = listOf(
     "vi" to "Vietnamese"
 ).sortedBy { it.second }
 
+/** "Subtitles by default" modes (stored by SettingsStore.subtitleDefaultMode). */
+const val SUB_DEFAULT_ON_IN_MY_LANGUAGES = 0
+const val SUB_DEFAULT_ALWAYS_ON = 1
+const val SUB_DEFAULT_OFF = 2
+
+fun subtitleDefaultModeName(mode: Int): String = when (mode) {
+    SUB_DEFAULT_ALWAYS_ON -> "Always on"
+    SUB_DEFAULT_OFF -> "Off"
+    else -> "On in my languages"
+}
+
 /** Display name for a preferred-language code, or the code itself. */
 fun subtitleLanguageName(code: String): String =
     SUBTITLE_LANGUAGE_OPTIONS.find { it.first == code }?.second ?: code.uppercase()
@@ -1609,6 +1620,21 @@ class SettingsStore(
      * Preferred subtitle languages (ISO 639-1 codes, up to 2).
      * Empty = no preference (first available subtitle is used).
      */
+    /**
+     * "Subtitles by default" behaviour (v0.14.30 port): one of
+     * [SUB_DEFAULT_ON_IN_MY_LANGUAGES], [SUB_DEFAULT_ALWAYS_ON] or
+     * [SUB_DEFAULT_OFF]. Drives the player's automatic track choice.
+     * Default is [SUB_DEFAULT_ON_IN_MY_LANGUAGES] in this fork so
+     * existing behaviour (subtitles auto-on in preferred languages)
+     * is preserved; upstream defaults to OFF.
+     */
+    var subtitleDefaultMode: Int
+        get() = prefInt(KEY_SUB_DEFAULT_MODE, SUB_DEFAULT_ON_IN_MY_LANGUAGES)
+            .coerceIn(SUB_DEFAULT_ON_IN_MY_LANGUAGES, SUB_DEFAULT_OFF)
+        set(value) = prefs.edit()
+            .putInt(KEY_SUB_DEFAULT_MODE, value.coerceIn(SUB_DEFAULT_ON_IN_MY_LANGUAGES, SUB_DEFAULT_OFF))
+            .apply()
+
     var subtitleLanguages: List<String>
         get() = prefs.getString(KEY_SUBTITLE_LANGS, "")
             ?.split(",")
@@ -2295,6 +2321,7 @@ class SettingsStore(
         private const val KEY_PLAYER_STATUS_OVERLAY = "player_status_overlay_enabled"
         private const val KEY_SHOW_SKIP = "show_skip_button"
         private const val KEY_SUBTITLE_LANGS = "subtitle_languages"
+        private const val KEY_SUB_DEFAULT_MODE = "sub_default_mode"
         private const val KEY_ACCENT = "accent_theme"
         private const val KEY_PROFILE_USER_NAME = "profile_user_name"
         private const val KEY_PROFILE_AVATAR = "profile_avatar"
