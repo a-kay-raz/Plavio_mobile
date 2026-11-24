@@ -305,7 +305,18 @@ class MpvPlayerEngine(
         executor.execute {
             if (released.get() || !initialized.get()) return@execute
             try {
-                mpv.command("seek", (positionMs / 1000.0).toString(), "absolute+exact")
+                // Nuvio's method (PlayerEngine.android.kt seekToMs):
+                // plain "absolute", no +exact / +keyframes flag — MPV
+                // picks its default seek mode. Avio used absolute+exact,
+                // and an exact seek decodes forward from the nearest
+                // keyframe to the target frame, which takes 1-3s on HEVC
+                // 1080p/4K — during that time the video is paused (play
+                // triangle) and/or black, i.e. the "stuck + black screen
+                // after every skip" the user reports on dev-85 (the
+                // copy+filter removal in 508dd4b did not fix it, so the
+                // stall is in the seek, not the decoder path). Nuvio sets
+                // no hr-seek option either, so this matches Nuvio exactly.
+                mpv.command("seek", (positionMs / 1000.0).toString(), "absolute")
             } catch (_: Exception) {
             }
         }
@@ -315,7 +326,8 @@ class MpvPlayerEngine(
         executor.execute {
             if (released.get() || !initialized.get()) return@execute
             try {
-                mpv.command("seek", (deltaMs / 1000.0).toString(), "relative+exact")
+                // Nuvio's method (seekByMs): plain "relative".
+                mpv.command("seek", (deltaMs / 1000.0).toString(), "relative")
             } catch (_: Exception) {
             }
         }
