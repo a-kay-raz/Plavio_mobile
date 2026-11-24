@@ -1693,7 +1693,9 @@ private fun DetailContent(
                                     }
                                 },
                             shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A24))
+                            colors = CardDefaults.cardColors(
+                                containerColor = LocalPalette.current.panel
+                            )
                         ) {
                             Box(
                                 modifier = Modifier
@@ -2976,7 +2978,7 @@ private fun DetailContent(
       ModalBottomSheet(
         onDismissRequest = { fullPageSourceOpen = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = LocalPalette.current.background,
+        containerColor = LocalPalette.current.panel,
         dragHandle = { BottomSheetDefaults.DragHandle() }
       ) {
         FullPageSourcePicker(
