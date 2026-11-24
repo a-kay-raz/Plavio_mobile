@@ -1,5 +1,7 @@
 package com.aviostream.app.data.plugs
 
+import com.aviostream.app.data.AppDns
+import com.aviostream.app.data.DnsChoice
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -59,18 +61,43 @@ object PlugHttp {
     // 25 s callTimeout sitting inside a 20 s plug budget, so the
     // arithmetic could never work. The reference hosts run their
     // plug client at 60 s components with no call cap; same here.
-    // Avio port: the fork has no DNS-choice setting (upstream's
-    // AppDns was not ported), so these clients use the system DNS
-    // and are built once, lazily.
-    val client: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build()
-    }
+    // DNS choice (v0.14.30 port, #42): the three clients are cached
+    // per DNS choice, so flipping the setting rebuilds them once on
+    // the next access — and the shared pools survive while the choice
+    // is stable. (Before #42 the fork had no DNS-choice setting, so
+    // these were built once, lazily, on the system DNS.)
+    private val clientCacheLock = Any()
+    private var clientCacheChoice: DnsChoice? = null
+    private var cachedClient: OkHttpClient? = null
+    private var cachedNoRedirect: OkHttpClient? = null
+    private var cachedProbe: OkHttpClient? = null
+    private fun cachedClients(): Triple<OkHttpClient, OkHttpClient, OkHttpClient> =
+        synchronized(clientCacheLock) {
+            if (cachedClient == null || clientCacheChoice != AppDns.choice) {
+                val base = OkHttpClient.Builder()
+                    .dns(AppDns.currentDns())
+                    .connectTimeout(20, TimeUnit.SECONDS)
+                    .readTimeout(60, TimeUnit.SECONDS)
+                    .writeTimeout(60, TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .followSslRedirects(true)
+                    .build()
+                cachedClient = base
+                cachedNoRedirect = base.newBuilder()
+                    .followRedirects(false)
+                    .followSslRedirects(false)
+                    .build()
+                cachedProbe = base.newBuilder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .callTimeout(8, TimeUnit.SECONDS)
+                    .build()
+                clientCacheChoice = AppDns.choice
+            }
+            Triple(cachedClient!!, cachedNoRedirect!!, cachedProbe!!)
+        }
+
+    val client: OkHttpClient get() = cachedClients().first
 
     /**
      * No-follow twin of [client] (v0.14.58, item 3): used ONLY when
@@ -79,12 +106,7 @@ object PlugHttp {
      * of the final page, which some plugs' resolver stages are
      * written against. Every default fetch keeps [client].
      */
-    val clientNoRedirect: OkHttpClient by lazy {
-        client.newBuilder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .build()
-    }
+    val clientNoRedirect: OkHttpClient get() = cachedClients().second
 
     /**
      * Short-timeout client for the dead-stream probe (v0.14.58,
@@ -93,13 +115,7 @@ object PlugHttp {
      * Redirects ARE followed — the final status is the verdict
      * input, exactly what a player would land on.
      */
-    val probeClient: OkHttpClient by lazy {
-        client.newBuilder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .callTimeout(8, TimeUnit.SECONDS)
-            .build()
-    }
+    val probeClient: OkHttpClient get() = cachedClients().third
 
     fun newCall(
         url: String,

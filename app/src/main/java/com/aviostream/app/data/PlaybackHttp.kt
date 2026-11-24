@@ -33,6 +33,7 @@ object PlaybackHttp {
     internal fun client(originUrl: String): OkHttpClient {
         val origin = originUrl.toHttpUrlOrNull()
         return OkHttpClient.Builder()
+            .dns(AppDns.currentDns())
             .connectionPool(sharedPool)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

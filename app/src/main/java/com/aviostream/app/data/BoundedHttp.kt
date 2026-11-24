@@ -22,12 +22,26 @@ object BoundedHttp {
     const val DEFAULT_MAX_DECODED_BYTES: Long = 2L * 1024 * 1024
     private const val MAX_CONCURRENT_REQUESTS = 12
     private val permits = Semaphore(MAX_CONCURRENT_REQUESTS)
-    private val client = OkHttpClient.Builder()
-        .callTimeout(25, TimeUnit.SECONDS)
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(18, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
+    // DNS choice (v0.14.30 port, #42): the client is cached per choice,
+    // so flipping the setting takes effect on the next request without
+    // a restart — and the shared pool survives while the choice is stable.
+    private val clientLock = Any()
+    private var clientChoice: DnsChoice? = null
+    private var cachedClient: OkHttpClient? = null
+    private val client: OkHttpClient
+        get() = synchronized(clientLock) {
+            if (cachedClient == null || clientChoice != AppDns.choice) {
+                cachedClient = OkHttpClient.Builder()
+                    .dns(AppDns.currentDns())
+                    .callTimeout(25, TimeUnit.SECONDS)
+                    .connectTimeout(12, TimeUnit.SECONDS)
+                    .readTimeout(18, TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .build()
+                clientChoice = AppDns.choice
+            }
+            cachedClient!!
+        }
 
     /** Reads decompressed bytes incrementally, rejecting one byte over the cap. */
     internal fun readBoundedUtf8(source: Source, maxBytes: Long): String {

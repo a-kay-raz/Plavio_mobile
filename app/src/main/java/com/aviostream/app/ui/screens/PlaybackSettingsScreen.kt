@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.FastRewind
@@ -77,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.ui.unit.dp
 import com.aviostream.app.data.AUDIO_LANGUAGE_OPTIONS
+import com.aviostream.app.data.DnsChoice
 import com.aviostream.app.data.BUFFER_BACK_OPTIONS_S
 import com.aviostream.app.data.BUFFER_MAX_OPTIONS_S
 import com.aviostream.app.data.BUFFER_MIN_OPTIONS_S
@@ -136,6 +138,8 @@ fun PlaybackSettingsScreen(
     var sendSkipSegsExt by remember { mutableStateOf(settings.sendSkipSegmentsToExternalPlayer) }
     var audioLang by remember { mutableStateOf(settings.preferredAudioLanguage) }
     var audioLangPickerOpen by remember { mutableStateOf(false) }
+    var dnsChoice by remember { mutableStateOf(settings.dnsChoice) }
+    var dnsPickerOpen by remember { mutableStateOf(false) }
     // Step 38: secondary preferred audio language (fallback when the
     // primary has no track).
     var secondaryAudioLang by remember { mutableStateOf(settings.secondaryPreferredAudioLanguage) }
@@ -312,6 +316,17 @@ fun PlaybackSettingsScreen(
                             title = "Playback engine",
                             subtitle = "Currently: ${playbackEngineName(settings.playbackEngine)}",
                             onClick = onGoToEngine
+                        )
+                    },
+                    {
+                        // DNS presets (v0.14.30 port, #42): some ISPs poison
+                        // answers for hosts like TMDB; Cloudflare/Google run
+                        // over DNS-over-HTTPS, which the ISP cannot rewrite.
+                        SettingsNavRow(
+                            icon = Icons.Filled.Dns,
+                            title = "DNS",
+                            subtitle = "Currently: ${dnsChoice.label}",
+                            onClick = { dnsPickerOpen = true }
                         )
                     },
                     {
@@ -682,6 +697,18 @@ fun PlaybackSettingsScreen(
                 settings.secondaryPreferredAudioLanguage = lang
                 secondaryAudioLang = lang
                 secondaryAudioLangPickerOpen = false
+            }
+        )
+    }
+
+    if (dnsPickerOpen) {
+        DnsPickerDialog(
+            initial = dnsChoice,
+            onDismiss = { dnsPickerOpen = false },
+            onDone = { choice ->
+                settings.dnsChoice = choice
+                dnsChoice = choice
+                dnsPickerOpen = false
             }
         )
     }
@@ -2217,6 +2244,76 @@ fun SourceFailoverDialog(
                 settings.fallbackStartupTimeoutSeconds = timeoutS
                 onDone()
             }) {
+                Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+/**
+ * DNS provider picker (v0.14.30 port, #42): System uses the platform
+ * resolver; Cloudflare / Google resolve through DNS-over-HTTPS so an
+ * ISP cannot poison the answers.
+ */
+@Composable
+fun DnsPickerDialog(
+    initial: DnsChoice,
+    onDismiss: () -> Unit,
+    onDone: (DnsChoice) -> Unit
+) {
+    var selected by remember { mutableStateOf(initial) }
+    val options = listOf(
+        Triple(DnsChoice.SYSTEM, "System", "Your network's own DNS — the standard behaviour"),
+        Triple(DnsChoice.CLOUDFLARE, "Cloudflare", "Resolve over encrypted DNS (1.1.1.1)"),
+        Triple(DnsChoice.GOOGLE, "Google", "Resolve over encrypted DNS (8.8.8.8)")
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("DNS", color = TextPrimary) },
+        text = {
+            Column {
+                Text(
+                    "If your internet provider blocks or rewrites app lookups, an encrypted DNS can fix addons and plugs that fail to load.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                options.forEach { (value, label, detail) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = value }
+                            .tvFocusRing(RoundedCornerShape(10.dp))
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = selected == value,
+                            onClick = { selected = value },
+                            colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                selectedColor = LocalPalette.current.accent
+                            )
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(label, color = TextPrimary)
+                            Text(
+                                detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onDone(selected) }) {
                 Text("Done", color = LocalPalette.current.accent, fontWeight = FontWeight.Bold)
             }
         },

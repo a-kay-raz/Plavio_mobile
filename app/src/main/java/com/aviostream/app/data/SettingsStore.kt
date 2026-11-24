@@ -482,6 +482,10 @@ class SettingsStore(
         migrateLegacySecrets()
         // Haptics (v0.14.30 port): seed the UI-wide flag from the stored value.
         Haptics.sync(hapticsEnabled)
+        // DNS (v0.14.30 port, #42): seed the live resolver choice from the
+        // stored pref so the shared HTTP stacks honour it from the
+        // first request, before any Settings screen is opened.
+        AppDns.applyChoice(dnsChoice)
     }
 
     /** Play the first source automatically (v0.2.0 behavior) vs. manual play. */
@@ -592,6 +596,20 @@ class SettingsStore(
     var playbackEngine: Int
         get() = prefInt(KEY_PLAYBACK_ENGINE, 0).coerceIn(0, 2)
         set(value) = prefs.edit().putInt(KEY_PLAYBACK_ENGINE, value.coerceIn(0, 2)).apply()
+
+    /**
+     * DNS provider for the app's shared HTTP stacks (v0.14.30 port, #42 —
+     * ISPs that poison TMDB's DNS answer). Stored as the [DnsChoice] key;
+     * every write pushes the live choice into [AppDns], whose resolver
+     * the client factories consult, so the change applies to new clients
+     * without a restart.
+     */
+    var dnsChoice: DnsChoice
+        get() = DnsChoice.fromKey(prefs.getString(KEY_DNS_CHOICE, null))
+        set(value) {
+            prefs.edit().putString(KEY_DNS_CHOICE, value.key).apply()
+            AppDns.applyChoice(value)
+        }
 
     /**
      * Automatic one-time engine failover on a fatal playback error.
@@ -2317,6 +2335,7 @@ class SettingsStore(
         private const val KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next_episode"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
         private const val KEY_PLAYBACK_ENGINE = "playback_engine"
+        private const val KEY_DNS_CHOICE = "dns_choice"
         private const val KEY_AUTO_ENGINE_FAILOVER = "auto_engine_failover"
         private const val KEY_MPV_HWDEC = "mpv_hwdec"
         private const val KEY_MPV_YUV420P = "mpv_yuv420p"

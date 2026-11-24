@@ -210,6 +210,10 @@ dependencies {
         exclude(group = "androidx.appcompat", module = "appcompat")
     }
     implementation(libs.okhttp)
+    // DNS-over-HTTPS resolver for the Settings > Playback DNS choice
+    // (v0.14.30 port, #42) — see data/AppDns. Pinned to the same
+    // 5.3.2 runtime as OkHttp itself.
+    implementation(libs.okhttp.dnsoverhttps)
     // CloudStream (CS3): pin the RESOLVED OkHttp runtime to the 5.3.2 that
     // NiceHttp 0.4.18 was compiled against (same mechanism as the TV port).
     // Without this the runtime silently falls back to 4.12.0 and plugin HTTP
