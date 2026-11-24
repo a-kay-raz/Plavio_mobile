@@ -278,6 +278,28 @@ data class PlaybackRequest(
     val streamLabel: String? = null,
     /** Addon the chosen stream came from. */
     val sourceName: String? = null,
+    /**
+     * Loading / pause presentation facts (v0.14.30 #44/#45 port):
+     * only what the serving meta actually carried; absent fields
+     * simply don't render in the overlays. All default to absent —
+     * no request-construction site is required to fill them.
+     */
+    /** Official studio logo artwork for the title. */
+    val logo: String? = null,
+    /** Wide art for the player's fullscreen loading state; [poster] is the fallback. */
+    val background: String? = null,
+    /** Release info string (year is extracted from it). */
+    val releaseInfo: String? = null,
+    /** Runtime as carried by meta, e.g. "148 min". */
+    val runtime: String? = null,
+    /** Genres as carried by meta. */
+    val genres: List<String> = emptyList(),
+    /** IMDb rating as carried by meta. */
+    val imdbRating: String? = null,
+    /** Top-billed cast NAMES for the loading state's "Starring …" line. */
+    val cast: List<String> = emptyList(),
+    /** The title's overview text, for the pause screen. */
+    val overview: String = "",
     /** All fetched streams (in-player Sources switcher); may be empty for resumed items. */
     val streams: List<StreamItem> = emptyList(),
     /** Full episode list for series (in-player Episodes picker). */

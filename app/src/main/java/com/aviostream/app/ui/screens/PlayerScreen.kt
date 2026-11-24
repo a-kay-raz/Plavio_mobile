@@ -4812,44 +4812,31 @@ fun PlayerScreen(
         // a rebuffer shows just the orbit + "Buffering…" over the video.
         // Suppressed on a fatal error — the error overlay takes its place (#4).
         if ((state.isBuffering || state.switchingMedia) && state.playerError == null) {
-            if (!hasStartedPlayback) {
-                Box(Modifier.fillMaxSize()) {
-                    val art = state.currentRequest.poster
-                    if (!art.isNullOrBlank()) {
-                        SafePosterImage(
-                            model = art,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)))
-                    }
-                    Column(
-                        Modifier
-                            .align(Alignment.Center)
-                            .padding(horizontal = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            state.currentRequest.title,
-                            color = TextPrimary,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        OrbitDots(Modifier.size(54.dp))
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            state.loadingStep,
-                            color = TextSecondary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+            // v0.14.30 #44 (Poster Heartbeat): WHICH buffering moments
+            // wear the loading screen is the upstream scope pin
+            // (playerBufferVisual) — the initial load before this
+            // title has ever played only. Every other mid-playback
+            // buffer (seek, slow-network rebuffer, source switch)
+            // keeps the plain orbit over the video, exactly as
+            // before. Resume-after-pause buffering is NOT wired
+            // (resumeBuffering stays false) — that would need
+            // togglePlay edits, out of scope for this port.
+            val bufferVisual = playerBufferVisual(
+                isBuffering = state.isBuffering || state.switchingMedia,
+                hasError = state.playerError != null,
+                hasStartedOnce = hasStartedPlayback,
+                resumeBuffering = false
+            )
+            if (bufferVisual == PlayerBufferVisual.STARTUP_OVERLAY) {
+                PlayerLoadingOverlay(
+                    active = true,
+                    request = state.currentRequest,
+                    phase = initialLoadingPhase(
+                        state.currentRequest.streamUrl.isBlank(),
+                        state.currentRequest.isLive,
+                        state.currentRequest.isTrailer
+                    )
+                )
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
