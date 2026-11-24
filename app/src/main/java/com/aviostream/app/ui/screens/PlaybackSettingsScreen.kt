@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -168,6 +169,8 @@ fun PlaybackSettingsScreen(
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var hapticsEnabled by remember { mutableStateOf(settings.hapticsEnabled) }
     var forceSeek by remember { mutableStateOf(settings.forceSeekAnyStream) }
+    var prePlayEnabled by remember { mutableStateOf(settings.prePlayEnabled) }
+    var pauseScreenEnabled by remember { mutableStateOf(settings.pauseScreenEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
     // Refresh key so the preferred-player subtitle updates after the dialog closes.
     var playerUiTick by remember { mutableStateOf(0) }
@@ -392,6 +395,38 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 hapticsEnabled = it
                                 settings.hapticsEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        // PrePlay (v0.14.30 #45): prefetch the next
+                        // episode's streams while one plays, so the
+                        // play press is instant. Off by default.
+                        SettingsToggleRow(
+                            icon = Icons.Filled.SkipNext,
+                            title = "PrePlay",
+                            subtitle = "Prefetch the next episode's streams while one plays",
+                            checked = prePlayEnabled,
+                            onCheckedChange = {
+                                prePlayEnabled = it
+                                settings.prePlayEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        // Pause screen (v0.14.30 #45): a deliberate
+                        // pause fades in the title's details over the
+                        // dimmed frame once the controls fade. Off by
+                        // default; replaces the pause metadata card
+                        // while it is on.
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Pause,
+                            title = "Pause screen",
+                            subtitle = "Show title details over a dimmed frame while paused",
+                            checked = pauseScreenEnabled,
+                            onCheckedChange = {
+                                pauseScreenEnabled = it
+                                settings.pauseScreenEnabled = it
                             }
                         )
                     },

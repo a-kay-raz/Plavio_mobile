@@ -2575,6 +2575,32 @@ class StreamRepository(
         send(finalResult)
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * PrePlay (v0.14.30 port, feature #45): background-prefetch a
+     * title's streams into the session stream cache. Collecting
+     * [streamResultsFlow] to completion IS the pocket: it writes
+     * its final merged result into [streamResultCache], so the play
+     * press then starts from the cache emission with zero fan-out
+     * wait. Skips the network entirely when the pocket is still
+     * fresh; failures are silent by construction (the flow fails
+     * soft). The cache key must match the key [streamResultsFlow]
+     * computes for a plain collect (no preferred addon, no header
+     * variants).
+     */
+    suspend fun prePlayPrefetch(type: String, videoId: String) {
+        val key = "$type|$videoId||false|cs3:${CloudStreamRepository.uiState.value.registryRevision}"
+        streamResultCache[key]?.let { (cachedAt, cached) ->
+            if (cached.streams.isNotEmpty() &&
+                System.currentTimeMillis() - cachedAt < PREPLAY_FRESH_MS
+            ) return
+        }
+        try {
+            streamResultsFlow(type, videoId).collect { /* pocket fill */ }
+        } catch (_: Exception) {
+            // Silent: a prefetch is never an error surface.
+        }
+    }
+
     suspend fun getStreams(baseUrl: String, type: String, videoId: String): StreamResult =
         withContext(Dispatchers.IO) { api.fetchStreams(baseUrl, type, videoId) }
 
@@ -3338,6 +3364,8 @@ class StreamRepository(
         private const val CLOUDSTREAM_HOME_CATEGORY_LIMIT = 18
         /** How long a cached stream list may be shown before it must be refreshed. */
         private const val STREAM_RESULT_CACHE_TTL_MS = 5L * 60L * 1000L
+        /** PrePlay freshness: a pocket younger than this is not re-fetched. */
+        private const val PREPLAY_FRESH_MS = 15L * 60L * 1000L
         /**
          * Max bytes per cached catalog row — well under SQLite's ~2MB
          * CursorWindow limit, so a row can never poison reads again.

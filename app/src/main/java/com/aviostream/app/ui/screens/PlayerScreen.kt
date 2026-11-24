@@ -2620,6 +2620,30 @@ fun PlayerScreen(
         state.parentalGuideVisible = true
     }
 
+    // PrePlay (v0.14.30 port, feature #45): while an episode plays,
+    // prefetch the NEXT episode's streams into the session stream
+    // cache so the play press is instant. Gated on the switch
+    // (default OFF); failures silent; never re-prefetch a fresh
+    // pocket (see repository.prePlayPrefetch). Navigating away
+    // cancels this effect — the collect inside the prefetch is
+    // cancelled with it.
+    LaunchedEffect(state.currentRequest.videoId, state.currentRequest.episodes.size) {
+        val req = state.currentRequest
+        if (!settings.prePlayEnabled || req.isMovie || req.isLive || req.isTrailer ||
+            req.episodes.isEmpty()
+        ) return@LaunchedEffect
+        val idx = req.episodes.indexOfFirst { it.id == req.videoId }
+            .takeIf { it >= 0 }
+            ?: req.episodes.indexOfFirst {
+                it.season == req.season && it.episode == req.episode
+            }
+        val next = if (idx >= 0) req.episodes.getOrNull(idx + 1) else null
+        if (next == null) return@LaunchedEffect
+        runCatching {
+            repository.prePlayPrefetch(req.type, next.id)
+        }
+    }
+
     /**
      * Serializes player rebuilds (#5): rapid source switches/zaps used to
      * orphan the first fresh player (still playWhenReady → double audio) and
@@ -4098,6 +4122,45 @@ fun PlayerScreen(
         }
     }
 
+    // Pause screen (v0.14.30 port, feature #45). The fork has no
+    // explicit "user pressed pause" flag (upstream sets one in
+    // togglePlay); the approximation used here is a READY pause —
+    // not playing, playback has started, not buffering — which is
+    // the same condition the pause screen's own visibility effect
+    // requires, so a buffering/loading transition hides it in the
+    // same recomposition. A new request starts clean.
+    val userPaused = !state.isPlaying && hasStartedPlayback && !state.isBuffering
+    var pauseScreenVisible by remember(state.currentRequest) { mutableStateOf(false) }
+    LaunchedEffect(state.currentRequest) {
+        pauseScreenVisible = false
+    }
+    // Visibility (upstream's hard condition): the switch is on, the
+    // pause was deliberate, the player is READY-paused (not playing
+    // and NOT buffering), no error, no panel, not locked, VOD only
+    // (never live, never trailers), not in PiP, and the controls are
+    // gone. It appears a short beat after the controls fade, never
+    // over them. The fork already auto-hides the controls 3.5 s
+    // after they show, paused or playing, so no auto-hide change
+    // was needed for the pause branch.
+    val pauseAnyPanelOpen = state.tracksOpen || state.sourcesOpen || state.episodesOpen ||
+        state.subSearchOpen || state.qualityOpen || state.infoOpen || state.chaptersOpen
+    LaunchedEffect(
+        userPaused, state.isPlaying, state.isBuffering, state.showControls,
+        state.playerError, pauseAnyPanelOpen, state.locked,
+        state.currentRequest, settings.pauseScreenEnabled, inPip
+    ) {
+        val eligible = settings.pauseScreenEnabled && userPaused &&
+            !state.isPlaying && !state.isBuffering && !state.showControls &&
+            state.playerError == null && !pauseAnyPanelOpen && !state.locked && !inPip &&
+            !state.currentRequest.isLive && !state.currentRequest.isTrailer
+        if (eligible) {
+            delay(300)
+            pauseScreenVisible = true
+        } else {
+            pauseScreenVisible = false
+        }
+    }
+
     // Nuvio legacy locked overlay auto-hides after 3.5s (reveal again by
     // tapping while locked).
     LaunchedEffect(state.locked, state.lockedOverlayVisible) {
@@ -5399,8 +5462,12 @@ fun PlayerScreen(
         // gradient, under the transport controls so they stay usable.
         // Hidden until playback has actually started, on error, and in PiP.
         // Description is the current episode's overview (series only —
-        // movies carry no overview in the request).
-        if (!state.isPlaying && hasStartedPlayback && state.playerError == null && !inPip) {
+        // movies carry no overview in the request). Suppressed while
+        // the v0.14.30 pause screen (#45) is switched on — the two
+        // would otherwise stack a dimmed title block over a dimmed
+        // title block; the switch defaults OFF, so this is unchanged
+        // unless the user opts into the new screen.
+        if (!settings.pauseScreenEnabled && !state.isPlaying && hasStartedPlayback && state.playerError == null && !inPip) {
             val pauseDescription = if (!req.isMovie) {
                 req.episodes.firstOrNull { it.season == req.season && it.episode == req.episode }?.overview
             } else null
@@ -5411,6 +5478,19 @@ fun PlayerScreen(
                 providerName = sourceNameText,
                 description = pauseDescription
             )
+        }
+
+        // Pause screen (v0.14.30 port, feature #45): sits UNDER the
+        // controls overlay in z-order and carries no gesture handlers
+        // of its own — a tap falls through to the surface's tap
+        // layer, wakes the controls, and this hides in the same
+        // recomposition.
+        AnimatedVisibility(
+            visible = pauseScreenVisible,
+            enter = fadeIn(tween(400)),
+            exit = fadeOut(tween(150))
+        ) {
+            PauseScreenOverlay(req = state.currentRequest)
         }
 
         // Controls overlay.

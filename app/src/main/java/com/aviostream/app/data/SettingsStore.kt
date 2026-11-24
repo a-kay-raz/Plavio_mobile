@@ -578,6 +578,32 @@ class SettingsStore(
         set(value) { prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_NEXT, value).apply() }
 
     /**
+     * PrePlay (v0.14.30 port, feature #45): while an episode plays,
+     * prefetch the NEXT episode's streams into the session stream
+     * cache so the play press is instant. OFF by default — the
+     * user toggles it himself. (The Details page already loads
+     * streams on open in this fork, ungated; that existing
+     * behaviour is left alone — gating it off by default would
+     * regress the Sources sheet.)
+     */
+    var prePlayEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PREPLAY_ENABLED, false)
+        set(value) { prefs.edit().putBoolean(KEY_PREPLAY_ENABLED, value).apply() }
+
+    /**
+     * Pause screen (v0.14.30 port, feature #45): a deliberate pause
+     * in the VOD player fades in the title's details over the
+     * dimmed frame once the controls have faded; never while
+     * loading/buffering, never live, never trailers. OFF by
+     * default — the user toggles it himself. Single home:
+     * Settings → Playback, beside PrePlay. (Upstream defaults
+     * this ON; Avio keeps it OFF per the no-default-change rule.)
+     */
+    var pauseScreenEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PAUSE_SCREEN, false)
+        set(value) { prefs.edit().putBoolean(KEY_PAUSE_SCREEN, value).apply() }
+
+    /**
      * Which player opens streams: the built-in Avio player, an external
      * app chosen by the system chooser, or ask every time.
      * Stored as [PlayerChoice.name]; defaults to built-in.
@@ -2333,6 +2359,8 @@ class SettingsStore(
         private const val KEY_FORCE_SEEK_ANY_STREAM = "force_seek_any_stream"
         private const val KEY_DOWNLOAD_FINISHED_NOTIFICATIONS = "download_finished_notifications"
         private const val KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next_episode"
+        private const val KEY_PREPLAY_ENABLED = "preplay_enabled"
+        private const val KEY_PAUSE_SCREEN = "pause_screen_enabled"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
         private const val KEY_PLAYBACK_ENGINE = "playback_engine"
         private const val KEY_DNS_CHOICE = "dns_choice"
