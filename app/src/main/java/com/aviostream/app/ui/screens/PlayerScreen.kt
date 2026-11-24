@@ -546,8 +546,7 @@ fun PlayerScreen(
                     com.aviostream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", 0)
                 }
                 state.autoFailoverCount = 0
-                state.playerError = error.message?.takeIf { it.isNotBlank() }
-                    ?: "Playback failed (code ${error.errorCode})"
+                state.playerError = com.aviostream.app.data.PlaybackErrorText.explanation(error)
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -1037,8 +1036,7 @@ fun PlayerScreen(
                         com.aviostream.app.data.LivePlaybackPolicy.isRecoverableSourceError(error.errorCode)) {
                         com.aviostream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", 0)
                     }
-                    state.playerError = error.message?.takeIf { it.isNotBlank() }
-                        ?: "Playback failed (code ${error.errorCode})"
+                    state.playerError = com.aviostream.app.data.PlaybackErrorText.explanation(error)
                 }
             }
         }
@@ -3835,7 +3833,7 @@ fun PlayerScreen(
                     modifier = Modifier.padding(horizontal = 32.dp)
                 ) {
                     Text(
-                        "Couldn't play this source",
+                        com.aviostream.app.data.PlaybackErrorText.TITLE,
                         color = TextPrimary,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
