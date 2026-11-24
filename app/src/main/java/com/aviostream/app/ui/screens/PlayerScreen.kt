@@ -1640,8 +1640,16 @@ fun PlayerScreen(
         // display percent (system + boost) into setVolumeFine.
         // Routing it here covers every caller (stepper, gesture,
         // boost reset, rebuilt-player re-attach).
+        // NOTE: the percent is computed inline, not via
+        // displayVolumePercent() — that fun is declared after this
+        // one, and a local fun cannot be referenced before its
+        // declaration in source order (build 82 failed on exactly
+        // this: 'Unresolved reference displayVolumePercent').
         if (mpvActive()) {
-            mpvEngine?.setVolumeFine(displayVolumePercent().toFloat())
+            val sys = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val sysPct = sys * 100 / maxVolume.coerceAtLeast(1)
+            val total = if (sys >= maxVolume) sysPct + (state.volumeBoost * 100).roundToInt() else sysPct
+            mpvEngine?.setVolumeFine(total.toFloat())
             return
         }
         val sid = runCatching { player.audioSessionId }.getOrDefault(-1)
