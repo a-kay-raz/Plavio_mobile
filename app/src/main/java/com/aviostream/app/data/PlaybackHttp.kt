@@ -48,8 +48,14 @@ object PlaybackHttp {
      * origin request, and the network interceptor strips everything except
      * transport headers if a redirect or subresource crosses origins.
      */
-    fun factory(originUrl: String, headers: Map<String, String>): OkHttpDataSource.Factory {
-        return OkHttpDataSource.Factory(client(originUrl)).setDefaultRequestProperties(headers)
+    fun factory(originUrl: String, headers: Map<String, String>, forceSeek: Boolean = false): OkHttpDataSource.Factory {
+        // Force seek (Settings > Playback > "Allow seeking on any stream",
+        // default on): the client is wrapped by ForceSeekHttp so hosts that
+        // ignore byte ranges still seek, VLC-style. Playback only — probing
+        // and downloads keep the plain client.
+        val base = client(originUrl)
+        val callFactory = if (forceSeek) ForceSeekHttp.wrap(base) else base
+        return OkHttpDataSource.Factory(callFactory).setDefaultRequestProperties(headers)
     }
 
     /**

@@ -629,9 +629,10 @@ fun PlayerScreen(
     /** Builds the playback HTTP data source using platform TLS validation. */
     fun buildPlaybackDataSourceFactory(
         headers: Map<String, String>,
-        originUrl: String
+        originUrl: String,
+        forceSeek: Boolean = false
     ): androidx.media3.datasource.DataSource.Factory {
-        val httpFactory = com.aviostream.app.data.PlaybackHttp.factory(originUrl, headers)
+        val httpFactory = com.aviostream.app.data.PlaybackHttp.factory(originUrl, headers, forceSeek)
         // DefaultDataSource delegates per URI scheme: FileDataSource for
         // file:// (downloads), HttpDataSource for http(s):// (streams).
         return DefaultDataSource.Factory(context, httpFactory)
@@ -703,7 +704,8 @@ fun PlayerScreen(
         val playbackHeaders = PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv)
         // HLS variant temp playlists are file:// URLs — the HTTP origin is
         // the master playlist, so segment requests keep the stream's headers.
-        val dataSourceFactory = buildPlaybackDataSourceFactory(playbackHeaders, req.hlsMasterUrl ?: req.streamUrl)
+        // Force seek is a VOD file-playback tool — Live takes the plain path.
+        val dataSourceFactory = buildPlaybackDataSourceFactory(playbackHeaders, req.hlsMasterUrl ?: req.streamUrl, forceSeek = settings.forceSeekAnyStream && !req.isLive)
         val cacheMb = settings.diskCacheMb
         return if (cacheMb > 0) {
             // Step 39: auto-size uses 1/5 of free space (256 MB – 10 GB)

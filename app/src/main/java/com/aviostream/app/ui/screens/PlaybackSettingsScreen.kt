@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Swipe
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -160,6 +161,7 @@ fun PlaybackSettingsScreen(
     var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
     var hapticsEnabled by remember { mutableStateOf(settings.hapticsEnabled) }
+    var forceSeek by remember { mutableStateOf(settings.forceSeekAnyStream) }
     var playerPickerOpen by remember { mutableStateOf(false) }
     // Refresh key so the preferred-player subtitle updates after the dialog closes.
     var playerUiTick by remember { mutableStateOf(0) }
@@ -365,6 +367,18 @@ fun PlaybackSettingsScreen(
                             onCheckedChange = {
                                 hapticsEnabled = it
                                 settings.hapticsEnabled = it
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.SwapHoriz,
+                            title = "Allow seeking on any stream",
+                            subtitle = "Seek even on sources that normally can't — far jumps may take a moment and use extra data",
+                            checked = forceSeek,
+                            onCheckedChange = {
+                                forceSeek = it
+                                settings.forceSeekAnyStream = it
                             }
                         )
                     },

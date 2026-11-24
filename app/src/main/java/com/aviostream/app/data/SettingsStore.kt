@@ -534,6 +534,16 @@ class SettingsStore(
         set(value) { prefs.edit().putString(KEY_FOLLOWED_ACTORS, value).apply() }
 
     /**
+     * Force seek on any stream (v0.14.30 port): VLC-style forced seek
+     * for hosts that ignore HTTP byte ranges — the HTTP layer discards
+     * bytes up to the seek point. Default ON; position-0 opens and
+     * honest ranged responses pass through untouched.
+     */
+    var forceSeekAnyStream: Boolean
+        get() = prefs.getBoolean(KEY_FORCE_SEEK_ANY_STREAM, true)
+        set(value) = prefs.edit().putBoolean(KEY_FORCE_SEEK_ANY_STREAM, value).apply()
+
+    /**
      * "Download finished" alerts (v0.14.30 port): post a notification when a download completes. The live progress notification is separate and always runs while downloads are active. Default ON.
      */
     var downloadFinishedNotifications: Boolean
@@ -2197,6 +2207,7 @@ class SettingsStore(
         private const val KEY_EPISODE_NOTIFICATIONS = "episode_notifications"
         private const val KEY_MOVIE_NOTIFICATIONS = "movie_notifications"
         private const val KEY_FOLLOWED_ACTORS = "followed_actors_json"
+        private const val KEY_FORCE_SEEK_ANY_STREAM = "force_seek_any_stream"
         private const val KEY_DOWNLOAD_FINISHED_NOTIFICATIONS = "download_finished_notifications"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
         private const val KEY_BUFFER_MIN_MS = "buffer_min_ms"
