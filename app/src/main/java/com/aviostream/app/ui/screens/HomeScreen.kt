@@ -1169,6 +1169,7 @@ fun HomeScreen(
     addToListTarget?.let { (addonId, meta) ->
         AddToListSheet(
             listsRepository = listsRepository,
+            repository = repository,
             addonId = addonId,
             type = meta.type,
             metaId = meta.id,

@@ -2938,6 +2938,7 @@ private fun DetailContent(
     if (showAddToList) {
         AddToListSheet(
             listsRepository = listsRepository,
+            repository = repository,
             addonId = addonId,
             type = meta.type,
             metaId = meta.id,

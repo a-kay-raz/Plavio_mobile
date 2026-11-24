@@ -1,7 +1,11 @@
 package com.aviostream.app.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +27,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,10 +38,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.aviostream.app.data.AvioStatuses
 import com.aviostream.app.data.CustomListsRepository
+import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.db.CollectionFolder
+import com.aviostream.app.data.db.TitleStatusItem
+import com.aviostream.app.data.db.WatchlistItem
 import com.aviostream.app.data.db.CustomList
 import com.aviostream.app.ui.theme.LocalPalette
 import com.aviostream.app.ui.theme.TextPrimary
@@ -51,6 +61,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun AddToListSheet(
     listsRepository: CustomListsRepository,
+    // v0.14.30 port (#43): Avio-native library statuses. Null (previews
+    // and callers without a repository) hides the status picker.
+    repository: StreamRepository? = null,
     addonId: String,
     type: String,
     metaId: String,
@@ -71,6 +84,17 @@ fun AddToListSheet(
     val itemKey = listsRepository.itemKey(addonId, type, metaId)
     val containing by listsRepository.observeListsContaining(itemKey)
         .collectAsState(initial = emptyList())
+    // Avio statuses (v0.14.30 port, #43): explicit rows from the
+    // repository; the resolved status folds in watchlist membership
+    // as Next to Watch (see AvioStatuses).
+    val palette = LocalPalette.current
+    val watchlistItems by (repository?.watchlist?.collectAsState(initial = emptyList())
+        ?: remember { mutableStateOf<List<WatchlistItem>>(emptyList()) })
+    val libraryItem = watchlistItems.firstOrNull {
+        it.type == type && it.metaId == metaId
+    }
+    val statusItems by (repository?.titleStatuses?.collectAsState(initial = emptyList<TitleStatusItem>())
+        ?: remember { mutableStateOf<List<TitleStatusItem>>(emptyList()) })
     var creating by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
 
@@ -96,6 +120,62 @@ fun AddToListSheet(
                 color = TextSecondary
             )
             Spacer(Modifier.height(12.dp))
+
+            // ---- Avio status: five chips, single-select, tapping the
+            // active chip clears it (v0.14.30 port, #43). Mirrors the
+            // zip's status picker; Next to Watch is backed by the
+            // watchlist, so picking it adds the title there.
+            if (repository != null) {
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(8.dp))
+                val explicitStatus = statusItems.firstOrNull {
+                    it.type == type && it.metaId == metaId
+                }?.status
+                val resolvedStatus = AvioStatuses.resolved(explicitStatus, libraryItem != null)
+                FlowRow(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                ) {
+                    AvioStatuses.ALL.forEach { status ->
+                        val selected = resolvedStatus == status
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (selected) palette.accent
+                                    else Color.White.copy(alpha = 0.07f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (selected) palette.accent else Color.White.copy(alpha = 0.14f),
+                                    RoundedCornerShape(50)
+                                )
+                                .clickable {
+                                    scope.launch {
+                                        repository.setAvioStatus(
+                                            addonId, type, metaId, name, poster,
+                                            if (selected) null else status,
+                                            year
+                                        )
+                                    }
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = AvioStatuses.label(status),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selected) palette.accentText else TextPrimary
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
 
             if (lists.isEmpty() && !creating) {
                 Text(

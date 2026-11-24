@@ -191,6 +191,49 @@ interface WatchlistDao {
     suspend fun clearAll()
 }
 
+/**
+ * Avio's own per-title statuses (v0.14.30 port): at most one row per
+ * title, carrying one of watching / hold / completed / dropped.
+ * "Next to Watch" deliberately has NO row here — it is backed by
+ * the watchlist table itself (watchlist membership resolves to
+ * Next to Watch; an explicit row here wins over that membership).
+ * See AvioStatuses.resolved. No profile column: the fork's library
+ * tables are per-profile files, while this table lives in the
+ * global database (DB v20).
+ */
+@Entity(tableName = "title_statuses")
+data class TitleStatusItem(
+    @PrimaryKey val key: String,
+    val addonId: String,
+    val type: String,
+    val metaId: String,
+    val name: String,
+    val poster: String?,
+    val status: String,
+    val updatedAt: Long
+)
+
+@Dao
+interface TitleStatusDao {
+    @Query("SELECT * FROM title_statuses ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<TitleStatusItem>>
+
+    @Query("SELECT * FROM title_statuses WHERE `key` = :key LIMIT 1")
+    suspend fun getByKey(key: String): TitleStatusItem?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: TitleStatusItem)
+
+    @Query("DELETE FROM title_statuses WHERE `key` = :key")
+    suspend fun deleteByKey(key: String)
+
+    @Query("SELECT * FROM title_statuses")
+    suspend fun getAll(): List<TitleStatusItem>
+
+    @Query("DELETE FROM title_statuses")
+    suspend fun clearAll()
+}
+
 /** User-created custom lists — named collections beyond the flat watchlist. Added in DB v9. */
 @Entity(tableName = "custom_lists")
 data class CustomList(

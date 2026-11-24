@@ -12,6 +12,7 @@ import com.aviostream.app.data.db.CustomListItem
 import com.aviostream.app.data.db.InstalledAddon
 import com.aviostream.app.data.db.PlaybackState
 import com.aviostream.app.data.db.SubtitleCache
+import com.aviostream.app.data.db.TitleStatusItem
 import com.aviostream.app.data.db.WatchlistItem
 import com.aviostream.app.data.simkl.SimklSyncEngine
 import com.aviostream.app.data.cloudstream.CloudStreamRepository
@@ -105,6 +106,14 @@ class StreamRepository(
     val continueWatching: Flow<List<PlaybackState>> =
         profileDb.playbackDao().observeRecent().map { dedupePlaybackRows(it) }
     val watchlist: Flow<List<WatchlistItem>> = profileDb.watchlistDao().observeAll()
+
+    /**
+     * Avio-native library statuses (v0.14.30 port): explicit WATCHING /
+     * HOLD / COMPLETED / DROPPED rows from the global database.
+     * NEXT_TO_WATCH has no row — watchlist membership resolves to it
+     * (see [AvioStatuses.resolved]).
+     */
+    val titleStatuses: Flow<List<TitleStatusItem>> = db.titleStatusDao().observeAll()
 
     /** In-memory cache of every catalog item loaded on Home — used for search. */
     @Volatile
@@ -2763,6 +2772,80 @@ class StreamRepository(
             }
         }
         onWatchlistChanged?.invoke()
+    }
+
+    /**
+     * Sets (or clears, with null) a title's Avio status (v0.14.30
+     * port). One status per title: NEXT_TO_WATCH is backed by the
+     * watchlist table — setting it drops any explicit row and ensures
+     * watchlist membership; setting any other status writes the
+     * explicit row and removes watchlist membership so the title
+     * fully moves; clearing drops the explicit row, or the watchlist
+     * membership when the resolved status was Next to Watch. See
+     * [AvioStatuses]. Watchlist rows live in the active profile's
+     * database, status rows in the global one.
+     */
+    suspend fun setAvioStatus(
+        addonId: String,
+        type: String,
+        metaId: String,
+        name: String,
+        poster: String?,
+        status: String?,
+        // Step 47: release year (0 = unknown) for the Library Saved sort.
+        year: Int = 0
+    ) = withContext(Dispatchers.IO) {
+        var watchlistChanged = false
+        writeMutex.withLock {
+            val key = "$addonId|$type|$metaId"
+            when (status) {
+                null -> {
+                    val hadExplicit = db.titleStatusDao().getByKey(key) != null
+                    db.titleStatusDao().deleteByKey(key)
+                    if (!hadExplicit && profileDb.watchlistDao().getByKey(key) != null) {
+                        profileDb.watchlistDao().deleteByKey(key)
+                        watchlistChanged = true
+                    }
+                }
+                AvioStatuses.NEXT_TO_WATCH -> {
+                    db.titleStatusDao().deleteByKey(key)
+                    if (profileDb.watchlistDao().getByKey(key) == null) {
+                        profileDb.watchlistDao().upsert(
+                            WatchlistItem(
+                                key = key,
+                                addonId = addonId,
+                                type = type,
+                                metaId = metaId,
+                                name = name,
+                                poster = poster,
+                                addedAt = System.currentTimeMillis(),
+                                year = year
+                            )
+                        )
+                        watchlistChanged = true
+                    }
+                }
+                else -> {
+                    db.titleStatusDao().upsert(
+                        TitleStatusItem(
+                            key = key,
+                            addonId = addonId,
+                            type = type,
+                            metaId = metaId,
+                            name = name,
+                            poster = poster,
+                            status = status,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                    if (profileDb.watchlistDao().getByKey(key) != null) {
+                        profileDb.watchlistDao().deleteByKey(key)
+                        watchlistChanged = true
+                    }
+                }
+            }
+        }
+        if (watchlistChanged) onWatchlistChanged?.invoke()
     }
 
     /** True when a Trakt or Simkl account is linked (library sync, issue #3). */

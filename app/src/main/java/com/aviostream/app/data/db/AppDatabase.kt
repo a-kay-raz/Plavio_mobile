@@ -16,12 +16,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CustomList::class,
         CustomListItem::class,
         WatchedRecord::class,
+        TitleStatusItem::class,
         Collection::class,
         CollectionFolder::class,
         CollectionSourceRow::class,
         Profile::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
     abstract fun customListDao(): CustomListDao
     abstract fun watchedDao(): WatchedDao
+    abstract fun titleStatusDao(): TitleStatusDao
     abstract fun collectionDao(): CollectionDao
     abstract fun profileDao(): ProfileDao
 }
@@ -319,6 +321,28 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
                 pinSalt TEXT,
                 createdAt INTEGER NOT NULL,
                 sortOrder INTEGER NOT NULL
+            )"""
+        )
+    }
+}
+
+/** v19 → v20 (v0.14.30 port, #43): the `title_statuses` table for
+ * Avio-native library statuses (WATCHING / HOLD / COMPLETED /
+ * DROPPED). NEXT_TO_WATCH has no row — it is backed by the watchlist
+ * table. Starts empty; existing watchlist rows already read as
+ * Next to Watch, so no data copy is needed. */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS title_statuses (
+                `key` TEXT NOT NULL PRIMARY KEY,
+                addonId TEXT NOT NULL,
+                type TEXT NOT NULL,
+                metaId TEXT NOT NULL,
+                name TEXT NOT NULL,
+                poster TEXT,
+                status TEXT NOT NULL,
+                updatedAt INTEGER NOT NULL
             )"""
         )
     }

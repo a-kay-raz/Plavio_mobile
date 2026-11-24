@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aviostream.app.data.AvioStatuses
 import com.aviostream.app.data.CustomListsRepository
 import com.aviostream.app.data.FavoritePeopleRepository
 import com.aviostream.app.data.MetaPreview
@@ -156,6 +157,10 @@ fun LibraryScreen(
     }
 
     val myWatchlist by repository.watchlist.collectAsState(initial = emptyList())
+    // Avio-native library statuses (v0.14.30 port, #43): explicit
+    // WATCHING / HOLD / COMPLETED / DROPPED rows; NEXT_TO_WATCH has
+    // no row and resolves from watchlist membership below.
+    val myStatuses by repository.titleStatuses.collectAsState(initial = emptyList())
     val myLists by listsRepository.lists.collectAsState(initial = emptyList())
     // Step 58: favorite people (pinned first) for the Saved tab rail.
     val favoritePeopleState by favoritePeopleRepository.uiState.collectAsState()
@@ -509,6 +514,31 @@ fun LibraryScreen(
             }
         }
 
+        // Avio status sections (v0.14.30 port, #43): one poster row
+        // per status, mirroring the zip's status groups. Next to Watch
+        // is backed by the watchlist — titles carrying an explicit
+        // status show under that status only. Unlike the zip's tabbed
+        // Library (which dropped its Completed tab because its Watched
+        // tab covered finished titles), this sections view has no
+        // Watched section, so Completed keeps its own row here.
+        val explicitStatusKeys = myStatuses.map { it.key }.toSet()
+        AvioStatuses.ALL.forEach { status ->
+            val metas: List<MetaPreview> = if (status == AvioStatuses.NEXT_TO_WATCH) {
+                myWatchlist.filter { it.key !in explicitStatusKeys }.map {
+                    MetaPreview(id = it.metaId, type = it.type, name = it.name, poster = it.poster)
+                }
+            } else {
+                myStatuses.filter { it.status == status }.map {
+                    MetaPreview(id = it.metaId, type = it.type, name = it.name, poster = it.poster)
+                }
+            }
+            if (metas.isNotEmpty()) {
+                item(key = "avio_status_$status") {
+                    FeedRow(AvioStatuses.label(status), "AVIO", palette.accent, metas, onOpenDetail)
+                }
+            }
+        }
+
         if (completedDownloads.isNotEmpty()) {
             item(key = "dl_title") {
                 Row(
@@ -585,7 +615,7 @@ fun LibraryScreen(
 
         if (!loading && upNext.isEmpty() && traktWatchlist.isEmpty() && simklWatchlist.isEmpty() &&
             traktLists.isEmpty() &&
-            myWatchlist.isEmpty() && myLists.isEmpty()
+            myWatchlist.isEmpty() && myStatuses.isEmpty() && myLists.isEmpty()
         ) {
             item(key = "lib_empty") {
                 LibraryEmptyStateCard(
