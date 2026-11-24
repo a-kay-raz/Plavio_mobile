@@ -129,7 +129,7 @@ android {
         }
         release {
             signingConfig = signingConfigs.findByName("avioOwner")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

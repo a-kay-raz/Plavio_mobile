@@ -1,11 +1,10 @@
 # Project-specific ProGuard rules.
-# Minification is currently disabled for release builds in app/build.gradle.kts.
+# R8 minification is ON for release builds (isMinifyEnabled = true).
 
 # ── CloudStream (CS3) runtime ─────────────────────────────────────────────────
 # Plugins are loaded at runtime via PathClassLoader and reflect into the
 # runtime API, so their classes and the host's CS3 layer must survive R8.
-# Minification is OFF today (isMinifyEnabled = false), but these keeps mean a
-# future enable cannot silently strip the runtime. Adapted from the TV port's
+# R8 minification is ON, and these keeps stop it stripping the runtime.
 # proguard-rules.pro (its com.nuvio.tv.core.cloudstream line re-pointed here).
 # Every kept package was verified present 2026-11-22: AAR (1,098 classes) for
 # com.lagradost.cloudstream3/api, NiceHttp 0.4.18, jackson-module-kotlin
