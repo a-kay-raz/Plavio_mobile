@@ -139,7 +139,12 @@ import com.aviostream.app.data.notifications.NotificationNav
 import com.aviostream.app.util.ExternalPlayer
 import com.aviostream.app.data.update.UpdateInfo
 import com.aviostream.app.ui.components.CrashReportDialog
+import com.aviostream.app.data.MotionPreferences
 import com.aviostream.app.ui.components.LocalPosterStyle
+import com.aviostream.app.ui.theme.LocalCardCorner
+import com.aviostream.app.ui.theme.LocalReduceMotion
+import com.aviostream.app.ui.theme.LocalSpacingScale
+import com.aviostream.app.ui.theme.cardCornerFor
 import com.aviostream.app.ui.glass.LiquidGlassFrostedBar
 import com.aviostream.app.ui.glass.LiquidGlassStyle
 import com.aviostream.app.ui.glass.LocalAvioGlassBackdrop
@@ -427,9 +432,22 @@ class MainActivity : ComponentActivity() {
                 } ?: base
             }
             val isLight = palette.light
+            // Appearance extras (v0.14.30 port, feature #17): card
+            // corners / spacing / reduced-motion ride their own locals
+            // into the shared components. All re-read on themeTick, so
+            // a change in Settings → Appearance applies live via the
+            // same onThemeChanged bump the accent uses. Defaults
+            // reproduce the shipped look exactly. Reduced motion is
+            // collected from MotionPreferences (the single store —
+            // Advanced settings toggles it too), so it updates even
+            // when the change comes from there.
+            val reduceMotion by MotionPreferences.reduced.collectAsState()
             AvioTheme(palette = palette, isLight = isLight) {
                 CompositionLocalProvider(
-                    LocalPosterStyle provides posterStyleFrom(app.settings)
+                    LocalPosterStyle provides posterStyleFrom(app.settings),
+                    LocalCardCorner provides cardCornerFor(app.settings.cardCorners),
+                    LocalSpacingScale provides app.settings.spacingScale(),
+                    LocalReduceMotion provides reduceMotion
                 ) {
                     AvioNav(onThemeChanged = { themeTick++ })
                 }
@@ -969,11 +987,19 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
                 // the shrunk (icons-only) state regardless of scroll.
                 val dockCompact = app.settings.dockStyle == "compact"
                 val foldAnim = remember { Animatable(0f) }
-                LaunchedEffect(compactNav, dockCompact) {
-                    foldAnim.animateTo(
-                        targetValue = if (compactNav || dockCompact) 1f else 0f,
-                        animationSpec = spring(dampingRatio = 0.92f, stiffness = 205f)
-                    )
+                // Reduced animations (v0.14.30 port, feature #17): the
+                // shrink snaps instead of springing.
+                val reduceMotion = LocalReduceMotion.current
+                LaunchedEffect(compactNav, dockCompact, reduceMotion) {
+                    val target = if (compactNav || dockCompact) 1f else 0f
+                    if (reduceMotion) {
+                        foldAnim.snapTo(target)
+                    } else {
+                        foldAnim.animateTo(
+                            targetValue = target,
+                            animationSpec = spring(dampingRatio = 0.92f, stiffness = 205f)
+                        )
+                    }
                 }
                 val fold = foldAnim.value
                 // Seated at the bottom edge (v0.12.15) and lifted a

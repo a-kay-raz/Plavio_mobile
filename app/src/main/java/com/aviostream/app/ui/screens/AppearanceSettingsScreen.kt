@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.aviostream.app.data.ANIMATION_OPTIONS
+import com.aviostream.app.data.CARD_CORNER_OPTIONS
+import com.aviostream.app.data.LAYOUT_SPACING_OPTIONS
+import com.aviostream.app.data.MotionPreferences
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -69,6 +74,13 @@ fun AppearanceSettingsScreen(
     var appIcon by remember { mutableStateOf(settings.appIcon) }
     // Six-theme choice (SettingsStore.appTheme).
     var appTheme by remember { mutableStateOf(settings.appTheme) }
+    // Appearance extras (v0.14.30 port, feature #17).
+    var layoutSpacing by remember { mutableStateOf(settings.layoutSpacing) }
+    var cardCorners by remember { mutableStateOf(settings.cardCorners) }
+    // Reduced motion is the MotionPreferences store (live) — the
+    // chips below read it, never a second copy.
+    val reducedMotion by MotionPreferences.reduced.collectAsState()
+    val animationMode = if (reducedMotion) "Reduced" else "Full"
     // W10: landscape mode, custom poster source, card depth.
 
     GlowBackground {
@@ -96,7 +108,7 @@ fun AppearanceSettingsScreen(
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Pick your accent colour and theme.",
+                        "Pick your accent colour, theme, sizes and motion.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         modifier = Modifier.padding(start = 56.dp, end = 8.dp)
@@ -438,6 +450,79 @@ fun AppearanceSettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+            item(key = "sizes-layout") {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp)
+                    ) {
+                        Text("Settings & stream spacing", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+                        Spacer(Modifier.height(6.dp))
+                        OptionChips(
+                            options = LAYOUT_SPACING_OPTIONS,
+                            selected = layoutSpacing,
+                            onSelect = { name ->
+                                layoutSpacing = name
+                                settings.layoutSpacing = name
+                                onThemeChanged()
+                            }
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Applies to Settings screens and stream cards",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Text("Card corners", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+                        Spacer(Modifier.height(6.dp))
+                        OptionChips(
+                            options = CARD_CORNER_OPTIONS,
+                            selected = cardCorners,
+                            onSelect = { name ->
+                                cardCorners = name
+                                settings.cardCorners = name
+                                onThemeChanged()
+                            }
+                        )
+                    }
+                }
+            }
+            item(key = "motion") {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp)
+                    ) {
+                        Text("Animations", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+                        Spacer(Modifier.height(6.dp))
+                        OptionChips(
+                            options = ANIMATION_OPTIONS,
+                            selected = animationMode,
+                            onSelect = { name ->
+                                MotionPreferences.setReduced(context, name == "Reduced")
+                                onThemeChanged()
+                            }
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Reduced damps motion across the app",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
                     }
                 }
             }

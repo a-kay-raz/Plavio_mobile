@@ -305,6 +305,17 @@ val QUALITY_ORDER_OPTIONS: List<String> = listOf("2160p", "1080p", "720p", "480p
 /** Autoplay quality choices: "Auto" follows the quality order above. */
 val AUTOPLAY_QUALITY_OPTIONS: List<String> = listOf("Auto") + QUALITY_ORDER_OPTIONS
 
+/** Layout spacing choices (v0.14.30 port, feature #17). */
+val LAYOUT_SPACING_OPTIONS: List<String> = listOf("Compact", "Comfortable")
+
+/** Card corner choices (v0.14.30 port, feature #17). */
+val CARD_CORNER_OPTIONS: List<String> = listOf("Rounded", "Sharp")
+
+/** Animation choices (v0.14.30 port, feature #17): Full motion or
+ *  Reduced (damped). The choice itself lives in MotionPreferences
+ *  (the fork's single reduced-motion store). */
+val ANIMATION_OPTIONS: List<String> = listOf("Full", "Reduced")
+
 /** Autoplay max-size choices (GB; 0 = no limit). */
 val AUTOPLAY_SIZE_OPTIONS: List<Pair<Int, String>> = listOf(
     0 to "No limit",
@@ -1681,6 +1692,29 @@ class SettingsStore(
             amoledBlack = value == "TRUE_BLACK"
         }
 
+    // Appearance extras (v0.14.30 port, feature #17). Every
+    // default reproduces the shipped behaviour exactly, so the app
+    // looks identical until the user changes something in
+    // Settings → Appearance.
+    // ------------------------------------------------------------------
+
+    /** Layout spacing: "Compact" / "Comfortable" (row/list padding scale). */
+    var layoutSpacing: String
+        get() = (prefs.getString(KEY_LAYOUT_SPACING, "Comfortable") ?: "Comfortable")
+            .takeIf { it in LAYOUT_SPACING_OPTIONS } ?: "Comfortable"
+        set(value) = prefs.edit()
+            .putString(KEY_LAYOUT_SPACING, if (value in LAYOUT_SPACING_OPTIONS) value else "Comfortable").apply()
+
+    /** Padding-scale multiplier for [layoutSpacing]. */
+    fun spacingScale(): Float = if (layoutSpacing == "Compact") 0.78f else 1f
+
+    /** Card corners: "Rounded" (shipped look) / "Sharp". */
+    var cardCorners: String
+        get() = (prefs.getString(KEY_CARD_CORNERS, "Rounded") ?: "Rounded")
+            .takeIf { it in CARD_CORNER_OPTIONS } ?: "Rounded"
+        set(value) = prefs.edit()
+            .putString(KEY_CARD_CORNERS, if (value in CARD_CORNER_OPTIONS) value else "Rounded").apply()
+
     /**
      * Preferred subtitle languages (ISO 639-1 codes, up to 2).
      * Empty = no preference (first available subtitle is used).
@@ -2406,6 +2440,8 @@ class SettingsStore(
         private const val KEY_AMOLED = "amoled_black"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_APP_THEME = "app_theme"
+        private const val KEY_LAYOUT_SPACING = "appearance_layout_spacing"
+        private const val KEY_CARD_CORNERS = "appearance_card_corners"
         private const val KEY_PREINSTALL_PREFIX = "preinstall_done_"
         private const val KEY_SIMKL_TOKEN = "simkl_token"
         private const val KEY_SIMKL_USERNAME = "simkl_username"

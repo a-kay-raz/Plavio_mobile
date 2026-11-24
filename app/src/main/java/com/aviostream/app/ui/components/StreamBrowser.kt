@@ -85,6 +85,7 @@ import com.aviostream.app.ui.glass.ambientLiquidGlass
 import com.aviostream.app.ui.theme.AppPalette
 import com.aviostream.app.ui.theme.GlassBorder
 import com.aviostream.app.ui.theme.LocalPalette
+import com.aviostream.app.ui.theme.LocalSpacingScale
 import com.aviostream.app.ui.theme.TextPrimary
 import com.aviostream.app.ui.theme.TextSecondary
 import com.aviostream.app.ui.tv.tvFocusRing
@@ -725,7 +726,7 @@ fun StreamCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp * LocalSpacingScale.current)
     ) {
         Column(
             modifier = Modifier

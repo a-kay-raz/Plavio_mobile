@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aviostream.app.ui.theme.GlassBorder
+import com.aviostream.app.ui.theme.LocalSpacingScale
 import com.aviostream.app.ui.theme.TextPrimary
 
 /**
@@ -98,7 +99,7 @@ private fun V117RowContent(
     trailing: @Composable RowScope.() -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp * LocalSpacingScale.current),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (icon != null) {

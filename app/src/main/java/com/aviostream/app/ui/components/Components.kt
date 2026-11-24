@@ -82,6 +82,7 @@ import androidx.compose.runtime.setValue
 import com.aviostream.app.ui.tv.tvFocusRing
 import com.aviostream.app.ui.tv.rememberIsTv
 import com.aviostream.app.ui.theme.AppTheme
+import com.aviostream.app.ui.theme.LocalCardCorner
 import com.aviostream.app.ui.theme.LocalPalette
 import com.aviostream.app.ui.theme.GlassBorder
 import com.aviostream.app.ui.theme.GlassWhite
@@ -144,8 +145,10 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // Nuvio card radius (NuvioTokens.Radius.card = 24dp).
-    val shape = RoundedCornerShape(24.dp)
+    // Nuvio card radius (NuvioTokens.Radius.card = 24dp); the
+    // Appearance card-corners option rides LocalCardCorner (24.dp
+    // Rounded, the shipped look, or 8.dp Sharp).
+    val shape = RoundedCornerShape(LocalCardCorner.current)
     val clickableMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
         modifier = modifier
