@@ -780,6 +780,21 @@ private fun startPlayback(
         type = meta.type,
         streamLabel = streamQualityLabel(stream),
         sourceName = stream.sourceName,
+        // Loading / pause presentation facts (v0.14.30 #44/#45): the
+        // request carried these fields since the port but no
+        // construction site ever filled them, so the loading screen
+        // showed the text title instead of the title LOGO (with its
+        // heartbeat/breathing) and no backdrop, meta line or cast
+        // capsule. The meta addon serves all of them — pass them
+        // through so the loading screen presents the title properly.
+        logo = meta.logo,
+        background = meta.background,
+        releaseInfo = meta.releaseInfo,
+        runtime = meta.runtime,
+        genres = meta.genres,
+        imdbRating = meta.imdbRating,
+        cast = meta.cast.map { it.name },
+        overview = meta.description ?: "",
         streams = allStreams,
         episodes = meta.videos,
         metaId = meta.id,
@@ -1717,7 +1732,18 @@ private fun DetailContent(
                                                         streamLabel = "TRAILER",
                                                         metaId = meta.id,
                                                         isTrailer = true,
-                                                        mergeAudioUrl = playback.audioUrl
+                                                        mergeAudioUrl = playback.audioUrl,
+                                                        // Same loading presentation as the main
+                                                        // path: the trailer's loading screen
+                                                        // shows the title logo (breathing) too.
+                                                        logo = meta.logo,
+                                                        background = meta.background,
+                                                        releaseInfo = meta.releaseInfo,
+                                                        runtime = meta.runtime,
+                                                        genres = meta.genres,
+                                                        imdbRating = meta.imdbRating,
+                                                        cast = meta.cast.map { it.name },
+                                                        overview = meta.description ?: ""
                                                     )
                                                 )
                                             } else {
