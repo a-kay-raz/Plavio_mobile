@@ -257,6 +257,7 @@ import com.aviostream.app.data.SkipSegmentRepository
 import com.aviostream.app.data.SdhFilteringTextOutput
 import com.aviostream.app.data.SubtitleSdhFilter
 import com.aviostream.app.data.detectTrackLanguageVariant
+import com.aviostream.app.data.autoPickSubtitleIndex
 import com.aviostream.app.data.subtitleLangMatches
 import com.aviostream.app.data.subtitleTypeface
 import com.aviostream.app.data.simkl.SimklManager
@@ -2427,14 +2428,22 @@ fun PlayerScreen(
     // The first-party auto-pick winner: the best match under the user's
     // subtitle rules (languages first; Always-on falls back to the first
     // available; Off picks none — the entries still list in the panel).
+    // The first-party auto-pick winner, via the shared ranked auto-pick
+    // (v0.14.30 #47): language priority first, full tracks above forced
+    // ones in the same language. No SDH-preference setting exists in Avio
+    // yet (preferSdh off) and forced tracks stay eligible. Behaviour
+    // change vs the old inline pick: with NO preferred languages set,
+    // the best available track now turns on (the shared ranker's rule,
+    // matching the resolved-subtitles path) instead of none.
     fun pickFirstPartyAutoSub(sorted: List<Subtitle>): Subtitle? {
-        if (sorted.isEmpty()) return null
-        if (settings.subtitleDefaultMode == com.aviostream.app.data.SUB_DEFAULT_OFF) return null
-        val prefs = settings.subtitleLanguages
-        val match = sorted.firstOrNull { sub ->
-            prefs.any { pref -> subtitleLangMatches(sub.lang, pref) }
-        }
-        return match ?: if (settings.subtitleDefaultMode == com.aviostream.app.data.SUB_DEFAULT_ALWAYS_ON) sorted.first() else null
+        val idx = autoPickSubtitleIndex(
+            sorted,
+            settings.subtitleLanguages,
+            settings.subtitleDefaultMode,
+            preferSdh = false,
+            forcedAutoShow = true
+        )
+        return if (idx >= 0) sorted[idx] else null
     }
 
     // First-party subtitles (v0.14.30 port): Avio's own subtitle addon is
