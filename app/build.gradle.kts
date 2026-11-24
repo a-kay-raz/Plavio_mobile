@@ -194,7 +194,6 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
@@ -249,7 +248,6 @@ dependencies {
     implementation("com.github.Blatzar:NiceHttp:0.4.18")
     implementation(libs.ksoup.jvm)
     implementation(libs.conscrypt.android)
-    implementation(libs.fuzzywuzzy)
     // Kyant Backdrop — liquid-glass (Nuvio-style) refraction + blur.
     // 1.0.6: Kotlin 2.3.10 matches this project; its drawBackdrop /
     // lens / blur / vibrancy API is the same as Nuvio's 2.0.1 usage.

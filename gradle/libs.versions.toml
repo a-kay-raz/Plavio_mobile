@@ -17,7 +17,6 @@ jacksonModuleKotlin = "2.13.1"
 jsoup = "1.22.1"
 kotlinxDatetime = "0.8.0"
 conscryptAndroid = "2.5.2"
-fuzzywuzzy = "1.4.0"
 rhino = "1.8.1"
 tmdbJava = "2.13.0"
 cryptography = "0.6.0"
@@ -64,7 +63,6 @@ jackson-module-kotlin = { group = "com.fasterxml.jackson.module", name = "jackso
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 conscrypt-android = { group = "org.conscrypt", name = "conscrypt-android", version.ref = "conscryptAndroid" }
-fuzzywuzzy = { group = "me.xdrop", name = "fuzzywuzzy", version.ref = "fuzzywuzzy" }
 rhino = { group = "org.mozilla", name = "rhino", version.ref = "rhino" }
 tmdb-java = { group = "com.uwetrottmann.tmdb2", name = "tmdb-java", version.ref = "tmdbJava" }
 cryptography-core = { group = "dev.whyoleg.cryptography", name = "cryptography-core", version.ref = "cryptography" }
