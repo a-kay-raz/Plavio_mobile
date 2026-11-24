@@ -20,6 +20,7 @@ import com.aviostream.app.data.SkipSegment
 import com.aviostream.app.data.StreamItem
 import com.aviostream.app.data.StreamResult
 import com.aviostream.app.data.Subtitle
+import com.aviostream.app.data.SubtitleStyleOverride
 import com.aviostream.app.data.Video
 import com.aviostream.app.ui.screens.player.*
 import java.util.concurrent.atomic.AtomicInteger
@@ -300,6 +301,15 @@ internal class PlayerScreenState(
     // rail's appearance before the player finishes attaching it).
     var panelLang by mutableStateOf<String?>(null)
     var panelPickedUrl by mutableStateOf<String?>(null)
+    /**
+     * Per-title subtitle style override (#27): the video id the
+     * loaded override belongs to. Reloaded (with the override) when
+     * the title changes; the in-player Style rail writes here, never
+     * to the global Settings keys.
+     */
+    var subtitleOverrideKey by mutableStateOf(initialRequest.videoId)
+    /** This title's style override (EMPTY = pure Settings defaults). */
+    var subtitleOverrideState by mutableStateOf(SubtitleStyleOverride.EMPTY)
     // Style-rail mirrors of the persisted style: font size (sp), text
     // colour (ARGB — its alpha is the opacity control), bold / outline /
     // outline colour / bottom offset, plus auto-sync capture state and

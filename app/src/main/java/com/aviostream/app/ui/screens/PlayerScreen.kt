@@ -236,6 +236,9 @@ import com.aviostream.app.data.PlaybackRequest
 import com.aviostream.app.util.ExternalPlayer
 import com.aviostream.app.data.TvChannelRef
 import com.aviostream.app.data.AvioSidecarSubtitles
+import com.aviostream.app.data.SubtitleStyleOverride
+import com.aviostream.app.data.SubtitleStyleOverrides
+import com.aviostream.app.data.SubtitleStyleValues
 import com.aviostream.app.data.ResolvedSubtitle
 import java.util.concurrent.TimeUnit
 import com.aviostream.app.data.SkipSegment
@@ -922,10 +925,55 @@ fun PlayerScreen(
     }
 
 
+    // ---- Per-title subtitle style overrides (#27) ----
+    // Settings → Subtitles is the ONLY home of the global subtitle
+    // style defaults. The in-player Style rail used to write those
+    // same globals, so a tweak inside one title silently re-styled
+    // every other title and fought the Settings page. The rail now
+    // writes a PER-TITLE override (persisted by
+    // SubtitleStyleOverrides, keyed by video id); both engines
+    // render the RESOLVED style — override field, else the global
+    // default, per field.
+
+    /** The style the renderers must use right now: this title's override over the Settings defaults. */
+    fun effectiveSubtitleStyle(): SubtitleStyleValues =
+        state.subtitleOverrideState.resolve(
+            SubtitleStyleValues.fromGlobals(settings)
+        )
+
+    /** The Style rail's only write path: fold a change into THIS title's override and persist it. */
+    fun persistSubtitleStyle(
+        transform: (SubtitleStyleOverride) -> SubtitleStyleOverride
+    ) {
+        val next = transform(state.subtitleOverrideState)
+        state.subtitleOverrideState = next
+        SubtitleStyleOverrides.save(context, state.subtitleOverrideKey, next)
+    }
+
+    /** Rail Reset: drop THIS title's override (the rail re-seeds its mirrors from the globals). */
+    fun clearSubtitleStyleOverride() {
+        state.subtitleOverrideState = SubtitleStyleOverride.EMPTY
+        SubtitleStyleOverrides.clear(context, state.subtitleOverrideKey)
+    }
+
+    /** Re-seed the Style rail's mirrors from the effective style (override over globals). */
+    fun reseedStyleRailMirrors() {
+        val style = effectiveSubtitleStyle()
+        state.subFontSpUi = style.fontSizeSp
+        state.subColorUi = style.textColor
+        state.subBoldUi = style.bold
+        state.subEdgeUi = style.edgeType
+        state.subEdgeColorUi = style.edgeColor
+        state.subBottomUi = style.bottomOffset
+    }
+
     /**
      * Applies the user's subtitle styling (Settings > Playback) to the
      * PlayerView's caption view: text color, size, background/shade and
      * edge style. Called when the view is created and on every update.
+     *
+     * The style is the RESOLVED one (#27): this title's override over
+     * the Settings defaults — never the globals alone.
      *
      * SYSTEM-CAPTIONS HOOK (fix #20): when the user picked "System
      * default", skip setStyle() entirely so Android's
@@ -934,7 +982,8 @@ fun PlayerScreen(
     fun applySubtitleStyle(pv: PlayerView) {
         if (settings.useSystemCaptions) return
         val sv = pv.subtitleView ?: return
-        val edge = when (settings.subtitleEdgeType) {
+        val style = effectiveSubtitleStyle()
+        val edge = when (style.edgeType) {
             0 -> CaptionStyleCompat.EDGE_TYPE_NONE
             1 -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
             3 -> CaptionStyleCompat.EDGE_TYPE_RAISED
@@ -950,17 +999,17 @@ fun PlayerScreen(
         sv.setApplyEmbeddedFontSizes(false)
         sv.setStyle(
             CaptionStyleCompat(
-                settings.subtitleTextColor,
-                settings.subtitleBackgroundColor,
+                style.textColor,
+                style.backgroundColor,
                 android.graphics.Color.TRANSPARENT,
                 edge,
-                settings.subtitleEdgeColor,
+                style.edgeColor,
                 // Step 38: the user's picked subtitle font (built-in face or
                 // an imported ttf/otf); bold is synthesized onto it.
                 run {
-                    val base = subtitleTypeface(pv.context, settings.subtitleFontId)
+                    val base = subtitleTypeface(pv.context, style.fontFamily)
                         ?: android.graphics.Typeface.DEFAULT
-                    if (settings.subtitleBold) {
+                    if (style.bold) {
                         android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD)
                     } else {
                         base
@@ -968,7 +1017,7 @@ fun PlayerScreen(
                 }
             )
         )
-        val fontSp = settings.subtitleFontSizeSp
+        val fontSp = style.fontSizeSp
         if (inPip) {
             sv.setFractionalTextSize(
                 SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * (fontSp / 18f)
@@ -980,7 +1029,7 @@ fun PlayerScreen(
         }
         // Bottom offset: base fraction plus offset/1000 (the offset term
         // clamped to 0..0.2), the total clamped to 0..0.4.
-        val offsetFraction = (settings.subtitleBottomOffset / 1000f).coerceIn(0f, 0.2f)
+        val offsetFraction = (style.bottomOffset / 1000f).coerceIn(0f, 0.2f)
         sv.setBottomPaddingFraction(
             (SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION * (2f / 3f) + offsetFraction)
                 .coerceIn(0f, 0.4f)
@@ -1126,18 +1175,33 @@ fun PlayerScreen(
         else -> 0
     }
 
-    /** Applies the fork's subtitle style to the MPV engine. */
+    /** Applies the RESOLVED subtitle style (this title's override over the Settings defaults) to the MPV engine. */
     fun applyMpvSubtitleStyle() {
+        val style = effectiveSubtitleStyle()
         mpvEngine?.applySubtitleStyle(
-            textColor = settings.subtitleTextColor,
-            backgroundColor = settings.subtitleBackgroundColor,
-            edgeColor = settings.subtitleEdgeColor,
-            edgeType = settings.subtitleEdgeType,
-            fontSizeSp = settings.subtitleFontSizeSp,
-            bottomOffset = settings.subtitleBottomOffset,
-            bold = settings.subtitleBold,
-            fontFamily = 0
+            textColor = style.textColor,
+            backgroundColor = style.backgroundColor,
+            edgeColor = style.edgeColor,
+            edgeType = style.edgeType,
+            fontSizeSp = style.fontSizeSp,
+            bottomOffset = style.bottomOffset,
+            bold = style.bold,
+            // MPV takes an Int family (0 = default, 1 = sans, 2 = serif,
+            // 3 = mono); a custom font file has no MPV mapping and keeps
+            // the default.
+            fontFamily = when (style.fontFamily) {
+                "sans" -> 1
+                "serif" -> 2
+                "mono" -> 3
+                else -> 0
+            }
         )
+    }
+
+    /** Re-apply the resolved subtitle style to whichever engine owns playback right now. */
+    fun reapplySubtitleStyle() {
+        state.playerView?.let { applySubtitleStyle(it) }
+        applyMpvSubtitleStyle()
     }
 
     /**
@@ -2457,6 +2521,13 @@ fun PlayerScreen(
         // must not veto the new title's default.
         deactivateSidecarSubtitle()
         state.sidecarTouched = false
+        // Per-title subtitle style (#27): the override follows the title.
+        if (state.subtitleOverrideKey != state.currentRequest.videoId) {
+            state.subtitleOverrideKey = state.currentRequest.videoId
+            state.subtitleOverrideState =
+                SubtitleStyleOverrides.load(context, state.currentRequest.videoId)
+        }
+        reseedStyleRailMirrors()
         state.subOffsetOverrideMs = settings.subtitleDelayMsFor(state.currentRequest.videoId)
         // A new title invalidates any half-finished sync-by-ear capture.
         state.syncByEarHeardMs = null
@@ -6742,16 +6813,44 @@ fun PlayerScreen(
                                         onMinus = {
                                             val v = (state.subFontSpUi - 2).coerceIn(12, 40)
                                             state.subFontSpUi = v
-                                            settings.subtitleFontSizeSp = v
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(fontSizeSp = v) }
+                                            reapplySubtitleStyle()
                                         },
                                         onPlus = {
                                             val v = (state.subFontSpUi + 2).coerceIn(12, 40)
                                             state.subFontSpUi = v
-                                            settings.subtitleFontSizeSp = v
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(fontSizeSp = v) }
+                                            reapplySubtitleStyle()
                                         }
                                     )
+                                    Spacer(Modifier.height(16.dp))
+                                    // 2b. Font (per-title override; the global
+                                    // font stays in Settings > Subtitles).
+                                    // A custom global font shows no chip
+                                    // selected; picking a built-in here
+                                    // overrides it for this title only.
+                                    StyleSectionLabel("Font")
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                                    ) {
+                                        listOf(
+                                            "default" to "Default",
+                                            "sans" to "Sans",
+                                            "serif" to "Serif",
+                                            "mono" to "Mono"
+                                        ).forEach { (id, label) ->
+                                            StyleChip(
+                                                label = label,
+                                                on = effectiveSubtitleStyle().fontFamily == id,
+                                                onClick = {
+                                                    persistSubtitleStyle { it.copy(fontFamily = id) }
+                                                    reapplySubtitleStyle()
+                                                }
+                                            )
+                                        }
+                                    }
                                     Spacer(Modifier.height(16.dp))
                                     // 3. Bold
                                     StyleSectionLabel("Bold")
@@ -6762,8 +6861,8 @@ fun PlayerScreen(
                                         onClick = {
                                             val on = !state.subBoldUi
                                             state.subBoldUi = on
-                                            settings.subtitleBold = on
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(bold = on) }
+                                            reapplySubtitleStyle()
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -6790,8 +6889,8 @@ fun PlayerScreen(
                                                         (state.subColorUi and 0xFF000000.toInt()) or
                                                             (rgb and 0x00FFFFFF)
                                                     state.subColorUi = merged
-                                                    settings.subtitleTextColor = merged
-                                                    state.playerView?.let { applySubtitleStyle(it) }
+                                                    persistSubtitleStyle { it.copy(textColor = merged) }
+                                                    reapplySubtitleStyle()
                                                 }
                                             )
                                         }
@@ -6809,16 +6908,16 @@ fun PlayerScreen(
                                             val a = (p * 255 + 50) / 100
                                             val merged = (a shl 24) or (state.subColorUi and 0x00FFFFFF)
                                             state.subColorUi = merged
-                                            settings.subtitleTextColor = merged
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(textColor = merged) }
+                                            reapplySubtitleStyle()
                                         },
                                         onPlus = {
                                             val p = (opacityPct + 10).coerceIn(0, 100)
                                             val a = (p * 255 + 50) / 100
                                             val merged = (a shl 24) or (state.subColorUi and 0x00FFFFFF)
                                             state.subColorUi = merged
-                                            settings.subtitleTextColor = merged
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(textColor = merged) }
+                                            reapplySubtitleStyle()
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -6831,8 +6930,8 @@ fun PlayerScreen(
                                         onClick = {
                                             val t = if (state.subEdgeUi == 0) 1 else 0
                                             state.subEdgeUi = t
-                                            settings.subtitleEdgeType = t
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(edgeType = t) }
+                                            reapplySubtitleStyle()
                                         }
                                     )
                                     Spacer(Modifier.height(8.dp))
@@ -6851,12 +6950,12 @@ fun PlayerScreen(
                                                         (rgb and 0x00FFFFFF),
                                                     onClick = {
                                                         state.subEdgeColorUi = rgb
-                                                        settings.subtitleEdgeColor = rgb
-                                                        if (state.subEdgeUi == 0) {
-                                                            state.subEdgeUi = 1
-                                                            settings.subtitleEdgeType = 1
+                                                        val nextEdge = if (state.subEdgeUi == 0) 1 else state.subEdgeUi
+                                                        if (state.subEdgeUi == 0) state.subEdgeUi = 1
+                                                        persistSubtitleStyle {
+                                                            it.copy(edgeColor = rgb, edgeType = nextEdge)
                                                         }
-                                                        state.playerView?.let { applySubtitleStyle(it) }
+                                                        reapplySubtitleStyle()
                                                     }
                                                 )
                                             }
@@ -6870,14 +6969,14 @@ fun PlayerScreen(
                                         onMinus = {
                                             val v = (state.subBottomUi - 5).coerceIn(0, 200)
                                             state.subBottomUi = v
-                                            settings.subtitleBottomOffset = v
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(bottomOffset = v) }
+                                            reapplySubtitleStyle()
                                         },
                                         onPlus = {
                                             val v = (state.subBottomUi + 5).coerceIn(0, 200)
                                             state.subBottomUi = v
-                                            settings.subtitleBottomOffset = v
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            persistSubtitleStyle { it.copy(bottomOffset = v) }
+                                            reapplySubtitleStyle()
                                         }
                                     )
                                     Spacer(Modifier.height(16.dp))
@@ -6980,25 +7079,15 @@ fun PlayerScreen(
                                         }
                                     }
                                     Spacer(Modifier.height(16.dp))
-                                    // 9. Reset Defaults
+                                    // 9. Reset Defaults — clears only THIS
+                                    // title's override; the Settings
+                                    // defaults are untouched.
                                     TextButton(
                                         onClick = {
                                             setSubtitleDelay(0L)
-                                            state.subFontSpUi = 18
-                                            settings.subtitleFontSizeSp = 18
-                                            state.subBoldUi = false
-                                            settings.subtitleBold = false
-                                            state.subColorUi = 0xFFFFFFFF.toInt()
-                                            settings.subtitleTextColor = 0xFFFFFFFF.toInt()
-                                            settings.subtitleBackgroundColor =
-                                                android.graphics.Color.TRANSPARENT
-                                            state.subEdgeUi = 1
-                                            settings.subtitleEdgeType = 1
-                                            state.subEdgeColorUi = 0xFF000000.toInt()
-                                            settings.subtitleEdgeColor = 0xFF000000.toInt()
-                                            state.subBottomUi = 20
-                                            settings.subtitleBottomOffset = 20
-                                            state.playerView?.let { applySubtitleStyle(it) }
+                                            clearSubtitleStyleOverride()
+                                            reseedStyleRailMirrors()
+                                            reapplySubtitleStyle()
                                         }
                                     ) {
                                         Text(
