@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -374,6 +375,19 @@ fun LiveScreen(
     onGoToLiveTvSettings: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
+    // Dock re-tap scroll-to-top (v0.14.30 port): re-tapping the Live dock seat bumps TabScrollSignals and this list smooth-scrolls back to its top.
+    val liveListState = rememberLazyListState()
+    var liveScrollSeen by remember {
+        mutableStateOf(TabScrollSignals.requests(TabScrollSignals.LIVE).value)
+    }
+    val liveScrollRequests by
+        TabScrollSignals.requests(TabScrollSignals.LIVE).collectAsState()
+    LaunchedEffect(liveScrollRequests) {
+        if (liveScrollRequests != liveScrollSeen) {
+            liveScrollSeen = liveScrollRequests
+            liveListState.animateScrollToItem(0)
+        }
+    }
     val vm: LiveViewModel = viewModel(factory = remember {
         object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -1129,6 +1143,7 @@ fun LiveScreen(
                 }
                 val featuredChannel = featuredRow?.items?.firstOrNull()
                 LazyColumn(
+                    state = liveListState,
                     modifier = Modifier.fillMaxSize(),
                     // Extra bottom room so the last row scrolls clear of
                     // the floating dock (content now runs under it).

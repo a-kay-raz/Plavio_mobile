@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -170,6 +171,19 @@ fun SettingsScreen(
 ) {
     val settings = repository.settings
     val context = LocalContext.current
+    // Dock re-tap scroll-to-top (v0.14.30 port): re-tapping the Settings dock seat bumps TabScrollSignals and this list smooth-scrolls back to its top.
+    val settingsListState = rememberLazyListState()
+    var settingsScrollSeen by remember {
+        mutableStateOf(TabScrollSignals.requests(TabScrollSignals.SETTINGS).value)
+    }
+    val settingsScrollRequests by
+        TabScrollSignals.requests(TabScrollSignals.SETTINGS).collectAsState()
+    LaunchedEffect(settingsScrollRequests) {
+        if (settingsScrollRequests != settingsScrollSeen) {
+            settingsScrollSeen = settingsScrollRequests
+            settingsListState.animateScrollToItem(0)
+        }
+    }
 
     var sentryEnabled by remember { mutableStateOf(repository.settings.sentryEnabled) }
     // Step 70: which cache was cleared most recently ("playback" / "images" / "").
@@ -627,6 +641,7 @@ fun SettingsScreen(
 
     GlowBackground {
         LazyColumn(
+            state = settingsListState,
             modifier = Modifier.fillMaxSize(),
             // Bottom padding ensures the floating nav capsule never covers the last card,
             // including on smaller phones (capsule ~80dp + system nav ~32dp + margin)

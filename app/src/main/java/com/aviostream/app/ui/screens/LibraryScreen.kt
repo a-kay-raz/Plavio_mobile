@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -110,6 +111,19 @@ fun LibraryScreen(
 ) {
     val settings = repository.settings
     val palette = LocalPalette.current
+    // Dock re-tap scroll-to-top (v0.14.30 port): re-tapping the Library dock seat bumps TabScrollSignals and this list smooth-scrolls back to its top.
+    val libraryListState = rememberLazyListState()
+    var libraryScrollSeen by remember {
+        mutableStateOf(TabScrollSignals.requests(TabScrollSignals.LIBRARY).value)
+    }
+    val libraryScrollRequests by
+        TabScrollSignals.requests(TabScrollSignals.LIBRARY).collectAsState()
+    LaunchedEffect(libraryScrollRequests) {
+        if (libraryScrollRequests != libraryScrollSeen) {
+            libraryScrollSeen = libraryScrollRequests
+            libraryListState.animateScrollToItem(0)
+        }
+    }
     val traktLinked = !settings.traktAccessToken.isNullOrBlank()
     val simklLinked = !settings.simklToken.isNullOrBlank()
     val librarySource = settings.trackingLibrarySource
@@ -406,6 +420,7 @@ fun LibraryScreen(
 
         Box(Modifier.weight(1f)) {
     LazyColumn(
+        state = libraryListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 110.dp)
     ) {

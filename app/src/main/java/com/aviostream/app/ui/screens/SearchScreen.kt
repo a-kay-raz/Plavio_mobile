@@ -217,6 +217,18 @@ fun SearchScreen(
     var discoverNextSkip by remember { mutableStateOf<Int?>(null) }
     // The landing column's list state (for the discover auto-load trigger).
     val landingListState = rememberLazyListState()
+    // Dock re-tap scroll-to-top (v0.14.30 port): re-tapping the Search dock seat scrolls the landing list to its top.
+    var searchScrollSeen by remember {
+        mutableStateOf(TabScrollSignals.requests(TabScrollSignals.SEARCH).value)
+    }
+    val searchScrollRequests by
+        TabScrollSignals.requests(TabScrollSignals.SEARCH).collectAsState()
+    LaunchedEffect(searchScrollRequests) {
+        if (searchScrollRequests != searchScrollSeen) {
+            searchScrollSeen = searchScrollRequests
+            runCatching { landingListState.animateScrollToItem(0) }
+        }
+    }
     val discoverSource = discoverSources.firstOrNull { it.key == discoverCatalogKey }
     val discoverTypes = discoverSources.map { it.type }.distinct()
     val discoverTypeSources = discoverSources.filter { it.type == discoverType }

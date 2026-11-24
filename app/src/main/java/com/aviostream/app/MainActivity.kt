@@ -1093,6 +1093,10 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
                                         if (isHome) {
                                             com.aviostream.app.ui.screens.HomeScrollSignal
                                                 .requestScrollToTop()
+                                        } else if (selected) {
+                                            // Dock re-tap (v0.14.30 port): re-tapping the already-selected seat scrolls that tab to its top. Home keeps its own signal above.
+                                            com.aviostream.app.ui.screens.TabScrollSignals
+                                                .requestScrollToTop(tab.route)
                                         }
                                     }
                                 )
