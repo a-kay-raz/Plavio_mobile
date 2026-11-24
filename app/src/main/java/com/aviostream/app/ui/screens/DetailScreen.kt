@@ -272,6 +272,52 @@ sealed interface PickState {
     data object None : PickState
 }
 
+/** Episodes per range chunk on the Details page (v0.14.30 #47). */
+internal const val EPISODE_CHUNK_SIZE = 15
+
+/**
+ * The range chunks for one season's episode list: chunks of [EPISODE_CHUNK_SIZE]
+ * EPISODE NUMBERS — 1–15, 16–30, 31–45, … — computed only when the season has
+ * MORE than [EPISODE_CHUNK_SIZE] episodes; at 15 or fewer the result is empty
+ * and the list renders whole, exactly as before. A range holding no episode
+ * (a numbering gap) is omitted, so every shown chip has rows behind it.
+ */
+internal fun episodeNumberChunks(episodes: List<Video>): List<IntRange> {
+    if (episodes.size <= EPISODE_CHUNK_SIZE) return emptyList()
+    val maxEpisode = episodes.maxOf { it.episode }
+    val ranges = mutableListOf<IntRange>()
+    var start = 1
+    while (start <= maxEpisode) {
+        val range = start..(start + EPISODE_CHUNK_SIZE - 1)
+        if (episodes.any { episodeInChunk(it.episode, range) }) {
+            ranges += range
+        }
+        start += EPISODE_CHUNK_SIZE
+    }
+    return ranges
+}
+
+/**
+ * Whether an episode number belongs to a chunk. Episode numbers below 1
+ * (rare specials numbering inside a season) ride the first chunk instead
+ * of falling out of every range.
+ */
+internal fun episodeInChunk(episodeNumber: Int, chunk: IntRange): Boolean =
+    episodeNumber in chunk || (chunk.first == 1 && episodeNumber < 1)
+
+/**
+ * The chunk shown when the viewer has not picked one: the chunk holding the
+ * first unwatched episode, or the first chunk when there is none.
+ */
+internal fun defaultEpisodeChunkIndex(
+    chunks: List<IntRange>,
+    firstUnwatchedEpisode: Int?
+): Int {
+    if (chunks.isEmpty() || firstUnwatchedEpisode == null) return 0
+    val index = chunks.indexOfFirst { episodeInChunk(firstUnwatchedEpisode, it) }
+    return if (index >= 0) index else 0
+}
+
 class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
     /** Set from the composable; used for TV-aware probing headers. */
     var isTv: Boolean = false
@@ -900,9 +946,41 @@ private fun DetailContent(
             com.aviostream.app.data.watchedEpisodeKeys(meta.id, watchedKeys),
         )
     }
+    // Episode range chunks (v0.14.30 #47): seasons over 15 episodes get
+    // "1–15", "16–30", … chips; the list shows only the active chunk (a
+    // FILTER, never a scroll-jump). Chunks key on EPISODE NUMBERS, so the
+    // chip pick survives the sort order; an episode search ignores
+    // chunking so matches outside the chunk are never hidden. Until a
+    // chip is picked, the chunk holding the first unwatched episode shows.
+    val seasonEpisodes = remember(meta.videos, vm.selectedSeason) {
+        meta.videos.filter { it.season == vm.selectedSeason }
+            .sortedWith(compareBy({ it.episode }, { it.title }))
+    }
+    val episodeChunks = remember(seasonEpisodes) {
+        episodeNumberChunks(seasonEpisodes)
+    }
+    var pickedChunk by rememberSaveable(meta.id, vm.selectedSeason) {
+        mutableStateOf(-1)
+    }
+    val activeChunkIndex = remember(
+        episodeChunks, pickedChunk, seasonEpisodes, watchedKeys
+    ) {
+        when {
+            episodeChunks.size <= 1 -> -1
+            pickedChunk in episodeChunks.indices -> pickedChunk
+            else -> defaultEpisodeChunkIndex(
+                episodeChunks,
+                seasonEpisodes.firstOrNull { video ->
+                    com.aviostream.app.data.WatchedMarks.episodeKey(
+                        meta.id, video.season, video.episode
+                    ) !in watchedKeys
+                }?.episode
+            )
+        }
+    }
     // Hoisted out of the LazyColumn DSL: the filter+sort used to re-run
     // on every recomposition of the (stream-driven) content lambda.
-    val episodes = remember(meta.videos, vm.selectedSeason, episodeQuery, episodeSort, watchedKeys, episodeEnrichment, omdbEpisodeRatings) {
+    val episodes = remember(meta.videos, vm.selectedSeason, episodeQuery, episodeSort, watchedKeys, episodeEnrichment, omdbEpisodeRatings, episodeChunks, activeChunkIndex) {
         val base = meta.videos.filter { it.season == vm.selectedSeason }
         val filtered = if (episodeQuery.isBlank()) base else {
             val q = episodeQuery.trim().lowercase().replace(" ", "")
@@ -912,10 +990,18 @@ private fun DetailContent(
                     "s${video.season}e${video.episode}" == q
             }
         }
+        // Range chunking applies on top of the search filter — but only
+        // when no search text is active, so a search never hides matches
+        // outside the picked chunk.
+        val chunked = if (episodeQuery.isBlank() && activeChunkIndex >= 0) {
+            filtered.filter { episodeInChunk(it.episode, episodeChunks[activeChunkIndex]) }
+        } else {
+            filtered
+        }
         when (episodeSort) {
-            "newest" -> filtered.sortedWith(compareByDescending<Video> { it.episode }.thenByDescending { it.title })
-            "airdate" -> filtered.sortedByDescending { it.released.orEmpty() }
-            "highest" -> filtered.sortedByDescending { video ->
+            "newest" -> chunked.sortedWith(compareByDescending<Video> { it.episode }.thenByDescending { it.title })
+            "airdate" -> chunked.sortedByDescending { it.released.orEmpty() }
+            "highest" -> chunked.sortedByDescending { video ->
                 // Nuvio HighestRated: IMDb, then TMDB, then -1 for unrated.
                 // (Avio has no per-episode user rating to fall back to.)
                 omdbEpisodeRatings[video.season]?.get(video.episode)
@@ -923,14 +1009,14 @@ private fun DetailContent(
                         ?.takeIf { settings.tmdbUseEpisodeRatings }
                     ?: -1.0
             }
-            "unwatched" -> filtered.sortedWith(
+            "unwatched" -> chunked.sortedWith(
                 compareBy(
                     { com.aviostream.app.data.WatchedMarks.episodeKey(meta.id, it.season, it.episode) in watchedKeys },
                     { it.episode },
                     { it.title }
                 )
             )
-            else -> filtered.sortedWith(compareBy({ it.episode }, { it.title }))
+            else -> chunked.sortedWith(compareBy({ it.episode }, { it.title }))
         }
     }
     // Shared scope and watchlist state for hero buttons and play section
@@ -2169,6 +2255,39 @@ private fun DetailContent(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                 )
+            }
+            // Range chips for a season of more than 15 episodes (v0.14.30
+            // #47): "1–15", "16–30", … by EPISODE NUMBER. A tap shows ONLY
+            // that chunk (the list below is filtered, never scroll-jumped),
+            // so a long season never means a long scroll to the bottom. At
+            // 15 episodes or fewer there are no chips and the list is whole,
+            // exactly as before.
+            if (episodeChunks.size > 1) {
+                item(key = "episodes_chunks") {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        itemsIndexed(
+                            episodeChunks,
+                            key = { index, _ -> "epchunk_$index" }
+                        ) { index, range ->
+                            FilterChip(
+                                selected = index == activeChunkIndex,
+                                onClick = { pickedChunk = index },
+                                label = { Text("${range.first}–${range.last}") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+                                    selectedLabelColor = TextPrimary,
+                                    containerColor = Color.White.copy(alpha = 0.06f),
+                                    labelColor = TextSecondary
+                                )
+                            )
+                        }
+                    }
+                }
             }
             if (episodeCardStyle == "list") {
                 // List style (Nuvio MetaEpisodeCardStyle.List): vertical
