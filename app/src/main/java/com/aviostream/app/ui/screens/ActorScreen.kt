@@ -1,6 +1,7 @@
 package com.aviostream.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,7 +27,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -47,11 +50,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aviostream.app.data.FavoritePeopleRepository
 import com.aviostream.app.data.MetaPreview
+import com.aviostream.app.data.FollowActorsSupport
 import com.aviostream.app.data.PersonDetail
 import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.allPersonCredits
@@ -94,6 +99,7 @@ fun ActorScreen(
     var loading by remember(personId, personName) { mutableStateOf(true) }
     var loadAttempt by remember(personId, personName) { mutableStateOf(0) }
     val favState by favoritePeopleRepository.uiState.collectAsState()
+    var followedActors by remember { mutableStateOf(FollowActorsSupport.decode(repository.settings.followedActorsJson)) }
     LaunchedEffect(personId, personName, loadAttempt) {
         favoritePeopleRepository.ensureLoaded()
         loading = true
@@ -106,6 +112,19 @@ fun ActorScreen(
     }
     val isFavorite = person?.let { favState.people.any { fav -> fav.tmdbId == it.id } } ?: false
     val isPinned = person?.let { it.id in favState.pinnedPersonIds } ?: false
+    val isFollowing = person?.let { FollowActorsSupport.isFollowed(followedActors, it.id) } ?: false
+    val onToggleFollow: () -> Unit = {
+        person?.let { p ->
+            val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            val nextList = if (FollowActorsSupport.isFollowed(followedActors, p.id)) {
+                FollowActorsSupport.unfollow(followedActors, p.id)
+            } else {
+                FollowActorsSupport.follow(followedActors, p, year)
+            }
+            followedActors = nextList
+            repository.settings.followedActorsJson = FollowActorsSupport.encode(nextList)
+        }
+    }
 
     GlowBackground {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -149,6 +168,8 @@ fun ActorScreen(
                         isPinned = isPinned,
                         onToggleFavorite = { favoritePeopleRepository.toggle(person!!) },
                         onTogglePinned = { favoritePeopleRepository.togglePinned(person!!.id) },
+                        isFollowing = isFollowing,
+                        onToggleFollow = onToggleFollow,
                         onOpenDetail = onOpenDetail
                     )
                     else -> NarrowPersonContent(
@@ -157,6 +178,8 @@ fun ActorScreen(
                         isPinned = isPinned,
                         onToggleFavorite = { favoritePeopleRepository.toggle(person!!) },
                         onTogglePinned = { favoritePeopleRepository.togglePinned(person!!.id) },
+                        isFollowing = isFollowing,
+                        onToggleFollow = onToggleFollow,
                         onOpenDetail = onOpenDetail
                     )
                 }
@@ -201,6 +224,8 @@ private fun NarrowPersonContent(
     isPinned: Boolean,
     onToggleFavorite: () -> Unit,
     onTogglePinned: () -> Unit,
+    isFollowing: Boolean,
+    onToggleFollow: () -> Unit,
     onOpenDetail: (type: String, metaId: String) -> Unit
 ) {
     LazyColumn(
@@ -215,6 +240,8 @@ private fun NarrowPersonContent(
                 isPinned = isPinned,
                 onToggleFavorite = onToggleFavorite,
                 onTogglePinned = onTogglePinned,
+                isFollowing = isFollowing,
+                onToggleFollow = onToggleFollow,
                 centered = true
             )
         }
@@ -230,6 +257,8 @@ private fun WidePersonContent(
     isPinned: Boolean,
     onToggleFavorite: () -> Unit,
     onTogglePinned: () -> Unit,
+    isFollowing: Boolean,
+    onToggleFollow: () -> Unit,
     onOpenDetail: (type: String, metaId: String) -> Unit
 ) {
     Row(Modifier.fillMaxSize()) {
@@ -247,6 +276,8 @@ private fun WidePersonContent(
                 isPinned = isPinned,
                 onToggleFavorite = onToggleFavorite,
                 onTogglePinned = onTogglePinned,
+                isFollowing = isFollowing,
+                onToggleFollow = onToggleFollow,
                 centered = false,
                 bioMaxLines = 12
             )
@@ -278,6 +309,8 @@ private fun PersonHero(
     isPinned: Boolean,
     onToggleFavorite: () -> Unit,
     onTogglePinned: () -> Unit,
+    isFollowing: Boolean,
+    onToggleFollow: () -> Unit,
     centered: Boolean,
     bioMaxLines: Int = 8
 ) {
@@ -336,6 +369,38 @@ private fun PersonHero(
                     )
                 }
             }
+        }
+        // Follow / Following pill (v0.14.30 port): following captures
+        // the filmography baseline (FollowActorsSupport); the person's
+        // NEW titles then surface on Home in "New from your people".
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(
+                    if (isFollowing) {
+                        LocalPalette.current.accent.copy(alpha = 0.25f)
+                    } else {
+                        Color.White.copy(alpha = 0.08f)
+                    }
+                )
+                .clickable(onClick = onToggleFollow)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                if (isFollowing) Icons.Filled.Check else Icons.Filled.Add,
+                contentDescription = null,
+                tint = TextPrimary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                if (isFollowing) "Following" else "Follow",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
         }
         val infoItems = buildList {
             person.birthday?.let { add(personBirthLine(it, person.deathday)) }
