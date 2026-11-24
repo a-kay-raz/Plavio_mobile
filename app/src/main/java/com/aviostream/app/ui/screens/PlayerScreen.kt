@@ -3293,6 +3293,42 @@ fun PlayerScreen(
                     playEpisode(nextEp)
                 }
             }
+            // Auto-download next episode (v0.14.30 port, feature #16):
+            // the episode just ended and the switch is on — queue the
+            // NEXT episode in Downloads under the user's own rules (the
+            // same queue path "Download season" uses, so the quality/size
+            // pick and Wi-Fi-only/storage rules all apply). Shuffle plays
+            // a random episode next, so it never triggers a sequential
+            // download. Fire-and-forget: any failure simply queues
+            // nothing. Fires once per video end, whether or not
+            // auto-play-next is on.
+            if (c.playbackState == Player.STATE_ENDED &&
+                settings.autoDownloadNextEpisode &&
+                !settings.shuffleEpisodes &&
+                !state.currentRequest.isMovie &&
+                !state.currentRequest.isTrailer &&
+                state.currentRequest.episodes.isNotEmpty() &&
+                state.autoDownloadHandledFor != state.currentRequest.videoId
+            ) {
+                state.autoDownloadHandledFor = state.currentRequest.videoId
+                val next = resolveNextEpisode(
+                    state.currentRequest.episodes,
+                    state.currentRequest.season,
+                    state.currentRequest.episode,
+                    state.currentRequest.videoId,
+                    false
+                )
+                val seriesKey = (state.currentRequest.imdbId
+                    ?: state.currentRequest.videoId.substringBefore(':'))
+                    .takeIf { it.startsWith("tt") }
+                if (next != null && seriesKey != null) {
+                    ioScope.launch {
+                        AutoDownloadNext.queue(
+                            repository, context, seriesKey, next.season, next.episode
+                        )
+                    }
+                }
+            }
             // End-of-play rating prompt (v0.14.30 port): once per video,
             // when it ends, offer the rating card.
             if (c.playbackState == Player.STATE_ENDED &&

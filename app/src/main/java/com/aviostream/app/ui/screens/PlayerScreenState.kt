@@ -305,6 +305,9 @@ internal class PlayerScreenState(
     // Poll position / duration / playing / buffering / volume for the UI,
     // and track the active skip-segment window.
     var endedHandledFor by mutableStateOf<String?>(null)
+    /** Auto-download next episode (v0.14.30 port): video id the
+     *  auto-download trigger already fired for (once per video). */
+    var autoDownloadHandledFor by mutableStateOf<String?>(null)
     // Tracks whether any transport button currently holds focus. The D-pad
     // key handler uses this: if controls are visible but nothing grabbed
     // focus (e.g. requestFocus failed), Center/Up/Down re-request focus on

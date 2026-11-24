@@ -551,6 +551,18 @@ class SettingsStore(
         set(value) = prefs.edit().putBoolean(KEY_DOWNLOAD_FINISHED_NOTIFICATIONS, value).apply()
 
     /**
+     * Auto-download next episode (v0.14.30 port, feature #16): when
+     * an episode ends, the next one is queued in Downloads
+     * automatically (player trigger; honours the Wi-Fi-only /
+     * storage rules inside the download engine). Single home: the
+     * switch in the Downloads screen. OFF by default — downloads
+     * spend the user's data and storage.
+     */
+    var autoDownloadNextEpisode: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_DOWNLOAD_NEXT, false)
+        set(value) { prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_NEXT, value).apply() }
+
+    /**
      * Which player opens streams: the built-in Avio player, an external
      * app chosen by the system chooser, or ask every time.
      * Stored as [PlayerChoice.name]; defaults to built-in.
@@ -2239,6 +2251,7 @@ class SettingsStore(
         private const val KEY_FOLLOWED_ACTORS = "followed_actors_json"
         private const val KEY_FORCE_SEEK_ANY_STREAM = "force_seek_any_stream"
         private const val KEY_DOWNLOAD_FINISHED_NOTIFICATIONS = "download_finished_notifications"
+        private const val KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next_episode"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
         private const val KEY_BUFFER_MIN_MS = "buffer_min_ms"
         private const val KEY_BUFFER_MAX_MS = "buffer_max_ms"

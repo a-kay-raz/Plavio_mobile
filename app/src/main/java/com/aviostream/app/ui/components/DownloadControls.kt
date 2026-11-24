@@ -54,3 +54,46 @@ fun WifiOnlyDownloadsControl(
         }
     }
 }
+
+/** Auto-download next episode (v0.14.30 port, feature #16): when an
+ *  episode ends, the next one is queued in Downloads. Same card as
+ *  the Wi-Fi-only control above; the switch's single home is the
+ *  Downloads screen. */
+@Composable
+fun AutoDownloadNextControl(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 72.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Auto-download next episode",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "When an episode ends, the next one is queued here",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics {
+                    contentDescription = "Auto-download next episode"
+                    stateDescription = if (checked) "On" else "Off"
+                }
+            )
+        }
+    }
+}

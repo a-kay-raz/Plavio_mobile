@@ -41,6 +41,41 @@ object BatchDownloadQueuer {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Queue ONE episode (v0.14.30 port, feature #16 — the
+     * auto-download-next trigger). Same path as the batch: show
+     * art/meta cached once, already-COMPLETED episodes skipped, the
+     * episode resolved + picked + enqueued by [queueEpisode].
+     * Silent: any failure returns false, never throws.
+     */
+    suspend fun queueSingle(
+        context: Context,
+        repository: StreamRepository,
+        meta: MetaDetail,
+        episode: Video,
+    ): Boolean = runCatching {
+        val appContext = context.applicationContext
+        val manager = DownloadManager.get(appContext)
+        OfflineShowMetadata.save(
+            context = appContext,
+            key = meta.id,
+            title = meta.name ?: "Series",
+            type = "series",
+            posterUrl = meta.poster,
+            backgroundUrl = meta.background,
+            description = meta.description,
+            genres = meta.genres,
+            videos = meta.videos,
+        )
+        val completed = runCatching {
+            manager.observeAll().first()
+                .filter { it.showKey == meta.id && it.season == episode.season && it.status == "COMPLETED" }
+                .map { it.episode }.toSet()
+        }.getOrElse { emptySet() }
+        if (episode.episode in completed) return false
+        queueEpisode(appContext, repository, manager, meta, episode.season, episode)
+    }.getOrDefault(false)
+
     fun queue(
         context: Context,
         repository: StreamRepository,

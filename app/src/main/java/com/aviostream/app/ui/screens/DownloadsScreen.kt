@@ -29,6 +29,8 @@ import com.aviostream.app.data.download.OfflineShowMetadata
 import com.aviostream.app.ui.components.GlassCard
 import com.aviostream.app.ui.components.GlassIconButton
 import com.aviostream.app.ui.components.SafePosterImage
+import com.aviostream.app.data.SettingsStore
+import com.aviostream.app.ui.components.AutoDownloadNextControl
 import com.aviostream.app.ui.components.WifiOnlyDownloadsControl
 import com.aviostream.app.ui.theme.GlassBorder
 import com.aviostream.app.ui.theme.LocalPalette
@@ -51,6 +53,13 @@ fun DownloadsScreen(
     val activeProgress by manager.activeDownloads.collectAsState()
     var confirmDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var wifiOnly by remember { mutableStateOf(manager.isWifiOnlyDownloads()) }
+    // Auto-download next episode (v0.14.30 port, feature #16):
+    // the switch's single home — here in Downloads, next to the
+    // Wi-Fi-only rule it honours. OFF by default.
+    val settingsStore = remember { SettingsStore(context) }
+    var autoDownloadNext by remember {
+        mutableStateOf(settingsStore.autoDownloadNextEpisode)
+    }
 
     LaunchedEffect(Unit) { manager.recoverInterruptedDownloads() }
     // Step 35: segmented storage bar (Nuvio DeviceStorageBar) — total / free
@@ -159,6 +168,15 @@ fun DownloadsScreen(
                         manager.resumeQueuedDownloads()
                         DownloadServiceStarter.start(context)
                     }
+                },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            AutoDownloadNextControl(
+                checked = autoDownloadNext,
+                onCheckedChange = { on ->
+                    autoDownloadNext = on
+                    settingsStore.autoDownloadNextEpisode = on
                 },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
