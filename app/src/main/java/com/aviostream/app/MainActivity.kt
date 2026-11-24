@@ -476,6 +476,15 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // "Player not open" (dev-68 → dev-79): the app goes to the
+        // launcher when play is tapped, same PID, no crash, and no
+        // finish()/moveTaskToBack()/popBackStack-with-arg exists in
+        // code. This log proves whether the Activity actually
+        // finished (isFinishing=true) or was only destroyed for a
+        // config change / system reclaim (isFinishing=false). Read
+        // it in the next Diagnostics report taken in the same
+        // session (re-open without force-stopping).
+        android.util.Log.d("AvioPlay", "MainActivity onDestroy isFinishing=" + isFinishing)
         runCatching { unregisterReceiver(pipReceiver) }
         super.onDestroy()
     }
@@ -1324,6 +1333,18 @@ private fun AvioNavGraph(
                 repository.pendingPlayback = req
                 Log.d("AvioPlay", "playRequest BUILT_IN, navigating PLAYER")
                 navController.navigate(Routes.PLAYER)
+                // "Player not open": prove the navigate was issued and
+                // what the back stack looked like right after it. If
+                // the stack is short (or PLAYER is not on top), the
+                // Activity can finish on the next back press instead
+                // of showing the player.
+                val stack = navController.currentBackStack.value
+                Log.d(
+                    "AvioPlay",
+                    "after navigate PLAYER backStackSize=" + stack.size +
+                        " current=" + (navController.currentDestination?.route ?: "?") +
+                        " top=" + (stack.lastOrNull()?.destination?.route ?: "?")
+                )
             }
             PlayerChoice.EXTERNAL -> {
                 Log.d("AvioPlay", "playRequest EXTERNAL, opening external player")
