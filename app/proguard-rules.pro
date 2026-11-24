@@ -9,6 +9,11 @@
 -keep class is.xyz.mpv.** { *; }
 -keep class com.dokar.quickjs.** { *; }
 -keep class com.frostwire.jlibtorrent.** { *; }
+# The vendored Media3 FFmpeg decoder (androidx.media3.decoder.ffmpeg)
+# also has native methods (FfmpegLibrary.ffmpegGetVersion and friends).
+# R8 renamed them in dev-76/77, so JNI_OnLoad failed and FFmpeg was
+# unavailable — the 5.1 audio path depends on it. Keep the whole package.
+-keep class androidx.media3.decoder.ffmpeg.** { *; }
 
 # ── CloudStream (CS3) runtime ─────────────────────────────────────────────────
 # Plugins are loaded at runtime via PathClassLoader and reflect into the
