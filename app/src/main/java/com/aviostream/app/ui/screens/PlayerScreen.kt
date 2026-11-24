@@ -768,10 +768,16 @@ fun PlayerScreen(
     // processor snapshots enabled/target at configure() (next video),
     // centre level + keep-original are read live per buffer.
     val downmixConfig = remember {
+        // Centre level lives in BOTH places: the config (read live
+        // per buffer by the processor) and the UI state (shown in the
+        // panel). An earlier edit wrote only the UI state here, so the
+        // processor kept its 0 dB default and a stored +7 dB never
+        // reached the mix.
+        state.centerMixDb = settings.centerMixLevelDb
         DownmixConfig().apply {
             enabled = settings.downmixEnabled
             targetChannels = settings.downmixTargetChannels
-            state.centerMixDb = settings.centerMixLevelDb
+            centerMixDb = settings.centerMixLevelDb
             maintainOriginal = settings.maintainOriginalAudioOnDownmix
         }
     }

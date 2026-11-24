@@ -266,6 +266,16 @@ class DownmixAudioProcessor(
             val sl: Float
             val sr: Float
             when (inChannels) {
+                3 -> {
+                    // 3.0 (FL FR FC): no surrounds; the centre is
+                    // samples[2] (already in fc). A 3ch input used to
+                    // fall into the else branch below, which reads
+                    // samples[4..7] off a 3-element array — an
+                    // IndexOutOfBoundsException in the audio renderer
+                    // that surfaced as "Your device can't play this
+                    // format" whenever downmix was ON.
+                    bl = 0f; br = 0f; sl = 0f; sr = 0f
+                }
                 4 -> {
                     bl = samples[2]; br = samples[3]; sl = 0f; sr = 0f
                 }
