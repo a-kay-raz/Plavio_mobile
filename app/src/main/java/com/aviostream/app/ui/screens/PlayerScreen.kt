@@ -218,6 +218,7 @@ import com.aviostream.app.data.ParentalGuideRepository
 import com.aviostream.app.data.ParentalWarning
 import com.aviostream.app.data.buildParentalWarnings
 import com.aviostream.app.data.extractParentalGuideImdbId
+import com.aviostream.app.data.rememberHapticTick
 import com.aviostream.app.data.BingeGroupCache
 import com.aviostream.app.data.CachedStreamLink
 import com.aviostream.app.data.FilenameEpisodeMatcher
@@ -367,6 +368,8 @@ fun PlayerScreen(
     val initialRequest = repository.pendingPlayback
     Log.d("AvioPlay", "PlayerScreen entered, initialRequest null=" + (initialRequest == null))
     val settings = repository.settings
+    // Haptics (v0.14.30 port): one light tick shared by the player funnels below.
+    val hapticTick = rememberHapticTick()
 
     // Step 63: player toolbar layouts (order + visibility), decoded from
     // the stored "id:v,id:h" strings; blank = all visible, default order.
@@ -1328,6 +1331,7 @@ fun PlayerScreen(
     }
 
     fun seekByWithFeedback(deltaMs: Long) {
+        hapticTick()
         seekBy(deltaMs)
         val seconds = (kotlin.math.abs(deltaMs) / 1000L)
         pokeIndicator(PlayerIndicator.Seek((if (deltaMs >= 0) "+" else "−") + "${seconds}s"))
@@ -1356,6 +1360,7 @@ fun PlayerScreen(
         } else {
             (state.accumulatedSeekBaselineMs + state.accumulatedSeekAmountMs).coerceIn(0L, dur)
         }
+        hapticTick()
         player.seekTo(target)
         val seconds = state.accumulatedSeekAmountMs / 1000L
         pokeIndicator(PlayerIndicator.Seek((if (direction >= 0) "+" else "−") + "${seconds}s"))
@@ -1375,6 +1380,7 @@ fun PlayerScreen(
 
     fun togglePlay() {
         val c = player
+        hapticTick()
         if (c.isPlaying) c.pause() else c.play()
     }
 
@@ -2813,7 +2819,10 @@ fun PlayerScreen(
                     runCatching { player.setPlaybackSpeed(prevSpeed) }
                 }
                 dragMode == 0 -> {
-                    if (seekTarget >= 0) player.seekTo(seekTarget)
+                    if (seekTarget >= 0) {
+                        hapticTick()
+                        player.seekTo(seekTarget)
+                    }
                 }
                 dragMode == -1 -> {
                     // A tap: a second tap inside the double-tap window

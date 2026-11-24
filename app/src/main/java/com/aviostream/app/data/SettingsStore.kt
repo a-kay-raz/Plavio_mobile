@@ -456,7 +456,11 @@ class SettingsStore(
     private fun prefLong(key: String, default: Long): Long =
         (prefs.all[key] as? Number)?.toLong() ?: default
 
-    init { migrateLegacySecrets() }
+    init {
+        migrateLegacySecrets()
+        // Haptics (v0.14.30 port): seed the UI-wide flag from the stored value.
+        Haptics.sync(hapticsEnabled)
+    }
 
     /** Play the first source automatically (v0.2.0 behavior) vs. manual play. */
     var autoplay: Boolean
@@ -862,6 +866,14 @@ class SettingsStore(
     var swipeToSeekEnabled: Boolean
         get() = prefs.getBoolean(KEY_SWIPE_TO_SEEK_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_SWIPE_TO_SEEK_ENABLED, value).apply()
+
+    /** Haptics (v0.14.30 port): small vibration on player control taps, double-tap seek, seekbar, Settings switch flips and long-press actions. ON by default. Never ordinary navigation/list taps. The setter mirrors the value into [Haptics] so deep UI can read the flag without a store handle; the store's init does the same for the stored value. */
+    var hapticsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HAPTICS_ENABLED, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_HAPTICS_ENABLED, value).apply()
+            Haptics.sync(value)
+        }
 
     /** Resize mode (Nuvio resizeMode): Fit/Fill/Zoom, persisted so it survives restarts. Stored as the raw AspectRatioFrameLayout constant. */
     var resizeMode: Int
@@ -2169,6 +2181,7 @@ class SettingsStore(
         private const val KEY_HOLD_SPEED = "hold_speed_value"
         private const val KEY_TOUCH_GESTURES_ENABLED = "touch_gestures_enabled"
         private const val KEY_SWIPE_TO_SEEK_ENABLED = "swipe_to_seek_enabled"
+        private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
         private const val KEY_RESIZE_MODE = "resize_mode"
         private const val KEY_AUDIO_BOOST_DB = "audio_boost_db"
         private const val KEY_KEEP_AUDIO_BOOST = "keep_audio_boost"

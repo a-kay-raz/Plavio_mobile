@@ -114,6 +114,7 @@ import androidx.compose.ui.unit.sp
 import com.aviostream.app.BuildConfig
 import com.aviostream.app.R
 import com.aviostream.app.data.StreamRepository
+import com.aviostream.app.data.rememberHapticTick
 import com.aviostream.app.data.cloud.GoogleDriveSyncManager
 import com.aviostream.app.data.cloud.AvioAccountManager
 import com.aviostream.app.data.simkl.SimklApi
@@ -1093,15 +1094,21 @@ fun SettingsToggleRow(
     onCheckedChange: (Boolean) -> Unit,
     compact: Boolean = false
 ) {
+    // Haptics (v0.14.30 port): every Settings switch flip ticks — this row is the one funnel nearly every settings switch goes through, so the wrap lives here, once. The tick fires only on an actual flip and only while haptics are ON.
+    val hapticTick = rememberHapticTick()
+    val wrappedOnCheckedChange: (Boolean) -> Unit = { value ->
+        if (value != checked) hapticTick()
+        onCheckedChange(value)
+    }
     if (LocalSettingsGrouped.current) {
-        SettingsToggleRowGrouped(icon, title, subtitle, checked, onCheckedChange, compact)
+        SettingsToggleRowGrouped(icon, title, subtitle, checked, wrappedOnCheckedChange, compact)
         return
     }
     // Nuvio-style flat row: 16dp horizontal / 14dp vertical, 36dp
     // accent icon tile, bodyLarge title + bodyMedium muted subtitle,
     // custom gradient switch.
     Box(
-        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }
+        Modifier.fillMaxWidth().clickable { wrappedOnCheckedChange(!checked) }
     ) {
         Row(
             Modifier.fillMaxWidth()
@@ -1126,7 +1133,7 @@ fun SettingsToggleRow(
             }
             SettingsGradientSwitch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = wrappedOnCheckedChange,
                 modifier = Modifier.padding(start = 4.dp)
             )
         }

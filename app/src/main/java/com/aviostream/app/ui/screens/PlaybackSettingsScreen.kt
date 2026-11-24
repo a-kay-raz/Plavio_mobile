@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Swipe
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -158,6 +159,7 @@ fun PlaybackSettingsScreen(
     var heroTrailerUnmuted by remember { mutableStateOf(settings.heroTrailerStartUnmuted) }
     var gesturesOn by remember { mutableStateOf(settings.touchGesturesEnabled) }
     var swipeSeekOn by remember { mutableStateOf(settings.swipeToSeekEnabled) }
+    var hapticsEnabled by remember { mutableStateOf(settings.hapticsEnabled) }
     var playerPickerOpen by remember { mutableStateOf(false) }
     // Refresh key so the preferred-player subtitle updates after the dialog closes.
     var playerUiTick by remember { mutableStateOf(0) }
@@ -351,6 +353,18 @@ fun PlaybackSettingsScreen(
                                     swipeSeekOn = it
                                     settings.swipeToSeekEnabled = it
                                 }
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Vibration,
+                            title = "Haptics",
+                            subtitle = "Small vibration on player buttons, switches and long-press",
+                            checked = hapticsEnabled,
+                            onCheckedChange = {
+                                hapticsEnabled = it
+                                settings.hapticsEnabled = it
                             }
                         )
                     },
