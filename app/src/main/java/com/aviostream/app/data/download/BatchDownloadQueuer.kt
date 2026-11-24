@@ -144,7 +144,7 @@ object BatchDownloadQueuer {
         var latest: List<com.aviostream.app.data.StreamItem>? = null
         var latestSubtitles: List<com.aviostream.app.data.Subtitle> = emptyList()
         withTimeoutOrNull(PER_EPISODE_TIMEOUT_MS) {
-            repository.streamResultsFlow(meta.type, episode.id).collect { result ->
+            repository.streamResultsFlow(meta.type, episode.id, includePlugs = false).collect { result ->
                 latest = result.streams
                 latestSubtitles = result.subtitles
             }

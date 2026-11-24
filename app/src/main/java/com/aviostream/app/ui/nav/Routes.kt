@@ -37,6 +37,7 @@ object Routes {
     const val INTEGRATIONS = "integrations"
     const val TMDB_ENRICHMENT = "tmdb_enrichment"
     const val CLOUDSTREAM = "cloudstream"
+    const val PLUGS_SETTINGS = "plugs_settings"
     const val ABOUT = "about"
     const val WHATS_NEW = "whats_new"
     const val DOWNLOADS = "downloads"

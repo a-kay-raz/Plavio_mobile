@@ -169,6 +169,7 @@ import com.aviostream.app.ui.screens.ProfilesScreen
 import com.aviostream.app.ui.screens.AddonsScreen
 import com.aviostream.app.ui.screens.CatalogScreen
 import com.aviostream.app.ui.screens.CloudStreamScreen
+import com.aviostream.app.ui.screens.PlugsScreen
 import com.aviostream.app.ui.screens.ContinueWatchingSettingsScreen
 import com.aviostream.app.ui.screens.DetailScreen
 import com.aviostream.app.ui.screens.DownloadsScreen
@@ -1602,6 +1603,7 @@ private fun AvioNavGraph(
                 onGoToAccount = { navController.navigate(Routes.ACCOUNT) },
                 onGoToIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
                 onGoToCloudStream = { navController.navigate(Routes.CLOUDSTREAM) },
+                onGoToPlugs = { navController.navigate(Routes.PLUGS_SETTINGS) },
                 onGoToDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onGoToCollections = { navController.navigate(Routes.COLLECTIONS) },
                 onGoToTracking = { navController.navigate(Routes.TRACKING_SETTINGS) },
@@ -1703,6 +1705,12 @@ private fun AvioNavGraph(
         }
         composable(Routes.CLOUDSTREAM) {
             CloudStreamScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.PLUGS_SETTINGS) {
+            PlugsScreen(
+                repository = repository,
                 onBack = { navController.popBackStack() }
             )
         }

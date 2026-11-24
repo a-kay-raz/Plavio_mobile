@@ -1480,7 +1480,7 @@ fun PlayerScreen(
         state.episodeStreams = emptyList()
         state.episodeStreamsSubtitles = emptyList()
         val result = withTimeoutOrNull(20_000) {
-            repository.streamResultsFlow(state.currentRequest.type, video.id)
+            repository.streamResultsFlow(state.currentRequest.type, video.id, includePlugs = false)
                 .firstOrNull { it.streams.any { stream -> com.aviostream.app.data.isPlayableLiveStreamUrl(stream.url) } }
         }
         state.episodeStreams = result?.streams ?: emptyList()
@@ -2647,7 +2647,10 @@ fun PlayerScreen(
                         // page (which passes title+year) does — Sources
                         // would stay empty even though playback works.
                         title = requestAtStart.seriesName?.takeIf { it.isNotBlank() }
-                            ?: requestAtStart.title.takeIf { it.isNotBlank() }
+                            ?: requestAtStart.title.takeIf { it.isNotBlank() },
+                        // Plugs (#22): a background re-fill, not a fresh
+                        // open — it must never start fresh QuickJS runs.
+                        includePlugs = false
                     )
                 results.collect { result ->
                     if (result.streams.isNotEmpty()) {
@@ -2689,7 +2692,7 @@ fun PlayerScreen(
             try {
                 withTimeoutOrNull(20_000L) {
                     val results = if (liveChannel != null) repository.liveStreamResultsFlow(liveChannel)
-                        else repository.streamResultsFlow(requestAtStart.type, requestAtStart.videoId)
+                        else repository.streamResultsFlow(requestAtStart.type, requestAtStart.videoId, includePlugs = false)
                     results.firstOrNull { result ->
                         selected = withContext(Dispatchers.Main) {
                             if (disposed.get() || liveFallbackGeneration.get() != generation ||
@@ -3002,7 +3005,7 @@ fun PlayerScreen(
         ioScope.launch {
             val type = state.currentRequest.type
             val result = prefetched ?: withTimeoutOrNull(20_000) {
-                repository.streamResultsFlow(type, video.id).firstOrNull { it.streams.any { stream -> com.aviostream.app.data.isPlayableLiveStreamUrl(stream.url) } }
+                repository.streamResultsFlow(type, video.id, includePlugs = false).firstOrNull { it.streams.any { stream -> com.aviostream.app.data.isPlayableLiveStreamUrl(stream.url) } }
             }
             // Back to the main thread: everything below touches Compose state.
             withContext(Dispatchers.Main) {
@@ -3669,7 +3672,7 @@ fun PlayerScreen(
                     val nextType = state.currentRequest.type
                     ioScope.launch {
                         val res = withTimeoutOrNull(20_000) {
-                            repository.streamResultsFlow(nextType, nextEp.id)
+                            repository.streamResultsFlow(nextType, nextEp.id, includePlugs = false)
                                 .firstOrNull { it.streams.any { s -> com.aviostream.app.data.isPlayableLiveStreamUrl(s.url) } }
                         }
                         withContext(Dispatchers.Main) {
@@ -3907,7 +3910,10 @@ fun PlayerScreen(
                     // Same CS3 title fallback as the background refresh:
                     // a non-IMDb id resolves by title, not by id alone.
                     title = req.seriesName?.takeIf { it.isNotBlank() }
-                        ?: req.title.takeIf { it.isNotBlank() }
+                        ?: req.title.takeIf { it.isNotBlank() },
+                    // Plugs (#22): a resume re-resolution, not a fresh
+                    // open — it must never start fresh QuickJS runs.
+                    includePlugs = false
                 )
                     .firstOrNull { it.streams.any { stream -> com.aviostream.app.data.isPlayableLiveStreamUrl(stream.url) } }
             }

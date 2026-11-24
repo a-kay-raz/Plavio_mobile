@@ -114,7 +114,15 @@ class AvioApp : Application(), ImageLoaderFactory {
         // still said black/white. Guarded — a PackageManager failure must
         // never stop the app from opening.
         runCatching { AppIcon.apply(this, settings.appIcon) }
-        repository = StreamRepository(db, profileDatabase, StremioApi(), settings)
+        // Plugs (#22): a second plugin system (Nuvio-format JS
+        // scraper repos on QuickJS + declarative JSON rule plugs),
+        // racing the addons/CS3 fan-out per title. Wired to the
+        // user's own Integrations TMDB key — the same credential
+        // the enrichment uses — so JS plugs can resolve a title's
+        // TMDB id from its IMDb id.
+        val plugService = com.aviostream.app.data.plugs.PlugService(this)
+        plugService.tmdbKeyProvider = { settings.tmdbApiKey }
+        repository = StreamRepository(db, profileDatabase, StremioApi(), settings, plugs = plugService)
         // Sentry crash reports (his order 2026-10-23): ON by default with a
         // Settings opt-out. Initialized on a background thread, off the
         // launch path, and fully guarded — a Sentry failure can never stop

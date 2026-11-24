@@ -155,6 +155,7 @@ fun SettingsScreen(
     onGoToAccount: () -> Unit = {},
     onGoToIntegrations: () -> Unit = {},
     onGoToCloudStream: () -> Unit = {},
+    onGoToPlugs: () -> Unit = {},
     onGoToDownloads: () -> Unit = {},
     onGoToCollections: () -> Unit = {},
     onGoToTracking: () -> Unit = {},
@@ -480,6 +481,16 @@ fun SettingsScreen(
                 title = "CloudStream",
                 subtitle = "Community plugins and repositories",
                 onClick = onGoToCloudStream,
+                compact = true
+            )
+        },
+        SettingsEntry(sectionGeneral, "Plugs",
+            "plugs plugins providers repositories js rule", hub = "content") {
+            SettingsNavRow(
+                icon = Icons.Filled.Extension,
+                title = "Plugs",
+                subtitle = "Second plugin system: Nuvio-format JS scraper repos and rule plugs",
+                onClick = onGoToPlugs,
                 compact = true
             )
         },

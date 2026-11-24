@@ -71,7 +71,9 @@ class StreamRepository(
     /** Step 56: the active profile's database — library/progress DAOs read from here. */
     private val profileDb: ProfileDatabase,
     val api: StremioApi,
-    val settings: SettingsStore
+    val settings: SettingsStore,
+    /** Plugs (#22): the second plugin system. Null when the app runs without plugs. */
+    internal val plugs: com.aviostream.app.data.plugs.PlugService? = null
 ) {
     val addons: Flow<List<InstalledAddon>> = db.addonDao().observeAll()
 
@@ -2203,6 +2205,50 @@ class StreamRepository(
     }
 
     /**
+     * Plugs (#22): the title context a plug race runs against.
+     * The zip's version also repairs stale meta-cache rows and
+     * walks every meta addon for a TMDB id — the fork has neither
+     * helper (no MetaDetail.tmdbId, no cross-addon TMDB walk), so
+     * this is the short form: ids parsed from the video id, title
+     * and year from the flow's own params (the detail page passes
+     * them), a meta fetch only when they are missing. The TMDB
+     * key-find fallback lives in PlugService itself, so a title
+     * with only an IMDb id still resolves when the user has a key.
+     */
+    private suspend fun buildPlugContext(
+        type: String,
+        videoId: String,
+        title: String?,
+        year: Int?
+    ): com.aviostream.app.data.plugs.PlugTitleContext? {
+        if (type != "movie" && type != "series") return null
+        val parsed = com.aviostream.app.data.plugs.PlugIds.parseVideoId(videoId)
+        val tmdbId = com.aviostream.app.data.plugs.PlugIds.tmdbFromBaseId(parsed.baseId)
+        var imdbId = com.aviostream.app.data.plugs.PlugIds.imdbFromBaseId(parsed.baseId)
+        var resolvedTitle = title
+        var resolvedYear = year
+        if (resolvedTitle.isNullOrBlank() || resolvedYear == null) {
+            val meta = runCatching {
+                withTimeoutOrNull(6_000) { getMetaFromAny(null, type, parsed.baseId) }
+            }.getOrNull()
+            if (meta != null) {
+                if (resolvedTitle.isNullOrBlank()) resolvedTitle = meta.name
+                if (resolvedYear == null) resolvedYear = meta.releaseInfo?.take(4)?.toIntOrNull()
+                if (imdbId == null) imdbId = meta.id.takeIf { it.startsWith("tt") }
+            }
+        }
+        return com.aviostream.app.data.plugs.PlugTitleContext(
+            appType = type,
+            imdbId = imdbId,
+            tmdbId = tmdbId,
+            title = resolvedTitle,
+            year = resolvedYear,
+            season = parsed.season,
+            episode = parsed.episode
+        )
+    }
+
+    /**
      * Streams may live in different addons than catalogs/metadata.
      * Queries every stream-capable addon concurrently and emits the merged
      * list PROGRESSIVELY — each emission holds everything found so far,
@@ -2226,10 +2272,26 @@ class StreamRepository(
         /** Title for the CloudStream search fallback; null skips the fallback. */
         title: String? = null,
         /** Release year of the title, when known — ranks the CS3 fallback candidates. */
-        year: Int? = null
+        year: Int? = null,
+        /**
+         * Plugs (#22): false for playback-internal re-collects (the
+         * player's background refresh, failover, resume re-lookups)
+         * — they reuse the already-loaded list and must never start
+         * fresh QuickJS plug runs behind the playing video. Fresh
+         * opens (Detail page / Watch Now) keep the default true.
+         */
+        includePlugs: Boolean = true
     ): Flow<StreamResult> = channelFlow {
         val addons = streamAddons()
-        if (addons.isEmpty()) {
+        // Plugs (#22): the plug leg is a peer of the addon legs —
+        // it can carry a title even when no stream addon is
+        // installed. The store load is cheap after the first call.
+        val plugService = plugs
+        if (plugService != null) plugService.store.ensureLoaded()
+        val plugLegActive = includePlugs && plugService != null &&
+            (type == "movie" || type == "series") &&
+            plugService.hasEnabledPlugs(type)
+        if (addons.isEmpty() && !plugLegActive) {
             send(StreamResult(emptyList(), emptyList()))
             return@channelFlow
         }
@@ -2260,6 +2322,11 @@ class StreamRepository(
             if (preserveHeaderVariants) LivePlaybackPolicy.candidateIdentity(stream) else ""
         ).joinToString("|")
         val seenSubs = LinkedHashSet<String>()
+        // Plugs (#22): plug rows are deduped ONLY against other plug
+        // rows — a plug row is never dropped for sharing a URL with
+        // an addon row, so plug rows never claim identities in the
+        // addon legs' seenStreams.
+        val seenPlugStreams = LinkedHashSet<String>()
         val accStreams = mutableListOf<StreamItem>()
         val accSubs = mutableListOf<Subtitle>()
         coroutineScope {
@@ -2342,6 +2409,98 @@ class StreamRepository(
                     }
                     if (changed) {
                         mutex.withLock { send(StreamResult(prioritize(accStreams.toList()), accSubs.toList())) }
+                    }
+                }
+            }
+            // Plugs (#22): races alongside the addon/CS3 legs. Plug
+            // results are never cached, so every open runs the plugs
+            // fresh and merges what they return. Every failure is
+            // swallowed: plugs can never break, hang or empty the
+            // addon flow. The leg is PROGRESSIVE — each plug's rows
+            // merge and emit the moment that plug finishes; plugs
+            // never wait for each other. The WHOLE leg — context
+            // build, race and prune — lives under ONE deadline
+            // measured from the leg's start (see PLUG_LEG_DEADLINE_MS):
+            // at the deadline the leg settles with whatever has
+            // landed. The dead-stream prune runs after the race and
+            // lands only as a later emission: it never gates the
+            // settle and never removes a row before plug rows have
+            // painted. And plug rows are deduped ONLY against other
+            // plug rows — a plug row is never dropped for sharing a
+            // URL with an addon row, so both copies show.
+            if (plugLegActive && plugService != null) {
+                launch {
+                    // Batches from plugs abandoned at the deadline
+                    // can still arrive after the leg has closed; the
+                    // guard drops them before they can touch the
+                    // finished flow (the service also swallows a
+                    // send into a closed channel — belt and braces).
+                    val legOpen = java.util.concurrent.atomic.AtomicBoolean(true)
+                    try {
+                        withTimeoutOrNull(PLUG_LEG_DEADLINE_MS) {
+                            val plugCtx = buildPlugContext(type, videoId, title, year)
+                            if (plugCtx != null) {
+                                val landedPlugRows = mutableListOf<StreamItem>()
+                                plugService.raceStreams(plugCtx, onBatch = { batch ->
+                                    if (!legOpen.get()) return@raceStreams
+                                    mutex.withLock {
+                                        var changed = false
+                                        batch.forEach { s ->
+                                            val id = streamIdentity(s)
+                                            if (seenPlugStreams.add(id)) {
+                                                accStreams.add(s)
+                                                landedPlugRows += s
+                                                changed = true
+                                            }
+                                        }
+                                        if (changed) {
+                                            send(StreamResult(prioritize(accStreams.toList()), accSubs.toList()))
+                                        }
+                                    }
+                                })
+                                // Dead-stream prune: the landed plug rows
+                                // have painted above; now each is probed
+                                // from this device with its own headers,
+                                // and a row proven dead (404/405/410,
+                                // connection failure) drops out in this
+                                // later emission. Anything unproven stays
+                                // — never hide on a guess. Addon rows are
+                                // never probed.
+                                val landed = mutex.withLock { landedPlugRows.toList() }
+                                if (landed.isNotEmpty()) {
+                                    val kept = plugService.pruneDeadPlugRows(plugCtx, landed)
+                                    if (kept.size != landed.size) {
+                                        val keptIds = kept.map { streamIdentity(it) }.toSet()
+                                        var pruneChanged = false
+                                        mutex.withLock {
+                                            landed.forEach { row ->
+                                                val id = streamIdentity(row)
+                                                if (id !in keptIds) {
+                                                    // Reference equality:
+                                                    // an addon row sharing
+                                                    // this identity must
+                                                    // never be removed.
+                                                    if (accStreams.removeAll { it === row }) {
+                                                        seenPlugStreams.remove(id)
+                                                        pruneChanged = true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (pruneChanged) {
+                                            mutex.withLock { send(StreamResult(prioritize(accStreams.toList()), accSubs.toList())) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // A plug-leg failure is a silent no-show for
+                        // the plugs only — addon rows are unaffected.
+                    } finally {
+                        legOpen.set(false)
                     }
                 }
             }
@@ -3079,6 +3238,15 @@ class StreamRepository(
         private const val STREAM_FETCH_TIMEOUT_MS = 20000L
         /** Budget for the whole CloudStream plugin group (one leg, all providers). */
         private const val CLOUDSTREAM_FETCH_TIMEOUT_MS = 35000L
+        /**
+         * Plugs (#22): the whole plug leg — context build, race and
+         * prune — lives under ONE deadline measured from the leg's
+         * start. At the deadline the leg settles with whatever has
+         * landed and the sheet's loading stops; nothing may hold the
+         * sheet past it. The race itself caps at 125 s, so this is
+         * the tighter bound.
+         */
+        private const val PLUG_LEG_DEADLINE_MS = 120000L
         /** CS3 home sections: per-provider budget (Infuse loadCloudSections). */
         private const val CLOUDSTREAM_HOME_PROVIDER_TIMEOUT_MS = 30000L
         /** CS3 home sections: total budget across providers (Infuse). */

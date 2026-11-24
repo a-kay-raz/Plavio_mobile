@@ -12,6 +12,15 @@ plugins {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+        // Plugs (#22): quickjs-kt 1.0.18 is published against
+        // Kotlin 2.4.x metadata; the project compiles with Kotlin
+        // 2.3.10, so the metadata-version check is skipped — and
+        // the runtime libraries are aligned UP to the versions the
+        // binding was built against (see the resolutionStrategy
+        // below): its bytecode calls stdlib-2.3-only internals
+        // (kotlin.coroutines.jvm.internal.SpillingKt), so shipping
+        // the older stdlib would crash plug runs at runtime.
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 
@@ -126,9 +135,41 @@ android {
     }
 }
 
+// Plugs (#22): quickjs-kt 1.0.18 was built against
+// kotlin-stdlib 2.4.21 and kotlinx-coroutines 1.11.0 — align the
+// whole app to those exact versions. The stdlib is backward
+// compatible with everything compiled here; see the kotlinOptions
+// note above for why this is load-bearing. The pairing is not
+// optional: with an older coroutines version every plug run dies
+// at runtime with NoSuchMethodError on Mutex.unlock$default —
+// 1.0.18's bytecode calls the 1.11.0 synthetic. (Coroutines is
+// also strictly pinned to 1.11.0 in the constraints block below;
+// the two mechanisms agree.) The fork compiles against API 36,
+// so the zip's AarMetadata check workaround is not needed here.
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:2.4.21")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.4.21")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.4.21")
+        force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+        force("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0")
+        force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+        force("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+        force("org.jetbrains.kotlinx:kotlinx-coroutines-test-jvm:1.11.0")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation("org.checkerframework:checker-qual:3.42.0")
+    // Plugs (#22): the embeddable JS engine for Nuvio-format plugs —
+    // QuickJS via the dokar binding: the same engine family the
+    // reference hosts use, so plugs run unmodified at native speed;
+    // see data/plugs/JsPlugHost. The fork already carries ksoup-jvm
+    // 0.2.3 (full) for the cheerio bridge (PlugBridges.kt) — the
+    // zip's ksoup-lite 0.2.0 is the same library's DOM half, so no
+    // second ksoup artifact is added.
+    implementation(libs.quickjs.kt)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)

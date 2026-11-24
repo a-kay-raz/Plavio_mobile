@@ -22,6 +22,7 @@ rhino = "1.8.1"
 tmdbJava = "2.13.0"
 cryptography = "0.6.0"
 ksoup = "0.2.3"
+quickjs = "1.0.18"
 serialization = "1.7.3"
 coil = "2.6.0"
 zxing = "3.5.3"
@@ -67,6 +68,7 @@ tmdb-java = { group = "com.uwetrottmann.tmdb2", name = "tmdb-java", version.ref 
 cryptography-core = { group = "dev.whyoleg.cryptography", name = "cryptography-core", version.ref = "cryptography" }
 cryptography-provider-optimal = { group = "dev.whyoleg.cryptography", name = "cryptography-provider-optimal", version.ref = "cryptography" }
 ksoup-jvm = { group = "com.fleeksoft.ksoup", name = "ksoup-jvm", version.ref = "ksoup" }
+quickjs-kt = { group = "io.github.dokar3", name = "quickjs-kt", version.ref = "quickjs" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }

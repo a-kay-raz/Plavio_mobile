@@ -683,6 +683,27 @@ fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compa
  * Single stream row: the full title/filename line plus the download
  * action.
  */
+/**
+ * Plugs (#22): the PLUG tag a plug-produced row carries, beside
+ * the filename line.
+ */
+@Composable
+private fun PlugTagChip() {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color(0xFF2B3A55))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = "PLUG",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF9DC2FF)
+        )
+    }
+}
+
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 fun StreamCard(
@@ -741,15 +762,25 @@ fun StreamCard(
                 .padding(20.dp)
         ) {
             // Title — full name, bigger text (user's order). The
-            // title/filename line is the whole row content.
-            Text(
-                text = fullName,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                lineHeight = 24.sp,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // title/filename line is the whole row content. A plug
+            // row keeps its PLUG tag beside the filename.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = fullName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (stream.sourceId?.startsWith(
+                        com.aviostream.app.data.plugs.PlugService.PLUG_SOURCE_PREFIX
+                    ) == true
+                ) {
+                    Spacer(Modifier.width(8.dp))
+                    PlugTagChip()
+                }
+            }
             if (formattedDescription != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -847,13 +878,24 @@ private fun CompactStreamCard(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f).clickable(enabled = !unresolvedTorrent, onClick = onClick).tvFocusRing(shape)) {
-            Text(
-                text = headline ?: display.headline,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                lineHeight = 19.sp
-            )
+            // A plug row keeps its PLUG tag beside the headline.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = headline ?: display.headline,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    lineHeight = 19.sp,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (stream.sourceId?.startsWith(
+                        com.aviostream.app.data.plugs.PlugService.PLUG_SOURCE_PREFIX
+                    ) == true
+                ) {
+                    Spacer(Modifier.width(8.dp))
+                    PlugTagChip()
+                }
+            }
             // Addon name (Nuvio StreamCard shows the addon logo + name):
             // always shown, so the user can see which addon each link is
             // from even when the filename already mentions it (display
