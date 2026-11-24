@@ -515,6 +515,16 @@ class SettingsStore(
         set(value) = prefs.edit().putBoolean(KEY_EPISODE_NOTIFICATIONS, value).apply()
 
     /**
+     * "New movie" release alerts (v0.14.30 port): the MovieReleaseWorker
+     * checks the watchlisted movies every 12h and notifies when a movie
+     * first seen as unreleased has since arrived. Default ON, like the
+     * episode alerts.
+     */
+    var movieNotifications: Boolean
+        get() = prefs.getBoolean(KEY_MOVIE_NOTIFICATIONS, true)
+        set(value) = prefs.edit().putBoolean(KEY_MOVIE_NOTIFICATIONS, value).apply()
+
+    /**
      * "Download finished" alerts (v0.14.30 port): post a notification when a download completes. The live progress notification is separate and always runs while downloads are active. Default ON.
      */
     var downloadFinishedNotifications: Boolean
@@ -2176,6 +2186,7 @@ class SettingsStore(
         private const val KEY_SHUFFLE_EPISODES = "shuffle_episodes"
         private const val KEY_PIP_ENABLED = "pip_enabled"
         private const val KEY_EPISODE_NOTIFICATIONS = "episode_notifications"
+        private const val KEY_MOVIE_NOTIFICATIONS = "movie_notifications"
         private const val KEY_DOWNLOAD_FINISHED_NOTIFICATIONS = "download_finished_notifications"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
         private const val KEY_BUFFER_MIN_MS = "buffer_min_ms"

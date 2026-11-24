@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.NotificationImportant
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +50,7 @@ fun NotificationsSettingsScreen(
     val settings = repository.settings
     val context = LocalContext.current
     var episodeNotifs by remember { mutableStateOf(settings.episodeNotifications) }
+    var movieNotifs by remember { mutableStateOf(settings.movieNotifications) }
     var downloadDone by remember { mutableStateOf(settings.downloadFinishedNotifications) }
     var testNotifSent by remember { mutableStateOf(false) }
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -89,6 +91,28 @@ fun NotificationsSettingsScreen(
                                 episodeNotifs = enabled
                                 if (enabled) {
                                     com.aviostream.app.data.notifications.EpisodeNotifications.ensureScheduled(context)
+                                    if (Build.VERSION.SDK_INT >= 33 &&
+                                        ContextCompat.checkSelfPermission(
+                                            context, Manifest.permission.POST_NOTIFICATIONS
+                                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                }
+                            }
+                        )
+                    },
+                    {
+                        SettingsToggleRow(
+                            icon = Icons.Filled.Movie,
+                            title = "New movie alerts",
+                            subtitle = "On by default. A few times a day Avio quietly checks the movies in your watchlist and notifies you when one is out.",
+                            checked = movieNotifs,
+                            onCheckedChange = { enabled ->
+                                settings.movieNotifications = enabled
+                                movieNotifs = enabled
+                                if (enabled) {
+                                    com.aviostream.app.data.notifications.MovieNotifications.ensureScheduled(context)
                                     if (Build.VERSION.SDK_INT >= 33 &&
                                         ContextCompat.checkSelfPermission(
                                             context, Manifest.permission.POST_NOTIFICATIONS

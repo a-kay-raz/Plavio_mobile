@@ -134,6 +134,7 @@ import com.aviostream.app.data.ProfileStore
 import com.aviostream.app.data.ProfilesRepository
 import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.notifications.EpisodeNotifications
+import com.aviostream.app.data.notifications.MovieNotifications
 import com.aviostream.app.data.notifications.NotificationNav
 import com.aviostream.app.util.ExternalPlayer
 import com.aviostream.app.data.update.UpdateInfo
@@ -379,6 +380,7 @@ class MainActivity : ComponentActivity() {
         // Safety net: (re)schedule the episode check on cold start.
         // Idempotent (KEEP) and a no-op when alerts are disabled.
         EpisodeNotifications.ensureScheduled(this)
+        MovieNotifications.ensureScheduled(this)
         // PiP play/pause RemoteAction receiver (explicit intent, not exported).
         val pipFilter = IntentFilter(ACTION_PIP_TOGGLE)
         ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_NOT_EXPORTED)

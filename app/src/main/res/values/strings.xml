@@ -30,6 +30,9 @@
 
     <string name="notif_channel_episodes">New episodes</string>
     <string name="notif_channel_episodes_desc">Alerts when followed shows release new episodes</string>
+    <string name="notif_channel_movies">New movies</string>
+    <string name="notif_channel_movies_desc">Alerts when movies in your library are released</string>
+    <string name="notif_new_movie_text">Now available to watch</string>
     <string name="notif_new_episode_text">New episode available: %1$s</string>
     <string name="notif_new_episode_text_titled">New episode: %1$s — %2$s</string>
     <string name="notif_test_title">Test notification</string>
