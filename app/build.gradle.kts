@@ -151,6 +151,13 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.datasource.okhttp)
+    // Second playback engine (libmpv) for the dual-engine player.
+    // The library's classes never reference appcompat (verified in
+    // the artifact), so its vestigial appcompat dependency is
+    // excluded; the Kotlin stdlib it needs is already present.
+    implementation(libs.mpv.android.lib) {
+        exclude(group = "androidx.appcompat", module = "appcompat")
+    }
     implementation(libs.okhttp)
     // CloudStream (CS3): pin the RESOLVED OkHttp runtime to the 5.3.2 that
     // NiceHttp 0.4.18 was compiled against (same mechanism as the TV port).

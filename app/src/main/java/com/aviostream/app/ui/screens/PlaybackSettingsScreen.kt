@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.PictureInPicture
@@ -113,6 +114,7 @@ import com.aviostream.app.ui.theme.TextSecondary
 @Composable
 fun PlaybackSettingsScreen(
     repository: StreamRepository,
+    onGoToEngine: () -> Unit = {},
     onBack: () -> Unit = {}
 ) {
     val settings = repository.settings
@@ -302,6 +304,14 @@ fun PlaybackSettingsScreen(
                             title = "Preferred player",
                             subtitle = "Currently: ${PlayerChoice.fromName(settings.preferredPlayer).label}",
                             onClick = { playerPickerOpen = true }
+                        )
+                    },
+                    {
+                        SettingsNavRow(
+                            icon = Icons.Filled.SmartDisplay,
+                            title = "Playback engine",
+                            subtitle = "Currently: ${playbackEngineName(settings.playbackEngine)}",
+                            onClick = onGoToEngine
                         )
                     },
                     {

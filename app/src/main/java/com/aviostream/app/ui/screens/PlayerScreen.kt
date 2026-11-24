@@ -474,6 +474,39 @@ fun PlayerScreen(
     // `remember` instead of 130 `by remember` delegates, so D8's register
     // allocator stops producing invalid dex for this giant composable.
     val state = remember { PlayerScreenState(settings, initialRequest, isTv) }
+    // Second playback engine (MPV port, v0.14.30 #21): the engine
+    // state lives here, before the error listener, so the listener
+    // can fail over through the hook (composable locals are
+    // positional — nothing below may be referenced above it).
+    // The engine resolved for this play: Auto routes HDR / Dolby
+    // Vision to Exo and anime to MPV; a manual pick pins one engine.
+    val startEngine = remember {
+        com.aviostream.app.player.PlaybackEngineResolver.resolve(
+            settings.playbackEngine, initialRequest
+        )
+    }
+    var activeEngine by remember { mutableStateOf(startEngine) }
+    val mpvEngineState = remember { mutableStateOf<com.aviostream.app.player.MpvPlayerEngine?>(null) }
+    var mpvEngine by mpvEngineState
+    /** The MPV track list mirrored into UI state for the track panels. */
+    val mpvTracksUiState = remember {
+        mutableStateOf<List<com.aviostream.app.player.MpvPlayerEngine.Track>>(emptyList())
+    }
+    var mpvTracksUi by mpvTracksUiState
+    /** Identity of the resolved subtitles already added to the MPV engine. */
+    var mpvSubsKey by remember { mutableStateOf<String?>(null) }
+    /** Ladder guard: the one silent engine failover for this play. */
+    var engineFailoverUsed by remember { mutableStateOf(false) }
+    /** A manual in-player engine switch disarms the auto failover. */
+    var engineFailoverArmed by remember { mutableStateOf(true) }
+    /** Assigned once the engine block exists; the Exo error listener fails over through it. */
+    var engineFailoverHook: (() -> Unit)? by remember { mutableStateOf(null) }
+    /** Assigned once the engine block exists; the MPV engine reports fatal errors through it. */
+    var mpvFatalErrorHook: ((String) -> Unit)? by remember { mutableStateOf(null) }
+
+    /** True when the MPV engine owns playback right now. */
+    fun mpvActive(): Boolean =
+        activeEngine == com.aviostream.app.player.PlaybackEngine.MPV && mpvEngine != null
     // Sleep timer label (v0.14.30 port): time left while a timed deadline
     // runs, "Ep. end" for end-of-episode, else "Sleep".
     val sleepTimerLabel = when {
@@ -558,6 +591,17 @@ fun PlayerScreen(
                 if (initialRequest.isLive && !isTv &&
                     com.aviostream.app.data.LivePlaybackPolicy.isRecoverableSourceError(error.errorCode)) {
                     com.aviostream.app.data.SourceDiagnostics.record("Live playback", "fallback_exhausted", 0)
+                }
+                // Engine failover (MPV port): the Exo rungs above all
+                // declined — try the other engine once at the same
+                // position instead of showing the error. Live and
+                // trailers stay on Exo; a manual switch disarms it.
+                if (settings.autoEngineFailover && engineFailoverArmed && !engineFailoverUsed &&
+                    !initialRequest.isLive && !initialRequest.isTrailer
+                ) {
+                    engineFailoverUsed = true
+                    engineFailoverHook?.invoke()
+                    return
                 }
                 state.autoFailoverCount = 0
                 state.playerError = com.aviostream.app.data.PlaybackErrorText.explanation(error)
@@ -670,6 +714,9 @@ fun PlayerScreen(
         state.audioDelayMs = clamped
         audioDelayUsRef.set(clamped * 1000L)
         settings.audioDelayMs = clamped
+        // Second engine: libmpv takes the delay directly (the Exo
+        // path shifts it at the renderer instead).
+        if (mpvActive()) mpvEngine?.setAudioDelay(clamped.toLong())
     }
     fun formatAudioDelay(ms: Int): String {
         val sign = when {
@@ -924,6 +971,193 @@ fun PlayerScreen(
     val latestPlayer = rememberUpdatedState(player)
     val latestRequest = rememberUpdatedState(state.currentRequest)
 
+    // --- Second engine (MPV) helpers ---------------------------------
+    // The UI never talks to a parked engine: every position /
+    // duration / transport read goes through these, so the shared
+    // control shell works on either engine.
+
+    /** Position of the engine that owns playback right now. */
+    fun activePositionMs(): Long =
+        if (mpvActive()) {
+            mpvEngine?.snapshot?.value?.positionMs ?: 0L
+        } else {
+            runCatching { player.currentPosition }.getOrDefault(0L)
+        }
+
+    /** Duration of the engine that owns playback right now. */
+    fun activeDurationMs(): Long =
+        if (mpvActive()) {
+            mpvEngine?.snapshot?.value?.durationMs ?: 0L
+        } else {
+            runCatching { player.duration }.getOrDefault(0L).takeIf { it > 0 } ?: 0L
+        }
+
+    /** Buffered position (MPV reports none — position stands in). */
+    fun activeBufferedMs(): Long =
+        if (mpvActive()) activePositionMs()
+        else runCatching { player.bufferedPosition }.getOrDefault(0L).takeIf { it > 0 } ?: 0L
+
+    fun activeIsPlaying(): Boolean =
+        if (mpvActive()) {
+            mpvEngine?.snapshot?.value?.let { !it.paused } ?: false
+        } else {
+            runCatching { player.isPlaying }.getOrDefault(false)
+        }
+
+    /** True when the active engine has reached the end of the file. */
+    fun activeEnded(): Boolean =
+        if (mpvActive()) {
+            mpvEngine?.snapshot?.value?.eofReached ?: false
+        } else {
+            runCatching { player.playbackState }.getOrDefault(Player.STATE_IDLE) == Player.STATE_ENDED
+        }
+
+    /** Seeks the engine that owns playback right now. */
+    fun activeSeekTo(positionMs: Long) {
+        if (mpvActive()) mpvEngine?.seekTo(positionMs.coerceAtLeast(0L))
+        else runCatching { player.seekTo(positionMs) }
+    }
+
+    /** Sets the playback speed on the engine that owns playback. */
+    fun activeSetSpeed(speed: Float) {
+        if (mpvActive()) mpvEngine?.setSpeed(speed)
+        else runCatching { player.setPlaybackSpeed(speed) }
+    }
+
+    /** Pauses the engine that owns playback right now. */
+    fun activePause() {
+        if (mpvActive()) mpvEngine?.setPaused(true)
+        else runCatching { player.pause() }
+    }
+
+    /** The fork's aspect mode (AspectRatioFrameLayout constants) as MPV 0 = Fit / 1 = Fill / 2 = Zoom. */
+    fun mpvAspectMode(): Int = when (state.aspectMode) {
+        AspectRatioFrameLayout.RESIZE_MODE_FILL -> 1
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> 2
+        else -> 0
+    }
+
+    /** Applies the fork's subtitle style to the MPV engine. */
+    fun applyMpvSubtitleStyle() {
+        mpvEngine?.applySubtitleStyle(
+            textColor = settings.subtitleTextColor,
+            backgroundColor = settings.subtitleBackgroundColor,
+            edgeColor = settings.subtitleEdgeColor,
+            edgeType = settings.subtitleEdgeType,
+            fontSizeSp = settings.subtitleFontSizeSp,
+            bottomOffset = settings.subtitleBottomOffset,
+            bold = settings.subtitleBold,
+            fontFamily = 0
+        )
+    }
+
+    /**
+     * Starts (or restarts) the MPV engine on [req]. The previous
+     * engine instance is released first — one engine per play, and
+     * its release runs on its own thread (detach → destroy). The
+     * parked ExoPlayer is only paused, never released: the screen
+     * keeps holding it, so only a fresh ExoPlayer — built by the
+     * switch back — ever replaces it.
+     */
+    fun activateMpv(req: PlaybackRequest, startMs: Long, autoplay: Boolean) {
+        // Stop the parked ExoPlayer's audio before MPV starts.
+        runCatching { player.pause() }
+        val engine = com.aviostream.app.player.MpvPlayerEngine(
+            context,
+            hardwareDecoding = settings.mpvHardwareDecoding,
+            yuv420pFilter = settings.mpvYuv420pFilter
+        )
+        engine.onFatalError = { message ->
+            // libmpv reports on its own event thread — hop to main
+            // before touching player state or rebuilding anything.
+            ioScope.launch {
+                withContext(Dispatchers.Main) {
+                    if (!disposed.get()) mpvFatalErrorHook?.invoke(message)
+                }
+            }
+        }
+        engine.onFileLoaded = { applyMpvSubtitleStyle() }
+        mpvEngine?.release()
+        mpvEngine = engine
+        mpvTracksUi = emptyList()
+        mpvSubsKey = null
+        activeEngine = com.aviostream.app.player.PlaybackEngine.MPV
+        engine.initialize()
+        engine.setPaused(!autoplay)
+        engine.setSpeed(state.speed)
+        engine.setResizeMode(mpvAspectMode())
+        engine.setAudioDelay(settings.audioDelayMs.toLong())
+        engine.load(
+            req.streamUrl,
+            com.aviostream.app.data.PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv),
+            startMs,
+            req.mergeAudioUrl
+        )
+        applyMpvSubtitleStyle()
+    }
+
+    /** Releases the MPV engine (idempotent) and returns to Exo. */
+    fun releaseMpv() {
+        mpvEngine?.release()
+        mpvEngine = null
+        mpvTracksUi = emptyList()
+        mpvSubsKey = null
+        if (activeEngine == com.aviostream.app.player.PlaybackEngine.MPV) {
+            activeEngine = com.aviostream.app.player.PlaybackEngine.EXO
+        }
+    }
+
+    // Mirror the live MPV track list into UI state for the panels.
+    LaunchedEffect(mpvEngine) {
+        val engine = mpvEngine ?: return@LaunchedEffect
+        engine.tracks.collect { mpvTracksUi = it }
+    }
+
+    // Second-engine surface callback: the SurfaceView hands its
+    // surface to the engine on create and takes it back on destroy.
+    val mpvSurfaceCallback = remember {
+        object : android.view.SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                mpvEngine?.attachSurface(holder.surface)
+            }
+
+            override fun surfaceChanged(
+                holder: android.view.SurfaceHolder,
+                format: Int,
+                width: Int,
+                height: Int
+            ) {
+            }
+
+            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                mpvEngine?.detachSurface()
+            }
+        }
+    }
+
+    /**
+     * MPV tracks as panel options: the panels only know
+     * [TrackOption], so each MPV track rides a synthetic one-track
+     * group (id "mpv:<id>"); selection maps back by language, then
+     * by title. The Exo path never sees these.
+     */
+    fun mpvTrackOptions(type: String): List<TrackOption> {
+        return mpvTracksUi.filter { it.type == type }.mapIndexed { index, track ->
+            val format = Format.Builder()
+                .setId("mpv:${track.id}")
+                .setLanguage(track.lang)
+                .setLabel(track.title ?: displayLanguage(track.lang))
+                .build()
+            TrackOption(
+                group = TrackGroup(format),
+                trackIndex = 0,
+                label = trackLabel(format, index),
+                selected = track.selected,
+                language = track.lang
+            )
+        }
+    }
+
     fun attachSdhCueFilter(targetPlayer: ExoPlayer, sv: SubtitleView) {
         if (state.cueFilterPlayer === targetPlayer && state.cueFilterListener != null) return
         state.cueFilterListener?.let { state.cueFilterPlayer?.removeListener(it) }
@@ -989,7 +1223,12 @@ fun PlayerScreen(
     // (Placed after `player` is declared — composable locals are positional.)
     LaunchedEffect(Unit) {
         MainActivity.pipToggleRequest.collect {
-            player.playWhenReady = !player.playWhenReady
+            if (mpvActive()) {
+                val engine = mpvEngine
+                if (engine != null) engine.setPaused(!engine.snapshot.value.paused)
+            } else {
+                player.playWhenReady = !player.playWhenReady
+            }
         }
     }
     /**
@@ -1177,6 +1416,24 @@ fun PlayerScreen(
      */
     fun attachResolvedSubtitles(resolved: List<ResolvedSubtitle>, defaultUrl: String? = null) {
         if (resolved.isEmpty()) return
+        // Second engine: MPV takes subtitles as sub-add calls, not a
+        // MediaItem rebuild. The default is the requested URL, else
+        // the first track in a preferred language, else nothing is
+        // forced (libmpv auto-selects).
+        if (mpvActive()) {
+            val engine = mpvEngine ?: return
+            val key = subtitleIdentity(resolved)
+            if (mpvSubsKey == key) return
+            val prefs = settings.subtitleLanguages
+            val defaultSub = resolved.firstOrNull { it.sub.url == defaultUrl }
+                ?: resolved.firstOrNull { r -> prefs.any { pref -> subtitleLangMatches(r.sub.lang, pref) } }
+            resolved.forEach { r ->
+                engine.addExternalSubtitle(r.file.absolutePath, select = r.sub.url == defaultSub?.sub.url)
+            }
+            mpvSubsKey = key
+            state.trackTick++
+            return
+        }
         val key = subtitleIdentity(resolved)
         val attached = state.subsAttached
         if (attached != null && attached.first === player && attached.second == key) return
@@ -1321,8 +1578,12 @@ fun PlayerScreen(
         }
     }
 
-    val audioOpts = remember(state.trackTick, player) { trackOptions(player, C.TRACK_TYPE_AUDIO) }
-    val textOpts = remember(state.trackTick, player) { trackOptions(player, C.TRACK_TYPE_TEXT) }
+    val audioOpts = remember(state.trackTick, player, mpvTracksUi) {
+        if (mpvActive()) mpvTrackOptions("audio") else trackOptions(player, C.TRACK_TYPE_AUDIO)
+    }
+    val textOpts = remember(state.trackTick, player, mpvTracksUi) {
+        if (mpvActive()) mpvTrackOptions("sub") else trackOptions(player, C.TRACK_TYPE_TEXT)
+    }
     // When preferred subtitle languages are set, the Subs picker only offers
     // tracks in those languages (plus Off and Search). Preferences are read
     // fresh every time the dialog opens. Falls back to all tracks if none
@@ -1336,17 +1597,104 @@ fun PlayerScreen(
             }
         }.ifEmpty { textOpts }
     }
-    val subtitlesOff = remember(state.trackTick, player) { !hasSelectedTrack(player, C.TRACK_TYPE_TEXT) }
+    val subtitlesOff = remember(state.trackTick, player, mpvTracksUi) {
+        if (mpvActive()) mpvTracksUi.none { it.type == "sub" && it.selected }
+        else !hasSelectedTrack(player, C.TRACK_TYPE_TEXT)
+    }
 
     fun pokeIndicator(i: PlayerIndicator) {
         state.indicator = i
         state.indicatorTick++
     }
 
+    /**
+     * Switches engine mid-play at [resumeAtMs]. Exo → MPV parks the
+     * ExoPlayer (paused, not released — the screen still holds it);
+     * MPV → Exo releases the MPV engine and builds a fresh ExoPlayer.
+     */
+    fun switchPlaybackEngine(
+        to: com.aviostream.app.player.PlaybackEngine,
+        resumeAtMs: Long
+    ) {
+        val req = state.currentRequest
+        state.playerError = null
+        if (to == com.aviostream.app.player.PlaybackEngine.MPV) {
+            state.playerView?.player = null
+            activateMpv(req, resumeAtMs, autoplay = true)
+            if (state.resolvedSubs.isNotEmpty()) attachResolvedSubtitles(state.resolvedSubs)
+        } else {
+            releaseMpv()
+            val old = player
+            val fresh = buildExo(req, emptyList())
+                .also { it.addListener(guardedPlayerListener()) }
+            fresh.setPlaybackSpeed(state.speed)
+            state.playerView?.player = null
+            player = fresh
+            runCatching { old.release() }
+            state.subsAttached = null
+            fresh.seekTo(resumeAtMs)
+            fresh.prepare()
+            fresh.playWhenReady = true
+        }
+        pokeIndicator(
+            PlayerIndicator.Message(
+                if (to == com.aviostream.app.player.PlaybackEngine.MPV) {
+                    "Engine: MPV"
+                } else {
+                    "Engine: ExoPlayer"
+                }
+            )
+        )
+    }
+
+    /**
+     * MPV fatal errors, classified like the Exo ladder: an engine
+     * fault (init failure, format / codec / decode wording) fails
+     * over to the other engine once; anything else is a source
+     * fault and walks the next-source ladder; live and trailers
+     * never switch engines.
+     */
+    fun handleMpvFatalError(message: String) {
+        if (disposed.get()) return
+        val req = state.currentRequest
+        val playerFault = message == "Second engine failed to start" ||
+            message.contains("format", ignoreCase = true) ||
+            message.contains("codec", ignoreCase = true) ||
+            message.contains("decode", ignoreCase = true)
+        if (playerFault && settings.autoEngineFailover && engineFailoverArmed &&
+            !engineFailoverUsed && !req.isLive && !req.isTrailer
+        ) {
+            engineFailoverUsed = true
+            switchPlaybackEngine(
+                com.aviostream.app.player.PlaybackEngineResolver.other(activeEngine),
+                activePositionMs()
+            )
+            return
+        }
+        if (!req.isLive && !req.isTrailer &&
+            state.autoFailoverCount < settings.fallbackMaxSources
+        ) {
+            state.autoFailoverCount++
+            state.failoverToNextSource?.invoke(state.autoFailoverCount)
+            return
+        }
+        state.playerError = message
+    }
+
+    // Wire the engine hooks now that the engine block exists.
+    engineFailoverHook = {
+        if (activeEngine == com.aviostream.app.player.PlaybackEngine.EXO) {
+            switchPlaybackEngine(
+                com.aviostream.app.player.PlaybackEngineResolver.other(activeEngine),
+                activePositionMs()
+            )
+        }
+    }
+    mpvFatalErrorHook = { message -> handleMpvFatalError(message) }
+
     fun seekBy(deltaMs: Long) {
-        val c = player
-        val dur = c.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-        c.seekTo((c.currentPosition + deltaMs).coerceIn(0L, dur))
+        val dur = activeDurationMs().takeIf { it > 0 } ?: Long.MAX_VALUE
+        activeSeekTo((activePositionMs() + deltaMs).coerceIn(0L, dur))
     }
 
     fun seekByWithFeedback(deltaMs: Long) {
@@ -1365,7 +1713,7 @@ fun PlayerScreen(
      */
     fun doubleTapSeek(direction: Int) {
         val stepMs = (if (direction < 0) settings.skipBackwardSeconds else settings.skipForwardSeconds) * 1000L
-        val pos = player.currentPosition.coerceAtLeast(0L)
+        val pos = activePositionMs().coerceAtLeast(0L)
         if (state.accumulatedSeekDirection == direction) {
             state.accumulatedSeekAmountMs += stepMs
         } else {
@@ -1373,14 +1721,14 @@ fun PlayerScreen(
             state.accumulatedSeekBaselineMs = pos
             state.accumulatedSeekAmountMs = stepMs
         }
-        val dur = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val dur = activeDurationMs().takeIf { it > 0 } ?: Long.MAX_VALUE
         val target = if (direction < 0) {
             (state.accumulatedSeekBaselineMs - state.accumulatedSeekAmountMs).coerceAtLeast(0L)
         } else {
             (state.accumulatedSeekBaselineMs + state.accumulatedSeekAmountMs).coerceIn(0L, dur)
         }
         hapticTick()
-        player.seekTo(target)
+        activeSeekTo(target)
         val seconds = state.accumulatedSeekAmountMs / 1000L
         pokeIndicator(PlayerIndicator.Seek((if (direction >= 0) "+" else "−") + "${seconds}s"))
         state.accumulatedSeekResetJob?.cancel()
@@ -1398,22 +1746,35 @@ fun PlayerScreen(
     }
 
     fun togglePlay() {
-        val c = player
         hapticTick()
-        if (c.isPlaying) c.pause() else c.play()
+        if (mpvActive()) {
+            val engine = mpvEngine
+            if (engine != null) engine.setPaused(!engine.snapshot.value.paused)
+        } else {
+            val c = player
+            if (c.isPlaying) c.pause() else c.play()
+        }
     }
 
     /** Shared by the header and pill PiP buttons. */
     fun enterPip() {
         if (!settings.pipEnabled) return
         val act = activity as? MainActivity ?: return
-        val vs = player.videoSize
-        if (vs.width > 0 && vs.height > 0) {
-            MainActivity.pipVideoW = vs.width
-            MainActivity.pipVideoH = vs.height
+        if (mpvActive()) {
+            val snap = mpvEngine?.snapshot?.value
+            if (snap != null && snap.videoWidth > 0 && snap.videoHeight > 0) {
+                MainActivity.pipVideoW = snap.videoWidth
+                MainActivity.pipVideoH = snap.videoHeight
+            }
+        } else {
+            val vs = player.videoSize
+            if (vs.width > 0 && vs.height > 0) {
+                MainActivity.pipVideoW = vs.width
+                MainActivity.pipVideoH = vs.height
+            }
         }
         act.enterPictureInPictureMode(
-            MainActivity.buildPipParams(act, player.isPlaying)
+            MainActivity.buildPipParams(act, activeIsPlaying())
         )
     }
 
@@ -1434,13 +1795,15 @@ fun PlayerScreen(
         state.videoZoom = 1f
         state.rawVideoZoom = 1f
         state.playerView?.resizeMode = state.aspectMode
+        // Second engine: the same cycle drives libmpv's panscan.
+        if (mpvActive()) mpvEngine?.setResizeMode(mpvAspectMode())
         pokeIndicator(PlayerIndicator.Message("Aspect: $aspectLabel"))
     }
 
     fun startSeekPreview() {
         // Step 59: warms the seek-preview cache around the current
         // position so the first scrub shows a frame at once.
-        seekPreviewController?.warmUp(player.currentPosition, player.duration)
+        seekPreviewController?.warmUp(activePositionMs(), activeDurationMs())
     }
 
     LaunchedEffect(hasStartedPlayback) {
@@ -1451,6 +1814,18 @@ fun PlayerScreen(
         // A manual pick (including "Auto", which hands selection back) is
         // the user's word for this session — auto-select steps aside.
         state.userPickedAudio = true
+        // Second engine: MPV tracks select by language, then title.
+        if (mpvActive()) {
+            if (opt == null) mpvEngine?.selectAudio(null)
+            else {
+                val track = mpvTracksUi.firstOrNull { it.type == "audio" && it.lang == opt.language }
+                    ?: mpvTracksUi.firstOrNull { it.type == "audio" && it.title == opt.label }
+                mpvEngine?.selectAudio(track?.id)
+            }
+            state.trackTick++
+            pokeIndicator(PlayerIndicator.Message(if (opt == null) "Audio: Auto" else "Audio: ${opt.label}"))
+            return
+        }
         val params = player.trackSelectionParameters.buildUpon()
         if (opt == null) params.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
         else params.setOverrideForType(TrackSelectionOverride(opt.group, listOf(opt.trackIndex)))
@@ -1471,6 +1846,8 @@ fun PlayerScreen(
      * the default selection).
      */
     fun applyPreferredAudioLanguage() {
+        // Second engine: libmpv picks its own audio track.
+        if (mpvActive()) return
         if (state.userPickedAudio) return
         // Step 38: ordered targets — primary, then secondary (Nuvio
         // resolvePreferredAudioLanguageTargets, Avio-native). The first
@@ -1532,6 +1909,20 @@ fun PlayerScreen(
     }
 
     fun applySubtitleSelection(opt: TrackOption?) {
+        // Second engine: MPV tracks select by language, then title.
+        if (mpvActive()) {
+            if (opt == null) mpvEngine?.selectSubtitle(null)
+            else {
+                val track = mpvTracksUi.firstOrNull { it.type == "sub" && it.lang == opt.language }
+                    ?: mpvTracksUi.firstOrNull { it.type == "sub" && it.title == opt.label }
+                mpvEngine?.selectSubtitle(track?.id)
+            }
+            state.trackTick++
+            pokeIndicator(
+                PlayerIndicator.Message(if (opt == null) "Subtitles: Off" else "Subtitles: ${opt.label}")
+            )
+            return
+        }
         val params = player.trackSelectionParameters.buildUpon()
         if (opt == null) {
             params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -1668,6 +2059,16 @@ fun PlayerScreen(
      *  player, select it; if it is still resolving, make it the default
      *  the attach effect picks; otherwise add it (download + apply). */
     fun activatePanelSubtitle(sub: Subtitle) {
+        // Second engine: external subtitles sub-add straight into MPV,
+        // preferring the already-downloaded file over the remote URL.
+        if (mpvActive()) {
+            val local = state.resolvedSubs.firstOrNull { it.sub.url == sub.url }?.file?.absolutePath
+            mpvEngine?.addExternalSubtitle(local ?: sub.url, select = true)
+            pokeIndicator(
+                PlayerIndicator.Message("Subtitles: ${displayLanguage(sub.lang) ?: sub.lang.uppercase()}")
+            )
+            return
+        }
         val opt = textOpts.firstOrNull { panelTrackId(it) == sub.url }
         when {
             opt != null -> applySubtitleSelection(opt)
@@ -1760,12 +2161,12 @@ fun PlayerScreen(
     }
 
     fun captureSyncByEarHeard() {
-        state.syncByEarHeardMs = player.currentPosition.coerceAtLeast(0L)
+        state.syncByEarHeardMs = activePositionMs().coerceAtLeast(0L)
         applySyncByEarIfReady()
     }
 
     fun captureSyncByEarSaw() {
-        state.syncByEarSawMs = player.currentPosition.coerceAtLeast(0L)
+        state.syncByEarSawMs = activePositionMs().coerceAtLeast(0L)
         applySyncByEarIfReady()
     }
 
@@ -1798,7 +2199,7 @@ fun PlayerScreen(
         }
         // The position is captured NOW (when the line is heard); a cue
         // tap later computes the delay from this stored position.
-        state.capturePositionMs = player.currentPosition
+        state.capturePositionMs = activePositionMs()
         state.captureLoading = true
         ioScope.launch {
             val cues = parseSubtitleCues(raw.file)
@@ -1968,8 +2369,8 @@ fun PlayerScreen(
         val oldReq = state.currentRequest
         // Read the old player's position on THIS thread (the player's own
         // thread, normally main). Touching it from a background thread crashes.
-        val posMs = old.currentPosition
-        val durMs = old.duration.takeIf { it > 0 } ?: 0L
+        val posMs = activePositionMs()
+        val durMs = activeDurationMs()
         ioScope.launch {
             replaceMutex.withLock {
                 if (gen != replaceGen.get() || disposed.get()) return@withLock
@@ -2025,23 +2426,36 @@ fun PlayerScreen(
                     val carrySubs =
                         newReq.subtitles == oldReq.subtitles && state.resolvedSubs.isNotEmpty()
                     val carried = if (carrySubs) state.resolvedSubs else emptyList()
-                    val fresh = buildExo(newReq, carried).also { it.addListener(guardedPlayerListener()) }
-                    // #16: a fresh player defaults to 1x — re-apply the pill.
-                    fresh.setPlaybackSpeed(state.speed)
-                    state.subsAttached =
-                        if (carried.isNotEmpty()) fresh to subtitleIdentity(carried) else null
-                    // Detach the surface from the old player before releasing it.
-                    state.playerView?.player = null
-                    player = fresh
-                    old.release()
-                    seekToPlaybackStart(
-                        isMobileLive = newReq.isLive && !isTv,
-                        startAtMs = startAtMs,
-                        seekToPosition = { fresh.seekTo(it) },
-                        seekToDefaultPosition = { fresh.seekToDefaultPosition() }
+                    val targetEngine = com.aviostream.app.player.PlaybackEngineResolver.resolve(
+                        settings.playbackEngine, newReq
                     )
-                    fresh.prepare()
-                    fresh.playWhenReady = autoplay
+                    if (targetEngine == com.aviostream.app.player.PlaybackEngine.MPV) {
+                        // Second engine: the parked ExoPlayer stays
+                        // paused; MPV owns playback from here.
+                        state.playerView?.player = null
+                        runCatching { old.pause() }
+                        activateMpv(newReq, startAtMs, autoplay)
+                        if (state.resolvedSubs.isNotEmpty()) attachResolvedSubtitles(state.resolvedSubs)
+                    } else {
+                        if (activeEngine == com.aviostream.app.player.PlaybackEngine.MPV) releaseMpv()
+                        val fresh = buildExo(newReq, carried).also { it.addListener(guardedPlayerListener()) }
+                        // #16: a fresh player defaults to 1x — re-apply the pill.
+                        fresh.setPlaybackSpeed(state.speed)
+                        state.subsAttached =
+                            if (carried.isNotEmpty()) fresh to subtitleIdentity(carried) else null
+                        // Detach the surface from the old player before releasing it.
+                        state.playerView?.player = null
+                        player = fresh
+                        old.release()
+                        seekToPlaybackStart(
+                            isMobileLive = newReq.isLive && !isTv,
+                            startAtMs = startAtMs,
+                            seekToPosition = { fresh.seekTo(it) },
+                            seekToDefaultPosition = { fresh.seekToDefaultPosition() }
+                        )
+                        fresh.prepare()
+                        fresh.playWhenReady = autoplay
+                    }
                     state.showControls = true
                     state.controlsTick++
                 }
@@ -2078,7 +2492,7 @@ fun PlayerScreen(
                 sourceName = stream.sourceName,
                 hlsMasterUrl = null
             ),
-            startAtMs = player.currentPosition,
+            startAtMs = activePositionMs(),
             autoplay = true
         )
     }
@@ -2116,7 +2530,7 @@ fun PlayerScreen(
                     hlsMasterUrl = null,
                     streamLabel = qualityOptions.firstOrNull()?.first
                 ),
-                startAtMs = player.currentPosition,
+                startAtMs = activePositionMs(),
                 autoplay = true
             )
         } else {
@@ -2134,7 +2548,7 @@ fun PlayerScreen(
                     // master stream's MIME hint.
                     mimeType = null
                 ),
-                startAtMs = player.currentPosition,
+                startAtMs = activePositionMs(),
                 autoplay = true
             )
         }
@@ -2324,7 +2738,7 @@ fun PlayerScreen(
         state.playerError = null
         replaceStream(
             state.currentRequest,
-            startAtMs = player.currentPosition.coerceAtLeast(0L),
+            startAtMs = activePositionMs().coerceAtLeast(0L),
             autoplay = true,
             // Same source, not a source change: keep a self-heal downmix
             // that is already on, or the retry fails the same way again.
@@ -2378,8 +2792,10 @@ fun PlayerScreen(
     // A mobile Live source can stall in BUFFERING forever without producing a
     // Media3 error. Bound only first-start recovery: a source that has played
     // once, VOD, TV, or an intentionally paused player is never interrupted.
-    LaunchedEffect(player, state.currentRequest, isTv) {
+    LaunchedEffect(player, activeEngine, state.currentRequest, isTv) {
         if (!state.currentRequest.isLive || isTv) return@LaunchedEffect
+        // Second engine: the Exo watchdogs never run on MPV playback.
+        if (mpvActive()) return@LaunchedEffect
         val watchedPlayer = player
         var waitingSinceMs: Long? = null
         val attemptsAtStart = state.autoFailoverCount
@@ -2428,8 +2844,10 @@ fun PlayerScreen(
     // Recovery after first successful playback: the startup watchdog above deliberately
     // stops once a stream has played. A separate bounded watchdog handles streams that
     // subsequently stall without a Media3 error. It never acts while paused or seeking.
-    LaunchedEffect(player, state.currentRequest, isTv) {
+    LaunchedEffect(player, activeEngine, state.currentRequest, isTv) {
         if (!state.currentRequest.isLive || isTv) return@LaunchedEffect
+        // Second engine: the Exo watchdogs never run on MPV playback.
+        if (mpvActive()) return@LaunchedEffect
         val watchedPlayer = player
         var hasPlayed = watchedPlayer.isPlaying
         var rebufferSinceMs: Long? = null
@@ -2474,8 +2892,10 @@ fun PlayerScreen(
     // Bounded by the generic failover cap (Settings > Playback > Source
     // failover); a mid-play stall first retries the same source once
     // (Step 40, Nuvio PlaybackStallResume).
-    LaunchedEffect(player, state.currentRequest, isTv) {
+    LaunchedEffect(player, activeEngine, state.currentRequest, isTv) {
         if (state.currentRequest.isLive) return@LaunchedEffect
+        // Second engine: the Exo watchdogs never run on MPV playback.
+        if (mpvActive()) return@LaunchedEffect
         val watchedPlayer = player
         val replacementAtStart = replaceGen.get()
         var hasPlayed = watchedPlayer.isPlaying
@@ -2623,6 +3043,8 @@ fun PlayerScreen(
 
     // Auto-select a freshly added subtitle track once ExoPlayer exposes it.
     LaunchedEffect(state.addedSubs.size) {
+        // Second engine: the attach effect sub-adds into MPV instead.
+        if (mpvActive()) return@LaunchedEffect
         val sub = state.addedSubs.lastOrNull() ?: return@LaunchedEffect
         repeat(15) {
             val group = player.currentTracks.groups.firstOrNull { g ->
@@ -2742,10 +3164,10 @@ fun PlayerScreen(
                     // and flip to 2x, and the speed then stuck there.
                     if (!pinchInterrupted) {
                         holdEngaged = true
-                        prevSpeed = player.playbackParameters.speed
+                        prevSpeed = if (mpvActive()) mpvEngine?.snapshot?.value?.speed ?: state.speed else player.playbackParameters.speed
                         slideBaseX = accX
                         state.holdSpeedStep = settings.holdSpeedValue
-                        runCatching { player.setPlaybackSpeed(settings.holdSpeedValue) }
+                        runCatching { activeSetSpeed(settings.holdSpeedValue) }
                         state.holdSpeedActive = true
                     }
                     continue
@@ -2762,7 +3184,7 @@ fun PlayerScreen(
                     if (holdEngaged) {
                         holdEngaged = false
                         state.holdSpeedActive = false
-                        runCatching { player.setPlaybackSpeed(prevSpeed) }
+                        runCatching { activeSetSpeed(prevSpeed) }
                     }
                     pinchInterrupted = true
                     val zoom = event.calculateZoom()
@@ -2800,7 +3222,7 @@ fun PlayerScreen(
                         .coerceIn(settings.holdSpeedValue, 5f)
                     if (step != state.holdSpeedStep) {
                         state.holdSpeedStep = step
-                        runCatching { player.setPlaybackSpeed(step) }
+                        runCatching { activeSetSpeed(step) }
                     }
                 } else {
                     if (dragMode == -1 && (abs(accX) > slop || abs(accY) > slop)) {
@@ -2824,7 +3246,7 @@ fun PlayerScreen(
                         else if (downPos.x < size.width * 0.4f) 2
                         else if (downPos.x > size.width * 0.6f) 1
                         else 3
-                        seekBase = player.currentPosition
+                        seekBase = activePositionMs()
                         seekTarget = -1L
                         volBase = displayVolumePercent().toFloat()
                         brightBase = activity?.window?.attributes
@@ -2836,7 +3258,7 @@ fun PlayerScreen(
                             0 -> { // horizontal swipe: tiered seek (Nuvio:
                                 // ≥60min → 120s, ≥30min → 90s, else 60s
                                 // per full-width swipe).
-                                val dur = player.duration
+                                val dur = activeDurationMs()
                                 if (dur > 0) {
                                     val sensitivitySeconds = when {
                                         dur >= 3_600_000L -> 120f
@@ -2845,7 +3267,7 @@ fun PlayerScreen(
                                     }
                                     seekTarget = (seekBase + accX / size.width * sensitivitySeconds * 1000f)
                                         .toLong().coerceIn(0L, dur)
-                                    val deltaMs = seekTarget - player.currentPosition
+                                    val deltaMs = seekTarget - activePositionMs()
                                     pokeIndicator(
                                         PlayerIndicator.Seek(
                                             (if (deltaMs >= 0) "+" else "−") + formatMs(abs(deltaMs))
@@ -2875,6 +3297,9 @@ fun PlayerScreen(
                                 }
                                 applyVolumeBoost()
                                 state.volumePercent = displayVolumePercent()
+                                // Second engine: the gesture also drives
+                                // libmpv's own fine volume (0..160%).
+                                if (mpvActive()) mpvEngine?.setVolumeFine(state.volumePercent.toFloat())
                                 pokeIndicator(PlayerIndicator.Volume(state.volumePercent))
                             }
                             2 -> { // vertical swipe, left half: brightness
@@ -2898,19 +3323,19 @@ fun PlayerScreen(
             // nothing).
             if (pinchInterrupted && holdEngaged) {
                 state.holdSpeedActive = false
-                runCatching { player.setPlaybackSpeed(prevSpeed) }
+                runCatching { activeSetSpeed(prevSpeed) }
             }
             // Gesture finished — settle the outcome. A pinch-interrupted
             // gesture settles nothing (Nuvio interruptedByPinch).
             if (!pinchInterrupted) when {
                 holdEngaged -> {
                     state.holdSpeedActive = false
-                    runCatching { player.setPlaybackSpeed(prevSpeed) }
+                    runCatching { activeSetSpeed(prevSpeed) }
                 }
                 dragMode == 0 -> {
                     if (seekTarget >= 0) {
                         hapticTick()
-                        player.seekTo(seekTarget)
+                        activeSeekTo(seekTarget)
                     }
                 }
                 dragMode == -1 -> {
@@ -2965,14 +3390,13 @@ fun PlayerScreen(
     }
 
     fun savePosition() {
-        val pl: Player = latestPlayer.value
         val req = latestRequest.value
         // #8: live TV never enters Continue Watching.
         if (req.isLive) return
         // Trailers never enter Continue Watching either.
         if (req.isTrailer) return
-        val pos = pl.currentPosition
-        val dur = pl.duration.takeIf { it > 0 } ?: C.TIME_UNSET
+        val pos = activePositionMs()
+        val dur = activeDurationMs().takeIf { it > 0 } ?: C.TIME_UNSET
         // NonCancellable: onDispose cancels ioScope's children (#9) and must
         // not kill this final save.
         ioScope.launch(NonCancellable) {
@@ -3025,7 +3449,7 @@ fun PlayerScreen(
                 state.sleepDeadlineMs = 0L
                 state.sleepRemainingSec = 0
                 state.sleepChosenMinutes = 0
-                runCatching { latestPlayer.value.pause() }
+                activePause()
                 // Release the screen hold with the pause — the PlayerView's
                 // keepScreenOn is set once at creation and nothing else ever
                 // clears it, so a timer pause used to leave the screen lit.
@@ -3142,17 +3566,20 @@ fun PlayerScreen(
         var lastPollPositionMs = -1L
         while (true) {
             val c = player
-            state.positionMs = c.currentPosition
-            state.durationMs = c.duration.takeIf { it > 0 } ?: 0L
-            state.bufferedMs = c.bufferedPosition.takeIf { it > 0 } ?: 0L
-            state.isPlaying = c.isPlaying
-            if (c.isPlaying) hasStartedPlayback = true
-            state.isBuffering = c.playbackState == Player.STATE_BUFFERING ||
-                c.playbackState == Player.STATE_IDLE
+            val snap = if (mpvActive()) mpvEngine?.snapshot?.value else null
+            val ended = activeEnded()
+            state.positionMs = snap?.positionMs ?: c.currentPosition
+            state.durationMs = snap?.durationMs ?: (c.duration.takeIf { it > 0 } ?: 0L)
+            state.bufferedMs = activeBufferedMs()
+            state.isPlaying = snap?.let { !it.paused } ?: c.isPlaying
+            if (state.isPlaying) hasStartedPlayback = true
+            state.isBuffering = snap?.buffering ?: (c.playbackState == Player.STATE_BUFFERING ||
+                c.playbackState == Player.STATE_IDLE)
             // Step 59: the seek-preview prefetch pauses while buffering.
             seekPreviewController?.playbackBuffering = state.isBuffering
             state.loadingStep = when {
                 state.switchingMedia -> "Opening source…"
+                snap != null -> if (snap.fileLoaded) "Buffering…" else "Opening source…"
                 c.playbackState == Player.STATE_IDLE -> "Opening source…"
                 c.currentTracks.groups.isEmpty() -> "Reading tracks…"
                 else -> "Buffering…"
@@ -3196,7 +3623,7 @@ fun PlayerScreen(
                             target.endMs + 400
                         }
                         if (seekTo > state.positionMs) {
-                            player.seekTo(seekTo)
+                            activeSeekTo(seekTo)
                             val label = target.type.buttonLabel()
                                 .removePrefix("Skip ").replaceFirstChar { it.lowercase() }
                             pokeIndicator(PlayerIndicator.Message("Skipped $label"))
@@ -3268,7 +3695,7 @@ fun PlayerScreen(
             // finished — stop here instead of advancing, and consume the
             // timer. The player is already stopped at STATE_ENDED; the
             // screen hold is released so the screen can sleep.
-            if (c.playbackState == Player.STATE_ENDED &&
+            if (ended &&
                 state.sleepAtEpisodeEnd &&
                 !state.currentRequest.isMovie &&
                 !state.currentRequest.isTrailer &&
@@ -3276,7 +3703,7 @@ fun PlayerScreen(
             ) {
                 state.sleepAtEpisodeEnd = false
                 state.sleepChosenMinutes = 0
-                runCatching { latestPlayer.value.pause() }
+                activePause()
                 state.sleepScreenReleased = true
                 state.playerView?.keepScreenOn = false
                 pokeIndicator(PlayerIndicator.Message("Sleep timer — playback paused"))
@@ -3285,7 +3712,7 @@ fun PlayerScreen(
             // setting is on, advance automatically — unless the countdown
             // card is showing (it advances itself) or was cancelled, or a
             // sleep timer is armed for end of episode.
-            if (c.playbackState == Player.STATE_ENDED &&
+            if (ended &&
                 settings.autoPlayNext &&
                 !state.sleepAtEpisodeEnd &&
                 !state.currentRequest.isMovie &&
@@ -3309,7 +3736,7 @@ fun PlayerScreen(
             // download. Fire-and-forget: any failure simply queues
             // nothing. Fires once per video end, whether or not
             // auto-play-next is on.
-            if (c.playbackState == Player.STATE_ENDED &&
+            if (ended &&
                 settings.autoDownloadNextEpisode &&
                 !settings.shuffleEpisodes &&
                 !state.currentRequest.isMovie &&
@@ -3338,7 +3765,7 @@ fun PlayerScreen(
             }
             // End-of-play rating prompt (v0.14.30 port): once per video,
             // when it ends, offer the rating card.
-            if (c.playbackState == Player.STATE_ENDED &&
+            if (ended &&
                 state.ratingPromptHandledFor != state.currentRequest.videoId
             ) {
                 state.ratingPromptHandledFor = state.currentRequest.videoId
@@ -3346,7 +3773,7 @@ fun PlayerScreen(
             }
             // Movie recommendations (Nuvio MovieRecommendationCard):
             // once per movie, when it ends, load "More like this".
-            if (c.playbackState == Player.STATE_ENDED &&
+            if (ended &&
                 state.currentRequest.isMovie &&
                 !state.currentRequest.isTrailer &&
                 state.movieRecsLoadedFor != state.currentRequest.videoId
@@ -3375,7 +3802,7 @@ fun PlayerScreen(
                     state.positionMs,
                     state.durationMs,
                     state.isPlaying,
-                    c.playbackState == Player.STATE_ENDED
+                    ended
                 )
                 // Plex live timeline: same tick, Plex-gated inside
                 // (non-Plex videoIds are ignored).
@@ -3384,7 +3811,7 @@ fun PlayerScreen(
                     state.positionMs,
                     state.durationMs,
                     state.isPlaying,
-                    c.playbackState == Player.STATE_ENDED
+                    ended
                 )
             }
             delay(if (isTv) 1000 else 500) // low-end TVs: half the recompositions
@@ -3412,6 +3839,9 @@ fun PlayerScreen(
 
     // One-time init: begin buffering immediately, then apply saved-position / autoplay policy.
     LaunchedEffect(Unit) {
+        // Second engine: resolved once for this play; MPV skips every
+        // Exo prepare/seek below and activates its own engine instead.
+        val startOnMpv = startEngine == com.aviostream.app.player.PlaybackEngine.MPV
         val startupPlayer = player
         val isLocalFile = initialRequest.streamUrl.startsWith("file:", true) || initialRequest.streamUrl.startsWith("content:", true)
         val prepareEarly = initialRequest.streams.isNotEmpty() || initialRequest.isLive || isLocalFile
@@ -3419,8 +3849,11 @@ fun PlayerScreen(
             preparePlayer = {
                 // Prepare with playback held so a resume prompt never leaks audio/video
                 // while progress storage (or a fresh-URL lookup) is still pending.
-                startupPlayer.playWhenReady = false
-                startupPlayer.prepare()
+                // Second engine: MPV owns playback, so the parked ExoPlayer never prepares.
+                if (!startOnMpv) {
+                    startupPlayer.playWhenReady = false
+                    startupPlayer.prepare()
+                }
             },
             loadSavedPosition = {
                 // Play from start: ignore the saved position entirely —
@@ -3502,7 +3935,7 @@ fun PlayerScreen(
             }
         }
         if (disposed.get()) return@LaunchedEffect
-        if (req !== initialRequest) {
+        if (req !== initialRequest && !startOnMpv) {
             // Rebuild the player around the refreshed request so the first
             // prepare already uses the fresh URL (#15; guarded by #9 above).
             val oldPlayer = player
@@ -3519,25 +3952,40 @@ fun PlayerScreen(
             state.currentRequest = req
             rebuiltForFreshResumeUrl = true
         }
-        val p = player
-        seekToPlaybackStart(
-            isMobileLive = req.isLive && !isTv,
-            startAtMs = saved,
-            seekToPosition = { p.seekTo(it) },
-            seekToDefaultPosition = { p.seekToDefaultPosition() }
-        )
-        // The original instance is already prepared above. A refreshed URL has
-        // a newly-built player and still needs its first prepare after seekTo.
-        if (rebuiltForFreshResumeUrl || !prepareEarly) p.prepare()
-        if (offerResume) {
-            p.playWhenReady = false
-            state.resumeOfferMs = saved
-            state.showControls = true
-        } else if (settings.autoplay) {
-            p.playWhenReady = true
+        if (startOnMpv) {
+            if (req !== initialRequest) {
+                state.currentRequest = req
+                repository.pendingPlayback = req
+            }
+            // The parked ExoPlayer never prepared; MPV owns playback now.
+            // A resume offer starts paused at the saved position — the
+            // prompt's Resume / Start over buttons drive MPV from there.
+            activateMpv(req, saved, autoplay = !offerResume && settings.autoplay)
+            if (offerResume) {
+                state.resumeOfferMs = saved
+                state.showControls = true
+            }
         } else {
-            p.playWhenReady = false
-            state.showControls = true
+            val p = player
+            seekToPlaybackStart(
+                isMobileLive = req.isLive && !isTv,
+                startAtMs = saved,
+                seekToPosition = { p.seekTo(it) },
+                seekToDefaultPosition = { p.seekToDefaultPosition() }
+            )
+            // The original instance is already prepared above. A refreshed URL has
+            // a newly-built player and still needs its first prepare after seekTo.
+            if (rebuiltForFreshResumeUrl || !prepareEarly) p.prepare()
+            if (offerResume) {
+                p.playWhenReady = false
+                state.resumeOfferMs = saved
+                state.showControls = true
+            } else if (settings.autoplay) {
+                p.playWhenReady = true
+            } else {
+                p.playWhenReady = false
+                state.showControls = true
+            }
         }
         // The settled link is the last played link for this title.
         saveLinkForReuse(req)
@@ -3565,13 +4013,12 @@ fun PlayerScreen(
         var waited = 0
         while (waited < 30_000) {
             if (disposed.get()) return@LaunchedEffect
-            val p = latestPlayer.value
-            val duration = runCatching { p.duration }.getOrDefault(-1L)
+            val duration = activeDurationMs().takeIf { it > 0 } ?: -1L
             if (duration > 0) {
                 val target = (duration * pct / 100.0).toLong()
-                val pos = runCatching { p.currentPosition }.getOrDefault(0L)
+                val pos = activePositionMs()
                 if (pos < 10_000 && target > 10_000) {
-                    runCatching { p.seekTo(target) }
+                    activeSeekTo(target)
                 }
                 return@LaunchedEffect
             }
@@ -3629,6 +4076,12 @@ fun PlayerScreen(
                 // must continue in the PiP window — only pause when the app is
                 // truly backgrounded (not floating).
                 if (activity?.isInPictureInPictureMode == true) return@LifecycleEventObserver
+                // Second engine: the background-audio service mirrors the
+                // ExoPlayer only — MPV always pauses on background.
+                if (mpvActive()) {
+                    activePause()
+                    return@LifecycleEventObserver
+                }
                 // Step 64: background audio (opt-in, VOD only) keeps
                 // playing — the foreground service holds the notification
                 // + session. Otherwise #10: pause on background —
@@ -3654,6 +4107,7 @@ fun PlayerScreen(
             runCatching { savePosition() }
             runCatching { latestPlayer.value.stop() }
             runCatching { latestPlayer.value.release() }
+            runCatching { mpvEngine?.release() }
         }
         activity?.requestedOrientation = if (initialRequest.sourceName == "YouTube")
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -3700,6 +4154,7 @@ fun PlayerScreen(
             // survives this; the scrobblers' final stop-events are best-effort.
             ioScope.coroutineContext.cancelChildren()
             latestPlayer.value.release()
+            mpvEngine?.release()
             // Step 64: stop the background-audio service + session with the player.
             com.aviostream.app.data.BackgroundAudioController.unregister()
             runCatching { boostHolder.enhancer?.release() }
@@ -3841,8 +4296,8 @@ fun PlayerScreen(
                 else -> when (event.key) {
                 // Media keys always act directly.
                 Key.MediaPlayPause -> { togglePlay(); true }
-                Key.MediaPlay -> { player.play(); true }
-                Key.MediaPause -> { player.pause(); true }
+                Key.MediaPlay -> { if (mpvActive()) mpvEngine?.setPaused(false) else player.play(); true }
+                Key.MediaPause -> { if (mpvActive()) mpvEngine?.setPaused(true) else player.pause(); true }
                 Key.MediaFastForward -> { seekByWithFeedback(settings.skipForwardSeconds * 1000L); true }
                 Key.MediaRewind -> { seekByWithFeedback(-settings.skipBackwardSeconds * 1000L); true }
                 // D-pad Left/Right: with a dialog open, hand off to the
@@ -3942,6 +4397,24 @@ fun PlayerScreen(
         // Video surface with the full gesture set (gestures off while floating —
         // taps on the PiP window belong to the system's PiP controls).
         Box(Modifier.fillMaxSize().then(if (inPip) Modifier else Modifier.videoGestures())) {
+            if (mpvActive()) {
+                // Second engine (MPV port): MPV renders into a plain
+                // SurfaceView; the control shell around it is shared
+                // and unchanged. The engine owns the attach/detach
+                // ordering on its own thread.
+                AndroidView(
+                    factory = { ctx ->
+                        android.view.SurfaceView(ctx).also { sv ->
+                            sv.layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            sv.holder.addCallback(mpvSurfaceCallback)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
             AndroidView(
                 factory = { ctx ->
                     // TextureView surface (R.layout.player_view): the video
@@ -3984,6 +4457,7 @@ fun PlayerScreen(
                 // the content frame) — not a graphicsLayer on this view.
                 modifier = Modifier.fillMaxSize()
             )
+            }
         }
 
         // PiP (v0.9.0+): while the video floats, skip every overlay layer —
@@ -4385,7 +4859,7 @@ fun PlayerScreen(
                                 )
                                 .clickable {
                                     state.autoSkippedSegments = state.autoSkippedSegments + seg
-                                    player.seekTo(seg.endMs + 400)
+                                    activeSeekTo(seg.endMs + 400)
                                     state.activeSegment = null
                                 }
                         ) {
@@ -5203,7 +5677,7 @@ fun PlayerScreen(
                             )
                             LegacySeekBar(
                                 positionMs = state.positionMs,                                durationMs = state.durationMs,                                bufferedMs = state.bufferedMs,                                chapterFractions = state.chapters.chapterMarkFractions(state.durationMs),
-                                onSeek = { player.seekTo(it) },
+                                onSeek = { activeSeekTo(it) },
                                 modifier = Modifier.padding(bottom = 12.dp),
                                 isTv = isTv,
                                 onSeekDelta = { seekByWithFeedback(it) },
@@ -5316,13 +5790,18 @@ fun PlayerScreen(
                 onResume = {
                     // Tapping outside keeps their place and resumes.
                     state.resumeOfferMs = null
-                    player.playWhenReady = true
+                    if (mpvActive()) mpvEngine?.setPaused(false) else player.playWhenReady = true
                 },
                 onStartOver = {
                     state.resumeOfferMs = null
                     ioScope.launch { repository.deleteSavedPosition(state.currentRequest.streamUrl) }
-                    player.seekTo(0)
-                    player.playWhenReady = true
+                    if (mpvActive()) {
+                        activeSeekTo(0)
+                        mpvEngine?.setPaused(false)
+                    } else {
+                        player.seekTo(0)
+                        player.playWhenReady = true
+                    }
                 }
             )
         }
@@ -5381,7 +5860,7 @@ fun PlayerScreen(
                                     )
                                     .clickable {
                                         state.chaptersOpen = false
-                                        player.seekTo(chapter.startMs)
+                                        activeSeekTo(chapter.startMs)
                                         pokeIndicator(PlayerIndicator.Message(chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${index + 1}"))
                                     }
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -6474,7 +6953,7 @@ fun PlayerScreen(
                                 selected = s == state.speed,
                                 onClick = {
                                     state.speed = s
-                                    player.setPlaybackSpeed(s)
+                                    activeSetSpeed(s)
                                     state.speedMenuOpen = false
                                     pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
                                 }

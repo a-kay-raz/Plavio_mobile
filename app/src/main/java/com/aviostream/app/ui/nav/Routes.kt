@@ -26,6 +26,7 @@ object Routes {
     const val CONTINUE_WATCHING_SETTINGS = "continue_watching_settings"
     const val ACCOUNT = "account"
     const val PLAYBACK_SETTINGS = "playback_settings"
+    const val ENGINE_SETTINGS = "engine_settings"
     const val SUBTITLE_SETTINGS = "subtitle_settings"
     const val APPEARANCE_SETTINGS = "appearance_settings"
     const val LAYOUT_SETTINGS = "layout_settings"

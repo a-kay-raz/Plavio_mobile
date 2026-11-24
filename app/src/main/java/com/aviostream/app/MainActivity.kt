@@ -176,6 +176,7 @@ import com.aviostream.app.ui.screens.DownloadsSettingsScreen
 import com.aviostream.app.ui.screens.LibraryScreen
 import com.aviostream.app.ui.screens.HomeCatalogsScreen
 import com.aviostream.app.ui.screens.PlaybackSettingsScreen
+import com.aviostream.app.ui.screens.EngineSettingsScreen
 import com.aviostream.app.ui.screens.ActorScreen
 import com.aviostream.app.ui.screens.StreamsSettingsScreen
 import com.aviostream.app.ui.screens.SubtitleSettingsScreen
@@ -1742,6 +1743,13 @@ private fun AvioNavGraph(
         }
         composable(Routes.PLAYBACK_SETTINGS) {
             PlaybackSettingsScreen(
+                repository = repository,
+                onGoToEngine = { navController.navigate(Routes.ENGINE_SETTINGS) },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(Routes.ENGINE_SETTINGS) {
+            EngineSettingsScreen(
                 repository = repository,
                 onBack = { navController.popBackStack() }
             )

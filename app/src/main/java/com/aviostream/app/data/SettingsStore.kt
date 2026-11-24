@@ -583,6 +583,35 @@ class SettingsStore(
             ?: PlayerChoice.BUILT_IN.name
         set(value) = prefs.edit().putString(KEY_PREFERRED_PLAYER, value).apply()
 
+    /**
+     * Playback engine choice (dual-engine player): 0 = Auto,
+     * 1 = ExoPlayer, 2 = MPV. Default Auto: HDR / Dolby Vision titles
+     * route to ExoPlayer, anime routes to MPV, everything else plays
+     * on ExoPlayer; a fatal error fails over to the other engine once.
+     */
+    var playbackEngine: Int
+        get() = prefInt(KEY_PLAYBACK_ENGINE, 0).coerceIn(0, 2)
+        set(value) = prefs.edit().putInt(KEY_PLAYBACK_ENGINE, value.coerceIn(0, 2)).apply()
+
+    /**
+     * Automatic one-time engine failover on a fatal playback error.
+     * Default ON: it is a recovery behaviour, not an opt-in feature —
+     * a manual engine switch disarms it for that play.
+     */
+    var autoEngineFailover: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_ENGINE_FAILOVER, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_ENGINE_FAILOVER, value).apply()
+
+    /** MPV hardware decoding. Default ON (matches the fast profile). */
+    var mpvHardwareDecoding: Boolean
+        get() = prefs.getBoolean(KEY_MPV_HWDEC, true)
+        set(value) = prefs.edit().putBoolean(KEY_MPV_HWDEC, value).apply()
+
+    /** MPV yuv420p format filter (older-device colour fix). Default OFF. */
+    var mpvYuv420pFilter: Boolean
+        get() = prefs.getBoolean(KEY_MPV_YUV420P, false)
+        set(value) = prefs.edit().putBoolean(KEY_MPV_YUV420P, value).apply()
+
     // ------------------------------------------------------------------
     // Buffer & cache (v0.9.0+): player buffering + on-disk playback cache.
     // ------------------------------------------------------------------
@@ -2287,6 +2316,10 @@ class SettingsStore(
         private const val KEY_DOWNLOAD_FINISHED_NOTIFICATIONS = "download_finished_notifications"
         private const val KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next_episode"
         private const val KEY_PREFERRED_PLAYER = "preferred_player"
+        private const val KEY_PLAYBACK_ENGINE = "playback_engine"
+        private const val KEY_AUTO_ENGINE_FAILOVER = "auto_engine_failover"
+        private const val KEY_MPV_HWDEC = "mpv_hwdec"
+        private const val KEY_MPV_YUV420P = "mpv_yuv420p"
         private const val KEY_BUFFER_MIN_MS = "buffer_min_ms"
         private const val KEY_BUFFER_MAX_MS = "buffer_max_ms"
         private const val KEY_BUFFER_FOR_PLAYBACK_MS = "buffer_for_playback_ms"
