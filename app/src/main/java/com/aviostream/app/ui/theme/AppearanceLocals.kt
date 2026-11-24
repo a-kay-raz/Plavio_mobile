@@ -23,12 +23,12 @@ import androidx.compose.ui.unit.dp
  *    reduced-motion store — Advanced settings already toggles it),
  *    not a second SettingsStore.animations key, so the two can
  *    never disagree.
- *  - Glass-card Rounded is 24.dp (the fork's shipped Nuvio card
- *    radius), not upstream's 28.dp.
+ *  - Glass-card Rounded is 28.dp (upstream 0.14.30's card radius),
+ *    not the fork's old 24.dp Nuvio radius.
  */
 
-/** Glass-card corner radius: 24.dp Rounded / 8.dp Sharp. */
-val LocalCardCorner = staticCompositionLocalOf { 24.dp }
+/** Glass-card corner radius: 28.dp Rounded / 8.dp Sharp. */
+val LocalCardCorner = staticCompositionLocalOf { 28.dp }
 
 /** Row/list padding scale: 0.78 Compact / 1 Comfortable. */
 val LocalSpacingScale = staticCompositionLocalOf { 1f }
@@ -38,4 +38,4 @@ val LocalReduceMotion = staticCompositionLocalOf { false }
 
 /** Glass-card corner radius for a SettingsStore.cardCorners value. */
 fun cardCornerFor(setting: String): Dp =
-    if (setting == "Sharp") 8.dp else 24.dp
+    if (setting == "Sharp") 8.dp else 28.dp

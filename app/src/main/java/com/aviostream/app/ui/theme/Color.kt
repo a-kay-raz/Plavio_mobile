@@ -8,18 +8,18 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 
-// Nuvio-matched canvas (Nuvio WHITE theme): #0D0D0D background,
-// #1A1A1A elevated/panel — flat, no slate tint.
-val BgDeep = Color(0xFF0D0D0D)
-val BgPanel = Color(0xFF1A1A1A)
+// Smoky slate, rather than near-black, is the default Liquid Glass canvas.
+// AMOLED remains a separate opt-in palette in [paletteFor].
+val BgDeep = Color(0xFF202630)
+val BgPanel = Color(0xFF303A47)
 // Raw values of the DARK design (the original constants). The public
 // names below read the ACTIVE palette, so Normal (light) mode re-skins
 // every screen that uses them; in Dark mode they resolve to exactly
 // these values.
-private val DarkTextPrimary = Color(0xFFF5F7F8)
-private val DarkTextSecondary = Color(0xFFB8BEC5)
-private val DarkGlassFill = Color.White.copy(alpha = 0.06f)
-private val DarkGlassBorder = Color(0xFF252A2A)
+private val DarkTextPrimary = Color(0xFFF6F7FA)
+private val DarkTextSecondary = Color(0xFFC5CDD7)
+private val DarkGlassFill = Color.White.copy(alpha = 0.10f)
+private val DarkGlassBorder = Color.White.copy(alpha = 0.18f)
 
 val TextPrimary: Color
     @Composable @ReadOnlyComposable get() = LocalPalette.current.textPrimary
@@ -35,13 +35,15 @@ fun liquidGlassTopSurface(background: Color): Color = lerp(background, Color.Whi
 fun liquidGlassBottomSurface(background: Color): Color = lerp(background, Color.White, 0.06f)
 
 /**
- * Accent color themes. WHITE is the default (the Onyx monochrome
- * look). WEAVE (owner's order 2026-10-26) carries the logo's own
- * gradient — violet #7C3AED → magenta #DB2777 → pink #F9738C — and
- * replaced the old accent in the picker; an install that still has the
- * old accent name stored lands on WHITE through [byName]'s fallback. The others
- * re-skin every accent in the app (buttons, toggles, progress,
- * glows, selected states) through [LocalPalette].
+ * Accent color themes. GOLD is the default (the stored default in
+ * SettingsStore). SIGNATURE teal #14B8A6 is v0.14.30's signature
+ * accent (the mint family of the Live dot and the WATCHED pill).
+ * WEAVE (owner's order 2026-10-26) carries the logo's own gradient
+ * — violet #7C3AED → magenta #DB2777 → pink #F9738C — and replaced
+ * the old accent in the picker; an install that still has the old
+ * accent name stored lands on GOLD through [byName]'s fallback.
+ * The others re-skin every accent in the app (buttons, toggles,
+ * progress, glows, selected states) through [LocalPalette].
  */
 /**
  * Step 70: parse a user-typed accent hex ("#RRGGBB" or "#AARRGGBB", "#" optional).
@@ -61,7 +63,9 @@ fun isLightColor(color: Color): Boolean {
 }
 
 enum class AccentTheme(val label: String, val primary: Color, val secondary: Color) {
+    SIGNATURE("Signature", Color(0xFF14B8A6), Color(0xFF0F766E)),
     WHITE("White", Color.White, Color(0xFFD9D9DE)),
+    SLATE("Slate", Color(0xFF64748B), Color(0xFF475569)),
     WEAVE("Weave", Color(0xFF7C3AED), Color(0xFFDB2777)),
     CRIMSON("Crimson", Color(0xFFF43F5E), Color(0xFFFB923C)),
     OCEAN("Ocean", Color(0xFF38BDF8), Color(0xFF6366F1)),
@@ -201,7 +205,7 @@ val LocalPalette = compositionLocalOf {
  * (see SettingsStore.appTheme).
  */
 enum class AppTheme(val label: String, val blurb: String, val light: Boolean) {
-    ONYX("Onyx", "Nuvio look — #0D0D0D canvas, flat cards, white accents", false),
+    ONYX("Onyx", "Pure black mono — flat charcoal cards, white accents", false),
     WARM_IVORY("Warm Ivory", "Your current Normal, now frosted", true),
     AURORA_FROST("Aurora Frost", "The vivid one — strongest ambient colour", false),
     TRUE_BLACK("True Black", "AMOLED black — deepest blacks, best battery", false),
@@ -228,18 +232,18 @@ enum class AppTheme(val label: String, val blurb: String, val light: Boolean) {
 fun paletteForTheme(theme: AppTheme, accent: AccentTheme, frosted: Boolean = true): AppPalette {
     val base = when (theme) {
         AppTheme.ONYX -> AppPalette(
-            // Onyx (Nuvio-matched, 2026-11-21): Nuvio WHITE theme values —
-            // #0D0D0D canvas, #1A1A1A panel, #F5F7F8 primary text,
-            // #B8BEC5 secondary, #252A2A borders. Flat by design.
+            // Onyx: the permanent theme. The chosen accent applies.
+            // Two-black system — the page ground is PURE black and
+            // every raised surface is the ONE panel black (#1C1C1F).
             accent = accent.primary,
             accent2 = accent.secondary,
-            background = Color(0xFF0D0D0D),
-            panel = Color(0xFF1A1A1A),
+            background = Color(0xFF000000),
+            panel = Color(0xFF1C1C1F),
             amoled = false,
-            textPrimary = Color(0xFFF5F7F8),
-            textSecondary = Color(0xFFB8BEC5),
-            glassFill = Color.White.copy(alpha = 0.06f),
-            glassBorder = Color(0xFF252A2A),
+            textPrimary = Color.White,
+            textSecondary = Color(0xFF9A9AA0),
+            glassFill = Color.White.copy(alpha = 0.07f),
+            glassBorder = Color.White.copy(alpha = 0.09f),
             accentText = if (accent.primary == Color.White) Color.Black else Color.White,
             glowAlpha = 0f
         )
@@ -273,10 +277,12 @@ fun paletteForTheme(theme: AppTheme, accent: AccentTheme, frosted: Boolean = tru
             accent = accent.primary,
             accent2 = accent.secondary,
             background = Color.Black,
-            panel = Color(0xFF1A1A1A),
+            // Two-black system: True Black shares the one panel
+            // black with Onyx.
+            panel = Color(0xFF1C1C1F),
             amoled = true,
-            textPrimary = Color(0xFFF5F7F8),
-            textSecondary = Color(0xFFB8BEC5),
+            textPrimary = Color(0xFFF5F5F5),
+            textSecondary = Color(0xFFB9B9C0),
             glowAlpha = 0.55f
         )
         AppTheme.TWILIGHT -> AppPalette(
@@ -340,7 +346,7 @@ fun paletteFor(accent: AccentTheme, amoled: Boolean, light: Boolean = false): Ap
             accent = accent.primary,
             accent2 = accent.secondary,
             background = if (amoled) Color.Black else BgDeep,
-            panel = if (amoled) Color(0xFF0A0A0A) else BgPanel,
+            panel = if (amoled) Color(0xFF1C1C1F) else BgPanel,
             amoled = amoled
         )
     }

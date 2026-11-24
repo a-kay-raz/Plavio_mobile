@@ -145,9 +145,9 @@ fun GlassCard(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // Nuvio card radius (NuvioTokens.Radius.card = 24dp); the
-    // Appearance card-corners option rides LocalCardCorner (24.dp
-    // Rounded, the shipped look, or 8.dp Sharp).
+    // Card radius (v0.14.30: 28.dp Rounded); the Appearance
+    // card-corners option rides LocalCardCorner (28.dp Rounded,
+    // the shipped look, or 8.dp Sharp).
     val shape = RoundedCornerShape(LocalCardCorner.current)
     val clickableMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
