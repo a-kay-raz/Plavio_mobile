@@ -130,6 +130,14 @@ class AvioApp : Application(), ImageLoaderFactory {
         // the app from opening (v0.12.23 lesson: the build where Sentry
         // first went live crashed on open before it could report anything).
         appScope.launch { com.aviostream.app.data.CrashReports.initIfEnabled(this@AvioApp, settings) }
+        // v0.14.30 #48: behaviour tracker (TEST BUILDS ONLY — no-op
+        // unless the build was made with -PDIAG_TRACKER=true). init
+        // logs the app-start line itself. NOTE: CrashReports init
+        // above is async, so on a tracker build the previous
+        // session's unclean-exit upload at init time may be dropped
+        // if Sentry has not finished initialising yet; freeze/slow
+        // reports later in the session are unaffected.
+        com.aviostream.app.data.DiagTracker.init(this)
         // Quietly install the pre-installed addons (Cinemeta + subtitles) on first launch.
         appScope.launch { repository.ensurePreinstalledAddons() }
         // CloudStream (CS3): cheap restore of the persisted registry
@@ -265,6 +273,10 @@ class AvioApp : Application(), ImageLoaderFactory {
     private fun installCrashCatcher() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // v0.14.30 #48: snapshot the behaviour log's tail for the
+            // next start's unclean-exit report. No-op unless the
+            // tracker flag is on; never throws into the crash path.
+            runCatching { com.aviostream.app.data.DiagTracker.snapshotTailForCrash() }
             try {
                 openFileOutput("last_crash.txt", MODE_PRIVATE).bufferedWriter().use { out ->
                     out.write(Log.getStackTraceString(throwable))

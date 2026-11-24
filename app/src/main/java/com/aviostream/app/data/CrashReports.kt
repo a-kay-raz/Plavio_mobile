@@ -48,6 +48,26 @@ object CrashReports {
                 options.isEnableAutoSessionTracking = false
                 options.isAttachScreenshot = false
                 options.isAttachViewHierarchy = false
+                // v0.14.30 #48: the behaviour-report ride-along —
+                // every crash/ANR/error event carries the DiagTracker
+                // log tail INSIDE the event (a "behaviour_report"
+                // context), because the self-hosted GlitchTip drops
+                // file attachments. In normal builds tailText()
+                // returns null and this is a no-op. The read is one
+                // bounded seek+read, and every failure is swallowed
+                // — capture must never break because of the ride-along.
+                options.beforeSend =
+                    io.sentry.SentryOptions.BeforeSendCallback { event, _ ->
+                        runCatching {
+                            val tail = DiagTracker.tailText()
+                            if (!tail.isNullOrEmpty()) {
+                                event.contexts["behaviour_report"] =
+                                    mapOf("log_tail" to tail)
+                                event.setTag("behaviour_report", "attached")
+                            }
+                        }
+                        event
+                    }
             }
         }
     }

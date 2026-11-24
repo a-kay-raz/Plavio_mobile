@@ -77,6 +77,17 @@ android {
             "ANIME_SKIP_CLIENT_ID",
             "\"${providers.gradleProperty("ANIME_SKIP_CLIENT_ID").orNull ?: ""}\""
         )
+        // Behaviour tracker (v0.14.30 #48, TEST BUILDS ONLY): defaults
+        // to false in the tree; a diagnostic test build passes
+        // -PDIAG_TRACKER=true to switch the event logger + freeze
+        // watchdog on. Never set for a stable — with the flag off
+        // every DiagTracker entry point is a no-op and no thread
+        // ever starts, and no behaviour report is ever sent.
+        buildConfigField(
+            "Boolean",
+            "DIAG_TRACKER",
+            "${providers.gradleProperty("DIAG_TRACKER").orNull ?: "false"}"
+        )
     }
 
     // Publishing is explicit and must never silently use an unsigned/debug artifact.
@@ -181,6 +192,7 @@ dependencies {
     // second ksoup artifact is added.
     implementation(libs.quickjs.kt)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.documentfile)

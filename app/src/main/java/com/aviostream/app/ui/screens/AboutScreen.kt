@@ -27,7 +27,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.aviostream.app.BuildConfig
 import com.aviostream.app.data.DebugLog
+import com.aviostream.app.data.DiagTracker
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.theme.TextPrimary
 import com.aviostream.app.ui.tv.tvFocusRing
@@ -107,6 +109,19 @@ private fun SupportRows() {
                 title = "Share debug log",
                 onClick = { DebugLog.share(context) }
             )
+            // v0.14.30 #48: behaviour-report share — the row exists
+            // ONLY in tracker builds (the BuildConfig flag is off in
+            // the tree and in every normal build). The zip splits
+            // this into a second DIAG_SHARE_UI flag because its stable
+            // ships the tracker ON; Avio's tracker is off by default,
+            // so one flag covers both the tracker and this row.
+            if (BuildConfig.DIAG_TRACKER) {
+                LegalRow(
+                    icon = Icons.Filled.BugReport,
+                    title = "Share behaviour report",
+                    onClick = { DiagTracker.share(context) }
+                )
+            }
         }
     )
 }
