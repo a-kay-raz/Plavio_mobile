@@ -117,7 +117,7 @@ private fun BottomBarItem(
         modifier = modifier
             .clip(shape)
             .background(
-                if (selected) palette.accent.copy(alpha = 0.22f)
+                if (selected) palette.accentTint
                 else Color.Transparent
             )
             .tvFocusRing(shape)

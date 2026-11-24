@@ -568,7 +568,7 @@ fun AddonTabs(state: StreamBrowserState, modifier: Modifier = Modifier, compact:
                     .clip(RoundedCornerShape(if (compact) 20.dp else 50.dp))
                     .background(
                         if (selected && compact) palette.accent
-                        else if (selected) palette.accent.copy(alpha = 0.22f)
+                        else if (selected) palette.accentTint
                         else if (compact) Color(0xFF222222)
                         else Color.White.copy(alpha = 0.06f)
                     )
@@ -621,7 +621,7 @@ fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compa
                     .clip(RoundedCornerShape(50))
                     .background(
                         if (selected && compact) palette.accent
-                        else if (selected) palette.accent.copy(alpha = 0.22f)
+                        else if (selected) palette.accentTint
                         else Color.White.copy(alpha = 0.06f)
                     )
                     .border(
@@ -650,7 +650,7 @@ fun QualityPills(state: StreamBrowserState, modifier: Modifier = Modifier, compa
                     .clip(RoundedCornerShape(50))
                     .background(
                         if (selected && compact) palette.accent
-                        else if (selected) palette.accent.copy(alpha = 0.22f)
+                        else if (selected) palette.accentTint
                         else Color.White.copy(alpha = 0.06f)
                     )
                     .border(
@@ -1053,7 +1053,7 @@ private fun SmartChip(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(
-                if (selected) palette.accent.copy(alpha = 0.22f)
+                if (selected) palette.accentTint
                 else Color.White.copy(alpha = 0.06f)
             )
             .border(

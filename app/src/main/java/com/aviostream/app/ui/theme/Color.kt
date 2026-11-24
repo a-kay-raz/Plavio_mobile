@@ -123,6 +123,61 @@ data class AppPalette(
 ) {
     val gradient: Brush
         get() = Brush.horizontalGradient(listOf(accent, accent2))
+
+    /**
+     * The ONE derivation for selected chip/card containers. The old
+     * derivation — accent at ~22-25% alpha over the near-black ground
+     * — desaturated every accent into mud (Amber read as dull
+     * olive-brown). [accentTint] is a SOLID colour built from the
+     * accent's own hue and saturation at a rich fixed lightness,
+     * so a selected Amber reads gold, a selected Ocean reads
+     * blue, and White stays a neutral grey.
+     */
+    val accentTint: Color
+        get() = richAccentTint(accent, light)
+}
+
+/**
+ * Builds a saturation-keeping tint of [accent]: same hue, same
+ * saturation, lightness moved to a rich container level (0.32 on
+ * dark palettes, 0.84 on light ones). Pure colour math.
+ */
+fun richAccentTint(accent: Color, light: Boolean): Color {
+    val r = accent.red
+    val g = accent.green
+    val b = accent.blue
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val delta = max - min
+    val lightness0 = (max + min) / 2f
+    val saturation = when {
+        delta == 0f -> 0f
+        lightness0 <= 0f || lightness0 >= 1f -> 0f
+        else -> delta / (1f - kotlin.math.abs(2f * lightness0 - 1f))
+    }
+    val hue = when {
+        delta == 0f -> 0f
+        max == r -> 60f * (((g - b) / delta) % 6f)
+        max == g -> 60f * (((b - r) / delta) + 2f)
+        else -> 60f * (((r - g) / delta) + 4f)
+    }.let { if (it < 0f) it + 360f else it }
+    val lightness = if (light) 0.84f else 0.32f
+    val chroma = (1f - kotlin.math.abs(2f * lightness - 1f)) * saturation
+    val x = chroma * (1f - kotlin.math.abs((hue / 60f) % 2f - 1f))
+    val m = lightness - chroma / 2f
+    val (rr, gg, bb) = when {
+        hue < 60f -> Triple(chroma, x, 0f)
+        hue < 120f -> Triple(x, chroma, 0f)
+        hue < 180f -> Triple(0f, chroma, x)
+        hue < 240f -> Triple(0f, x, chroma)
+        hue < 300f -> Triple(x, 0f, chroma)
+        else -> Triple(chroma, 0f, x)
+    }
+    return Color(
+        red = (rr + m).coerceIn(0f, 1f),
+        green = (gg + m).coerceIn(0f, 1f),
+        blue = (bb + m).coerceIn(0f, 1f)
+    )
 }
 
 val LocalPalette = compositionLocalOf {

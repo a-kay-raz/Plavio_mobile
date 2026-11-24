@@ -570,7 +570,7 @@ fun SearchScreen(
                                 onClick = { selectedGenre = null },
                                 label = { Text("All genres") },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+                                    selectedContainerColor = LocalPalette.current.accentTint,
                                     selectedLabelColor = TextPrimary,
                                     containerColor = Color.White.copy(alpha = 0.06f),
                                     labelColor = TextSecondary
@@ -584,7 +584,7 @@ fun SearchScreen(
                                 onClick = { selectedGenre = if (selectedGenre == genre) null else genre },
                                 label = { Text(genre) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+                                    selectedContainerColor = LocalPalette.current.accentTint,
                                     selectedLabelColor = TextPrimary,
                                     containerColor = Color.White.copy(alpha = 0.06f),
                                     labelColor = TextSecondary

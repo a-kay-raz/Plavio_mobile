@@ -1,5 +1,6 @@
 package com.aviostream.app.ui.theme
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -108,7 +109,17 @@ fun AvioTheme(
             error = Color(0xFFE36A8A)
         )
     }
-    CompositionLocalProvider(LocalPalette provides palette) {
+    // Provide the content colour at the theme root. Material3's
+    // LocalContentColor defaults to BLACK and MaterialTheme does not
+    // override it, so any bare Text without an explicit colour
+    // rendered black — invisible on the dark canvas. Every
+    // component that sets its own content colour (buttons, surfaces,
+    // bars, dialogs) still wins locally; bare text now falls back
+    // to the scheme's onBackground in both palettes.
+    CompositionLocalProvider(
+        LocalPalette provides palette,
+        LocalContentColor provides scheme.onBackground
+    ) {
         MaterialTheme(
             colorScheme = scheme,
             typography = AvioTypography,

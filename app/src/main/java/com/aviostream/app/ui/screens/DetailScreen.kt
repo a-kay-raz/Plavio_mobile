@@ -4250,7 +4250,7 @@ private fun PickerCardBody(
                             .tvFocusRing(RoundedCornerShape(50))
                             .clip(RoundedCornerShape(50))
                             .background(
-                                if (selected) palette.accent.copy(alpha = 0.22f)
+                                if (selected) palette.accentTint
                                 else Color.White.copy(alpha = 0.06f)
                             )
                             .border(

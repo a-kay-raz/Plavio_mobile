@@ -1464,14 +1464,16 @@ private fun M3uImportDialog(
     )
 }
 
-/** FilterChip colors matching the Avio dark aesthetic. */
+/** FilterChip colors matching the Avio dark aesthetic: the SELECTED
+ * chip is the solid off-white fill with near-black text, while
+ * unselected chips keep the quiet glass look. */
 @Composable
 private fun chipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
-    selectedLabelColor = TextPrimary,
+    selectedContainerColor = Color(0xFFF4F4F6),
+    selectedLabelColor = Color(0xFF0B0B10),
     containerColor = GlassWhite,
     labelColor = TextSecondary,
-    selectedLeadingIconColor = LocalPalette.current.accent
+    selectedLeadingIconColor = Color(0xFF0B0B10)
 )
 
 /** Live indicator: a mint-green dot with a white center, gently pulsing (owner's order 2026-10-22: green, following the app theme). */

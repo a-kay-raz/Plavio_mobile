@@ -2069,7 +2069,7 @@ fun OptionChips(
                 onClick = { onSelect(name) },
                 label = { Text(name) },
                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = LocalPalette.current.accent.copy(alpha = 0.25f),
+                    selectedContainerColor = LocalPalette.current.accentTint,
                     selectedLabelColor = TextPrimary,
                     containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.06f),
                     labelColor = TextSecondary
