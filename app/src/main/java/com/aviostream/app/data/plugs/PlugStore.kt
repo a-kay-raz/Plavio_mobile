@@ -50,10 +50,16 @@ data class PlugStoreState(
     /**
      * Legacy seed marker from the v0.14.56–.65 Avio Plugs shape.
      * Kept so old state files round-trip unchanged; it drives
-     * nothing. No repo ships preinstalled — the user adds repos
-     * himself.
+     * nothing. PlugX is the only preinstalled repo now — see
+     * [plugxSeeded].
      */
     val avioPlugsSeeded: Boolean = false,
+    /**
+     * True once the PlugX repo has been seeded (v0.14.66).
+     * Persisted so a user-removed PlugX repo stays removed —
+     * seeding never runs twice.
+     */
+    val plugxSeeded: Boolean = false,
     /**
      * The master plugs switch beside the page title (design B,
      * v0.14.60): off means no plug runs at all. Persisted; state
@@ -146,14 +152,53 @@ internal object PlugDownloader {
     }
 }
 
+/** What the PlugX seed step should do with a loaded state. */
+internal enum class PlugXSeedAction { NONE, MARK_ONLY, SEED }
+
+/**
+ * Seed planning (v0.14.66, owner's order: ONLY PlugX ships
+ * preinstalled), pure so it is unit-testable: once the seeded
+ * marker is set, nothing ever runs again (a removed PlugX stays
+ * removed). A state that already holds the PlugX repo (added by
+ * hand) only takes the marker; anything else seeds.
+ */
+internal fun planPlugXSeed(state: PlugStoreState): PlugXSeedAction = when {
+    state.plugxSeeded -> PlugXSeedAction.NONE
+    state.repos.any { it.url == PlugStore.PLUGX_REPO_URL } -> PlugXSeedAction.MARK_ONLY
+    else -> PlugXSeedAction.SEED
+}
+
+/**
+ * The seeded state (v0.14.66), pure so it is unit-testable: the
+ * PlugX repo is appended as a bare, normal remote-repo entry —
+ * no plugs yet; the hub's open-time refresh (the normal sync
+ * path) fetches its manifest and downloads its plugs, and from
+ * there refresh owns it like any user-added repo. Every other
+ * repo is carried over untouched (user-added repos are user
+ * data). No legacy bundled repo is dropped here: the fork never
+ * shipped one, so no state can carry it.
+ */
+internal fun applyPlugXSeed(state: PlugStoreState): PlugStoreState {
+    val repos = state.repos +
+        StoredRepo(
+            url = PlugStore.PLUGX_REPO_URL,
+            name = PlugStore.PLUGX_REPO_NAME,
+            version = null,
+            bundled = false,
+            plugs = emptyList()
+        )
+    return state.copy(repos = repos, plugxSeeded = true)
+}
+
 /**
  * Plug persistence (Plugs v1): one JSON state file + one body file
  * per plug under filesDir/plugs. Repos are Nuvio-format manifests
  * (see [PlugManifestParser]); adding one downloads every listed plug
  * body immediately, and a manifest version bump on refresh
- * re-downloads changed plugs in the background. No repo ships
- * preinstalled — the user adds repos himself, and any repo is
- * removable like any other.
+ * re-downloads changed plugs in the background. Exactly ONE repo
+ * ships preinstalled (owner's order 2026-11-21): PlugX, seeded
+ * once as a bare normal remote-repo entry, then owned by the
+ * normal refresh path, and removable like any other repo.
  */
 class PlugStore(context: Context) {
     private val appContext = context.applicationContext
@@ -166,6 +211,7 @@ class PlugStore(context: Context) {
     val state: StateFlow<PlugStoreState> = _state
 
     @Volatile private var loaded = false
+    @Volatile private var seedChecked = false
 
     suspend fun ensureLoaded() {
         if (loaded) return
@@ -173,6 +219,33 @@ class PlugStore(context: Context) {
             if (loaded) return
             _state.value = readStateFile()
             loaded = true
+        }
+        ensureSeeded()
+    }
+
+    /**
+     * One-time PlugX seed (v0.14.66): inserts the bare PlugX repo
+     * entry (see [applyPlugXSeed]) — its plugs arrive through the
+     * normal refresh path when the hub is opened. Runs only while
+     * the persisted seeded marker is unset — a repo the user
+     * removed is never resurrected.
+     */
+    suspend fun ensureSeeded() {
+        if (seedChecked) return
+        mutex.withLock {
+            if (seedChecked) return
+            seedChecked = true
+            runCatching { seedPlugXLocked() }
+        }
+    }
+
+    private suspend fun seedPlugXLocked() {
+        when (planPlugXSeed(_state.value)) {
+            PlugXSeedAction.NONE -> Unit
+            PlugXSeedAction.MARK_ONLY ->
+                persistLocked(_state.value.copy(plugxSeeded = true))
+            PlugXSeedAction.SEED ->
+                persistLocked(applyPlugXSeed(_state.value))
         }
     }
 
@@ -394,6 +467,7 @@ class PlugStore(context: Context) {
         return PlugStoreState(
             repos = repos,
             avioPlugsSeeded = root.bool("avioPlugsSeeded") ?: false,
+            plugxSeeded = root.bool("plugxSeeded") ?: false,
             plugsEnabled = root.bool("plugsEnabled") ?: true
         )
     }
@@ -436,6 +510,7 @@ class PlugStore(context: Context) {
         return buildJsonObject {
             put("repos", reposJson)
             put("avioPlugsSeeded", state.avioPlugsSeeded)
+            put("plugxSeeded", state.plugxSeeded)
             put("plugsEnabled", state.plugsEnabled)
         }.toString()
     }
@@ -463,4 +538,16 @@ class PlugStore(context: Context) {
 
     private fun JsonPrimitive.contentOrNullCompat(): String? =
         runCatching { content }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    companion object {
+        /** PlugX: the ONE repo that ships preinstalled (owner's
+         *  order 2026-11-21) — a normal remote repo, seeded bare
+         *  and synced by the ordinary refresh path. */
+        const val PLUGX_REPO_URL =
+            "https://raw.githubusercontent.com/kotlinsyd/PlugX/main/manifest.json"
+
+        /** Display name for the seeded entry, before its first
+         *  manifest sync replaces it with the manifest's own name. */
+        const val PLUGX_REPO_NAME = "PlugX"
+    }
 }

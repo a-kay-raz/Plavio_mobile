@@ -111,7 +111,13 @@ class MpvPlayerEngine(
                 mpv.setOptionString("icc-cache-dir", cacheDir.absolutePath)
                 mpv.setOptionString("vo", "gpu-next")
                 mpv.setOptionString("profile", "fast")
-                mpv.setOptionString("hwdec", if (hardwareDecoding) "auto" else "no")
+                // yuv420p filter + hwdec: hardware decoding hands frames
+                // to the GPU before the vf chain runs, so a format filter
+                // is bypassed (or forces a slow GPU readback). When the
+                // filter is on, force software decoding for this engine
+                // instance so the filter actually applies.
+                val useHwdec = hardwareDecoding && !yuv420pFilter
+                mpv.setOptionString("hwdec", if (useHwdec) "auto" else "no")
                 if (yuv420pFilter) mpv.setOptionString("vf", "format=yuv420p")
                 mpv.setOptionString("msg-level", "all=warn")
                 mpv.setOptionString("tls-verify", "yes")
@@ -140,6 +146,7 @@ class MpvPlayerEngine(
                 observe("height", FORMAT_INT64)
                 observe("track-list", FORMAT_NODE)
                 attachedSurface?.let { mpv.attachSurface(it) }
+                Log.d(TAG, "mpv init ok hwdec=$useHwdec yuv420p=$yuv420pFilter")
             } catch (e: Exception) {
                 Log.e(TAG, "mpv init failed", e)
                 if (!released.get()) onFatalError?.invoke("Second engine failed to start")
@@ -232,6 +239,11 @@ class MpvPlayerEngine(
                     if (fields.isEmpty()) "" else fields.joinToString(","),
                 )
                 mpv.setPropertyString("aid", "auto")
+                // yuv420p filter: re-assert the vf chain at load time so
+                // it applies per-video even if the startup option was
+                // missed (and so a filter enabled after init still takes
+                // effect for the next file).
+                if (yuv420pFilter) mpv.setPropertyString("vf", "format=yuv420p")
                 if (startMs > 0L) {
                     mpv.command("loadfile", url, "replace", "-1", "start=${startMs / 1000.0}")
                 } else {
@@ -577,6 +589,11 @@ class MpvPlayerEngine(
                 if (reason == "error") {
                     val message = map["error"]?.asString()?.takeIf { it.isNotBlank() }
                         ?: "Unable to play stream"
+                    // This was silent: a loadfile failure surfaced only
+                    // as a failover, so the Diagnostics report never
+                    // showed MPV failing. Log it so the next report
+                    // proves whether MPV ran and why it gave up.
+                    Log.w(TAG, "mpv end-file error: $message")
                     onFatalError?.invoke(message)
                 }
             }

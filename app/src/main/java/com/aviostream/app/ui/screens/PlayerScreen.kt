@@ -1215,6 +1215,7 @@ fun PlayerScreen(
      * switch back — ever replaces it.
      */
     fun activateMpv(req: PlaybackRequest, startMs: Long, autoplay: Boolean) {
+        Log.d("AvioPlay", "activateMpv yuv420p=" + settings.mpvYuv420pFilter + " hwdec=" + settings.mpvHardwareDecoding)
         // Stop the parked ExoPlayer's audio before MPV starts.
         runCatching { player.pause() }
         val engine = com.aviostream.app.player.MpvPlayerEngine(
@@ -1796,6 +1797,7 @@ fun PlayerScreen(
         to: com.aviostream.app.player.PlaybackEngine,
         resumeAtMs: Long
     ) {
+        Log.d("AvioPlay", "engine switch to $to at ${resumeAtMs}ms")
         val req = state.currentRequest
         state.playerError = null
         if (to == com.aviostream.app.player.PlaybackEngine.MPV) {
@@ -1836,6 +1838,7 @@ fun PlayerScreen(
      */
     fun handleMpvFatalError(message: String) {
         if (disposed.get()) return
+        Log.d("AvioPlay", "MPV fatal: $message")
         val req = state.currentRequest
         val playerFault = message == "Second engine failed to start" ||
             message.contains("format", ignoreCase = true) ||
@@ -4187,6 +4190,11 @@ fun PlayerScreen(
         // Second engine: resolved once for this play; MPV skips every
         // Exo prepare/seek below and activates its own engine instead.
         val startOnMpv = startEngine == com.aviostream.app.player.PlaybackEngine.MPV
+        // Engine visibility: the Diagnostics report must prove which
+        // engine was chosen and what the setting read as — an MPV
+        // setting that still plays Exo means the resolver, the
+        // setting, or the failover is at fault, and this line names it.
+        Log.d("AvioPlay", "engine setting=" + settings.playbackEngine + " resolved=" + startEngine + " startOnMpv=" + startOnMpv)
         val startupPlayer = player
         val isLocalFile = initialRequest.streamUrl.startsWith("file:", true) || initialRequest.streamUrl.startsWith("content:", true)
         val prepareEarly = initialRequest.streams.isNotEmpty() || initialRequest.isLive || isLocalFile
