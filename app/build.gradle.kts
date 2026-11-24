@@ -129,7 +129,14 @@ android {
         }
         release {
             signingConfig = signingConfigs.findByName("avioOwner")
-            isMinifyEnabled = false
+            // R8 back ON (user's order 2026-11-24, for app size): it was
+            // off since 5bcf95b, when R8 was suspected of the 'player not
+            // open' issue — that turned out to be the theme's frosted
+            // glass, not R8. All R8 fixes from the earlier saga are still
+            // in proguard-rules.pro (Rhino -dontwarn, MPV/QuickJS/
+            // jlibtorrent/FFmpeg JNI keeps), so the build should pass.
+            // Resource shrinking stays off (never enabled).
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
