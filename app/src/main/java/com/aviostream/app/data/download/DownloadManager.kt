@@ -10,6 +10,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.aviostream.app.data.PlaybackHeaders
+import com.aviostream.app.data.SettingsStore
 import com.aviostream.app.data.notifications.DownloadNotifications
 import com.aviostream.app.data.db.AppDatabase
 import com.aviostream.app.data.db.DownloadItem
@@ -63,7 +64,9 @@ import java.util.concurrent.TimeUnit
 /**
  * Downloader: progressive files (single-stream with Range resume, or
  * multi-connection segmented when the server honours Range), plus HLS
- * (segments fetched, then remuxed to one MP4). DASH is not supported.
+ * and DASH (segments fetched, then remuxed to one MP4). Live
+ * manifests, SAMPLE-AES HLS and DRM-protected DASH are refused with
+ * the reason on the download row.
  */
 class DownloadManager private constructor(private val appContext: Context) {
     companion object {
@@ -320,6 +323,7 @@ class DownloadManager private constructor(private val appContext: Context) {
                 runCatching { metadataFile(item).delete() }
                 runCatching { segmentsFile(item).delete() }
                 runCatching { File(item.filePath + ".hls").deleteRecursively() }
+                runCatching { File(item.filePath + ".dash").deleteRecursively() }
                 dao.updateFilePath(item.id, destUri)
                 Log.i(TAG, "Download moved to custom folder: ${item.id} -> $destUri")
             }.onFailure { e ->
@@ -353,9 +357,6 @@ class DownloadManager private constructor(private val appContext: Context) {
         // sidecars once the download completes.
         subtitles: List<com.aviostream.app.data.Subtitle> = emptyList()
     ): String {
-        require(!isDashDownloadUrl(url)) {
-            "DASH streams can't be saved as offline downloads yet."
-        }
         // Drop stale CANCELLED rows for this URL (left by older versions
         // whose cancel kept the row) so re-downloading starts clean.
         withContext(Dispatchers.IO) {
@@ -374,7 +375,7 @@ class DownloadManager private constructor(private val appContext: Context) {
             return existing.id
         }
         val id = UUID.randomUUID().toString()
-        val fileName = sanitizeFileName(title) + if (isHlsDownloadUrl(url)) ".mp4" else guessExtension(url)
+        val fileName = sanitizeFileName(title) + if (isHlsDownloadUrl(url) || isDashDownloadUrl(url)) ".mp4" else guessExtension(url)
         val file = File(downloadsDir(), "${id}_$fileName")
         val normalizedHeaders = normalizeRequestHeaders(headers)
         val item = DownloadItem(
@@ -712,7 +713,8 @@ class DownloadManager private constructor(private val appContext: Context) {
             return
         }
         if (DownloadProtocol.isDash(decodeUrlForDetection(item.url))) {
-            throw IOException("Unsupported offline format: DASH streams can't be saved offline yet.")
+            downloadDash(item, file, normalizedHeaders)
+            return
         }
         val old = readMetadata(item)
         val segSidecar = segmentsFile(item)
@@ -1418,6 +1420,551 @@ class DownloadManager private constructor(private val appContext: Context) {
             runCatching { muxer?.stop() }
             runCatching { muxer?.release() }
             extractor.release()
+        }
+    }
+
+    private fun downloadQualityCeiling(): Pair<Int, Long> {
+        val settings = runCatching { SettingsStore(appContext) }.getOrNull()
+            ?: return Int.MAX_VALUE to Long.MAX_VALUE
+        val bucket = if (settings.autoplayQuality == "Auto") {
+            settings.adaptiveQualityCap()
+        } else {
+            settings.autoplayQuality
+        }
+        return when (bucket) {
+            "2160p" -> 2160 to Long.MAX_VALUE
+            "1080p" -> 1080 to 12_000_000L
+            "720p" -> 720 to 6_000_000L
+            "480p" -> 480 to 2_500_000L
+            else -> Int.MAX_VALUE to Long.MAX_VALUE
+        }
+    }
+
+
+    // ================= DASH (v0.14.13, item 5b) =================
+    //
+    // Supported manifest shapes (stated plainly, per the brief):
+    //  - Static (VOD) MPDs, FIRST Period only.
+    //  - SegmentTemplate with a fixed segment duration, or with a
+    //    SegmentTimeline ($Number$ and $Time$ addressing both work).
+    //  - SegmentList with explicit Initialization + SegmentURLs.
+    //  - SegmentBase (single-file representations; the bytes from
+    //    the init segment's start to EOF are kept, which is the
+    //    whole standalone fMP4).
+    //  - Best video representation + best audio representation,
+    //    remuxed into one MP4 (stream copy, no re-encode).
+    // Refused honestly: live/dynamic MPDs, DRM (ContentProtection),
+    // multi-period MPDs beyond the first period, text/subtitle
+    // representations (not downloaded), and templates whose segment
+    // count can't be determined.
+
+    private data class DashSegPlan(
+        val initUrl: String?,
+        val segmentUrls: List<String>,
+        val singleFileUrl: String? = null,
+        val singleFileSkip: Long = 0L
+    )
+
+    private data class DashTrackPlan(val kind: String, val plan: DashSegPlan)
+
+    /** One source track chosen for the multi-source remux. */
+    private data class RemuxPick(val ex: Int, val track: Int, val format: MediaFormat)
+
+    private fun dashChildren(el: org.w3c.dom.Element, tag: String): List<org.w3c.dom.Element> {
+        val out = mutableListOf<org.w3c.dom.Element>()
+        val nodes = el.childNodes
+        for (i in 0 until nodes.length) {
+            val n = nodes.item(i)
+            if (n is org.w3c.dom.Element && (tag == "*" || n.tagName == tag || n.tagName.endsWith(":$tag"))) {
+                out += n
+            }
+        }
+        return out
+    }
+
+    private fun dashFirst(el: org.w3c.dom.Element, tag: String): org.w3c.dom.Element? =
+        dashChildren(el, tag).firstOrNull()
+
+    private fun dashAttr(el: org.w3c.dom.Element?, name: String): String? =
+        el?.getAttribute(name)?.takeIf { it.isNotBlank() }
+
+    /** ISO-8601 duration ("PT1H2M3.5S", "P1DT…") → seconds, or null. */
+    private fun parseIsoDuration(raw: String?): Double? {
+        if (raw.isNullOrBlank()) return null
+        val m = Regex("""P(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?""")
+            .matchEntire(raw.trim()) ?: return null
+        val d = m.groupValues[1].toDoubleOrNull() ?: 0.0
+        val h = m.groupValues[2].toDoubleOrNull() ?: 0.0
+        val min = m.groupValues[3].toDoubleOrNull() ?: 0.0
+        val s = m.groupValues[4].toDoubleOrNull() ?: 0.0
+        return d * 86400 + h * 3600 + min * 60 + s
+    }
+
+    private fun dashSubstitute(
+        template: String, repId: String?, bandwidth: Long, number: Long?, time: Long?
+    ): String {
+        var out = template.replace("$$", "")
+        out = out.replace("$" + "RepresentationID$", repId ?: "")
+        out = out.replace("$" + "Bandwidth$", bandwidth.toString())
+        out = Regex("[$]Number%0(\\d+)d[$]").replace(out) {
+            (number ?: 0).toString().padStart(it.groupValues[1].toIntOrNull() ?: 0, '0')
+        }
+        out = out.replace("$" + "Number$", (number ?: 0).toString())
+        out = Regex("[$]Time%0(\\d+)d[$]").replace(out) {
+            (time ?: 0).toString().padStart(it.groupValues[1].toIntOrNull() ?: 0, '0')
+        }
+        out = out.replace("$" + "Time$", (time ?: 0).toString())
+        return out.replace("", "$")
+    }
+
+    /** Parse an MPD into per-kind track plans. Throws honest IOExceptions. */
+    private fun parseDashMpd(xml: String, mpdUrl: String): List<DashTrackPlan> {
+        val doc = runCatching {
+            val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = false
+                runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+                runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
+                runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+            }
+            factory.newDocumentBuilder().parse(java.io.ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
+        }.getOrElse { throw IOException("Could not parse the DASH manifest") }
+        val mpd = doc.documentElement ?: throw IOException("Empty DASH manifest")
+        if (dashAttr(mpd, "type") == "dynamic") {
+            throw IOException("Live DASH streams can't be saved offline — only finished streams can.")
+        }
+        val mpdDuration = parseIsoDuration(dashAttr(mpd, "mediaPresentationDuration"))
+        var base = dashFirst(mpd, "BaseURL")?.textContent?.trim()
+            ?.let { resolveHttpUrl(mpdUrl, it) } ?: mpdUrl
+
+        val period = dashFirst(mpd, "Period")
+            ?: throw IOException("The DASH manifest has no period")
+        dashFirst(period, "BaseURL")?.textContent?.trim()?.let { base = resolveHttpUrl(base, it) }
+        val periodDuration = parseIsoDuration(dashAttr(period, "duration")) ?: mpdDuration
+
+        fun segTemplateOf(parent: org.w3c.dom.Element): org.w3c.dom.Element? =
+            dashFirst(parent, "SegmentTemplate")
+        fun segListOf(parent: org.w3c.dom.Element): org.w3c.dom.Element? =
+            dashFirst(parent, "SegmentList")
+        fun segBaseOf(parent: org.w3c.dom.Element): org.w3c.dom.Element? =
+            dashFirst(parent, "SegmentBase")
+        fun hasDrm(el: org.w3c.dom.Element): Boolean =
+            dashChildren(el, "ContentProtection").isNotEmpty()
+
+        data class RepChoice(
+            val kind: String,
+            val bandwidth: Long,
+            val height: Int,
+            val plan: DashSegPlan
+        )
+        val choices = mutableListOf<RepChoice>()
+
+        for (asEl in dashChildren(period, "AdaptationSet")) {
+            var asBase = base
+            dashFirst(asEl, "BaseURL")?.textContent?.trim()?.let { asBase = resolveHttpUrl(asBase, it) }
+            val asMime = dashAttr(asEl, "mimeType") ?: dashAttr(asEl, "contentType")
+            val asTemplate = segTemplateOf(asEl) ?: segTemplateOf(period)
+            val asList = segListOf(asEl) ?: segListOf(period)
+            val asBaseSeg = segBaseOf(asEl) ?: segBaseOf(period)
+            val asDrm = hasDrm(asEl)
+
+            val reps = dashChildren(asEl, "Representation")
+            val repEls = if (reps.isEmpty()) listOf(asEl) else reps
+            for (repEl in repEls) {
+                val isRep = repEl !== asEl
+                var repBase = asBase
+                if (isRep) {
+                    dashFirst(repEl, "BaseURL")?.textContent?.trim()
+                        ?.let { repBase = resolveHttpUrl(repBase, it) }
+                }
+                val mime = dashAttr(repEl, "mimeType") ?: asMime ?: ""
+                val kind = when {
+                    mime.startsWith("video") || dashAttr(repEl, "contentType") == "video" ||
+                        dashAttr(asEl, "contentType") == "video" -> "video"
+                    mime.startsWith("audio") || dashAttr(repEl, "contentType") == "audio" ||
+                        dashAttr(asEl, "contentType") == "audio" -> "audio"
+                    else -> continue // text/other representations are not downloaded
+                }
+                if (asDrm || (isRep && hasDrm(repEl))) continue // handled below via DRM check
+                val repId = if (isRep) dashAttr(repEl, "id") else dashAttr(asEl, "id")
+                val bandwidth = (if (isRep) dashAttr(repEl, "bandwidth") else null)
+                    ?.toLongOrNull() ?: 0L
+                val height = (if (isRep) dashAttr(repEl, "height") else null)
+                    ?.toIntOrNull() ?: 0
+
+                val template = (if (isRep) segTemplateOf(repEl) else null) ?: asTemplate
+                val segList = (if (isRep) segListOf(repEl) else null) ?: asList
+                val segBase = (if (isRep) segBaseOf(repEl) else null) ?: asBaseSeg
+
+                val plan: DashSegPlan = when {
+                    segBase != null -> {
+                        val range = dashFirst(segBase, "Initialization")
+                            ?.let { dashAttr(it, "range") }
+                        val start = range?.substringBefore('-')?.toLongOrNull() ?: 0L
+                        DashSegPlan(null, emptyList(), singleFileUrl = repBase, singleFileSkip = start)
+                    }
+                    segList != null -> {
+                        val init = dashFirst(segList, "Initialization")
+                            ?.let { dashAttr(it, "sourceURL") }
+                            ?.let { resolveHttpUrl(repBase, it) }
+                        val urls = dashChildren(segList, "SegmentURL")
+                            .mapNotNull { dashAttr(it, "media") }
+                            .map { resolveHttpUrl(repBase, it) }
+                        if (urls.isEmpty()) continue
+                        DashSegPlan(init, urls)
+                    }
+                    template != null -> {
+                        val media = dashAttr(template, "media")
+                            ?: continue
+                        val startNumber = dashAttr(template, "startNumber")?.toLongOrNull() ?: 1L
+                        val timescale = dashAttr(template, "timescale")?.toLongOrNull() ?: 1L
+                        val initTpl = dashAttr(template, "initialization")
+                        val init = initTpl?.let {
+                            resolveHttpUrl(repBase, dashSubstitute(it, repId, bandwidth, null, null))
+                        }
+                        val timeline = dashFirst(template, "SegmentTimeline")
+                        val urls = mutableListOf<String>()
+                        if (timeline != null) {
+                            var t: Long? = null
+                            var number = startNumber
+                            for (s in dashChildren(timeline, "S")) {
+                                val st = dashAttr(s, "t")?.toLongOrNull()
+                                if (st != null) t = st
+                                val d = dashAttr(s, "d")?.toLongOrNull() ?: continue
+                                val r = dashAttr(s, "r")?.toLongOrNull() ?: 0L
+                                var cur = t ?: 0L
+                                repeat((r + 1).toInt().coerceIn(1, 100_000)) {
+                                    urls += resolveHttpUrl(
+                                        repBase,
+                                        dashSubstitute(media, repId, bandwidth, number, cur)
+                                    )
+                                    number++
+                                    cur += d
+                                }
+                                t = cur
+                            }
+                        } else {
+                            val segDur = dashAttr(template, "duration")?.toDoubleOrNull()
+                                ?: continue
+                            val durSec = periodDuration
+                                ?: throw IOException("Can't tell how many segments this DASH stream has")
+                            val secondsPerSeg = segDur / timescale.toDouble()
+                            if (secondsPerSeg <= 0) continue
+                            val count = kotlin.math.ceil(durSec / secondsPerSeg).toLong()
+                                .coerceIn(1L, 10_000L)
+                            var number = startNumber
+                            for (i in 0 until count) {
+                                val time = (i * segDur).toLong()
+                                urls += resolveHttpUrl(
+                                    repBase,
+                                    dashSubstitute(media, repId, bandwidth, number, time)
+                                )
+                                number++
+                            }
+                        }
+                        if (urls.isEmpty()) continue
+                        DashSegPlan(init, urls)
+                    }
+                    else -> continue
+                }
+                choices += RepChoice(kind, bandwidth, height, plan)
+            }
+        }
+
+        if (choices.isEmpty()) {
+            // Distinguish "everything was DRM" from "nothing usable".
+            val anyDrm = dashChildren(period, "AdaptationSet").any { asEl ->
+                hasDrm(asEl) || dashChildren(asEl, "Representation").any { hasDrm(it) }
+            }
+            if (anyDrm) {
+                throw IOException("This DASH stream is DRM-protected and can't be saved offline.")
+            }
+            throw IOException("No downloadable video or audio track in this DASH manifest")
+        }
+        // P14: same quality ceiling as HLS — best video AT or BELOW
+        // the owner's settings; lightest above when nothing fits.
+        val (dashMaxHeight, _) = downloadQualityCeiling()
+        val videoChoices = choices.filter { it.kind == "video" }
+        val videoUnder = videoChoices.filter { it.height == 0 || it.height <= dashMaxHeight }
+        val video = if (videoUnder.isNotEmpty()) {
+            videoUnder.maxWithOrNull(compareBy({ it.height }, { it.bandwidth }))
+        } else {
+            videoChoices.minWithOrNull(compareBy({ it.height }, { it.bandwidth }))
+        }
+        val audio = choices.filter { it.kind == "audio" }
+            .maxWithOrNull(compareBy({ it.bandwidth }, { it.height }))
+        val tracks = listOfNotNull(
+            video?.let { DashTrackPlan("video", it.plan) },
+            audio?.let { DashTrackPlan("audio", it.plan) }
+        )
+        if (tracks.isEmpty()) throw IOException("No downloadable video or audio track in this DASH manifest")
+        return tracks
+    }
+
+    /** Stream a URL to a file, optionally keeping only bytes from [skipBytes] on. */
+    private suspend fun fetchFileSlice(
+        url: String, headers: Map<String, String>, skipBytes: Long, dest: File
+    ): Boolean = coroutineScope {
+        val request = Request.Builder().url(url).apply {
+            headers.forEach { (k, v) -> header(k, v) }
+            if (skipBytes > 0) header("Range", "bytes=$skipBytes-")
+        }.build()
+        val call = client.newCall(request)
+        val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
+            try { awaitCancellation() } finally { call.cancel() }
+        }
+        try {
+            withContext(Dispatchers.IO) { call.execute() }.use { resp ->
+                if (!resp.isSuccessful) return@use false
+                val body = resp.body ?: return@use false
+                // A 200 to a Range request means the server ignored
+                // the range: skip the prefix by hand while streaming.
+                var toSkip = if (skipBytes > 0 && resp.code == 200) skipBytes else 0L
+                withContext(Dispatchers.IO) {
+                    body.byteStream().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        FileOutputStream(dest).use { out ->
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                if (toSkip > 0) {
+                                    val s = minOf(toSkip, n.toLong())
+                                    toSkip -= s
+                                    if (s == n.toLong()) continue
+                                    out.write(buf, s.toInt(), n - s.toInt())
+                                } else {
+                                    out.write(buf, 0, n)
+                                }
+                            }
+                        }
+                    }
+                }
+                true
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        } finally {
+            watcher.cancel()
+        }
+    }
+
+    private suspend fun downloadDash(item: DownloadItem, target: File, headers: Map<String, String>) {
+        val xml = fetchText(item.url, headers)
+            ?: throw IOException("Could not fetch the DASH manifest")
+        if (!xml.contains("<MPD")) throw IOException("This URL did not serve a DASH manifest")
+        val tracks = parseDashMpd(xml, item.url)
+
+        val workDir = File(item.filePath + ".dash").apply { mkdirs() }
+        val sizesFile = File(workDir, "sizes.json")
+        val sizes = mutableMapOf<String, Long>()
+        runCatching {
+            val json = JSONObject(sizesFile.readText())
+            json.keys().forEach { k -> sizes[k] = json.getLong(k) }
+        }
+        val sizesLock = Any()
+        fun saveSizes() {
+            runCatching {
+                val snapshot = synchronized(sizesLock) { sizes.toMap() }
+                val json = JSONObject()
+                snapshot.forEach { (k, v) -> json.put(k, v) }
+                sizesFile.writeText(json.toString())
+            }
+        }
+        fun downloadedNow(): Long = synchronized(sizesLock) { sizes.values.sum() }
+
+        withContext(Dispatchers.IO) {
+            dao.upsert(item.copy(totalBytes = -1, downloadedBytes = downloadedNow(), status = "DOWNLOADING", error = null))
+        }
+
+        // Build the job list: per track an optional init segment,
+        // then its media segments — or one single-file fetch for
+        // SegmentBase representations.
+        data class Job(val key: String, val file: File, val url: String?, val sliceOf: DashSegPlan?)
+        val jobs = mutableListOf<Job>()
+        for (track in tracks) {
+            val prefix = track.kind.first().toString() // "v" / "a"
+            val plan = track.plan
+            if (plan.singleFileUrl != null) {
+                jobs += Job("$prefix-file", File(workDir, "$prefix-file"), null, plan)
+            } else {
+                if (plan.initUrl != null) {
+                    jobs += Job("$prefix-init", File(workDir, "$prefix-init"), plan.initUrl, null)
+                }
+                plan.segmentUrls.forEachIndexed { index, segUrl ->
+                    jobs += Job("$prefix-$index", File(workDir, "$prefix-%05d".format(index)), segUrl, null)
+                }
+            }
+        }
+
+        val semaphore = Semaphore(3)
+        coroutineScope {
+            jobs.map { job ->
+                async {
+                    val known = synchronized(sizesLock) { sizes[job.key] }
+                    if (known != null && job.file.exists() && job.file.length() == known) return@async
+                    semaphore.withPermit {
+                        if (availableBytes() < STORAGE_RESERVE_BYTES) {
+                            throw IOException("Not enough free storage to continue this download.")
+                        }
+                        val ok = if (job.sliceOf != null) {
+                            fetchFileSlice(
+                                job.sliceOf.singleFileUrl!!, headers,
+                                job.sliceOf.singleFileSkip, job.file
+                            )
+                        } else {
+                            val bytes = fetchBytes(job.url!!, headers)
+                                ?: throw IOException("A DASH segment failed to download (${job.key})")
+                            withContext(Dispatchers.IO) { job.file.writeBytes(bytes) }
+                            true
+                        }
+                        if (!ok) throw IOException("A DASH segment failed to download (${job.key})")
+                        val len = withContext(Dispatchers.IO) { job.file.length() }
+                        synchronized(sizesLock) { sizes[job.key] = len }
+                        saveSizes()
+                        val total = downloadedNow()
+                        withContext(Dispatchers.IO) { dao.updateProgress(item.id, total, "DOWNLOADING") }
+                        _activeDownloads.value = _activeDownloads.value.toMutableMap().apply {
+                            put(item.id, DownloadProgress(item.id, total, -1, "DOWNLOADING"))
+                        }
+                    }
+                }
+            }.forEach { it.await() }
+        }
+
+        // Join each track, then remux the track files into one MP4.
+        val trackFiles = mutableListOf<File>()
+        for (track in tracks) {
+            val prefix = track.kind.first().toString()
+            val plan = track.plan
+            if (plan.singleFileUrl != null) {
+                trackFiles += File(workDir, "$prefix-file")
+            } else {
+                val joined = File(workDir, "$prefix-joined")
+                withContext(Dispatchers.IO) {
+                    FileOutputStream(joined).use { out ->
+                        if (plan.initUrl != null) {
+                            File(workDir, "$prefix-init").inputStream().use { it.copyTo(out) }
+                        }
+                        plan.segmentUrls.indices.forEach { i ->
+                            File(workDir, "$prefix-%05d".format(i)).inputStream().use { it.copyTo(out) }
+                        }
+                    }
+                }
+                trackFiles += joined
+            }
+        }
+        val remuxed = runCatching { remuxFilesToMp4(trackFiles, target) }.getOrDefault(false)
+        if (!remuxed) {
+            if (trackFiles.size == 1) {
+                // Same fallback as HLS: keep the joined stream as-is.
+                withContext(Dispatchers.IO) { trackFiles[0].copyTo(target, overwrite = true) }
+            } else {
+                throw IOException("Downloaded the DASH segments but couldn't combine them into one MP4")
+            }
+        }
+        workDir.deleteRecursively()
+        val size = target.length()
+        if (size <= 0L) throw IOException("The DASH download produced an empty file")
+        withContext(Dispatchers.IO) {
+            dao.upsert(item.copy(totalBytes = size, downloadedBytes = size, status = "DOWNLOADING", error = null))
+            dao.markCompleted(item.id, System.currentTimeMillis())
+        }
+        // Step 37: move the finished file into the custom folder when set.
+        moveCompletedToExternal(item)
+        // Step 46: fetch the captured subtitles into sidecars (fire-and-
+        // forget — never blocks or fails the completed download).
+        scope.launch { DownloadSubtitles.fetchSidecars(appContext, item) }
+        _activeDownloads.value = _activeDownloads.value - item.id
+        Log.i(TAG, "Download completed (DASH): ${item.id} ($size bytes)")
+        runCatching { DownloadNotifications.postDownloadFinished(appContext, item.id, item.title) }
+    }
+
+    /**
+     * Stream-copy remux of 1–2 track files (e.g. DASH video + audio)
+     * into one MP4, interleaved by presentation time. Returns false
+     * when a container or codec refuses.
+     */
+    private fun remuxFilesToMp4(sources: List<File>, target: File): Boolean {
+        if (sources.size == 1) return remuxToMp4(sources[0], target)
+        val extractors = sources.map {
+            MediaExtractor().apply { setDataSource(it.absolutePath) }
+        }
+        var muxer: MediaMuxer? = null
+        return try {
+            val picks = mutableListOf<RemuxPick>()
+            var haveVideo = false
+            var haveAudio = false
+            extractors.forEachIndexed { ei, ex ->
+                for (t in 0 until ex.trackCount) {
+                    val format = ex.getTrackFormat(t)
+                    val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+                    if (mime.startsWith("video/") && !haveVideo) {
+                        picks += RemuxPick(ei, t, format); haveVideo = true
+                    } else if (mime.startsWith("audio/") && !haveAudio) {
+                        picks += RemuxPick(ei, t, format); haveAudio = true
+                    }
+                }
+            }
+            if (picks.isEmpty()) return false
+            val mx = MediaMuxer(target.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            muxer = mx
+            val muxTrack = HashMap<RemuxPick, Int>()
+            picks.forEach { pick ->
+                muxTrack[pick] = mx.addTrack(pick.format)
+                extractors[pick.ex].selectTrack(pick.track)
+            }
+            mx.start()
+            val buffers = Array(extractors.size) { ByteBuffer.allocate(1024 * 1024) }
+            val firstPts = LongArray(extractors.size) { -1L }
+            val done = BooleanArray(extractors.size)
+            val info = MediaCodec.BufferInfo()
+            while (true) {
+                var bestEx = -1
+                var bestTime = Long.MAX_VALUE
+                for (pick in picks) {
+                    if (done[pick.ex]) continue
+                    val ex = extractors[pick.ex]
+                    if (ex.sampleTrackIndex != pick.track && picks.any { it.ex == pick.ex && it.track == ex.sampleTrackIndex }) {
+                        continue // this extractor currently sits on its other picked track
+                    }
+                    val time = ex.sampleTime
+                    if (time < 0) { done[pick.ex] = true; continue }
+                    if (time < bestTime) { bestTime = time; bestEx = pick.ex }
+                }
+                if (bestEx < 0) break
+                val ex = extractors[bestEx]
+                val pick = picks.firstOrNull { it.ex == bestEx && it.track == ex.sampleTrackIndex }
+                if (pick == null) { ex.advance(); continue }
+                var buffer = buffers[bestEx]
+                var size = ex.readSampleData(buffer, 0)
+                if (size < 0) { done[bestEx] = true; continue }
+                if (size > buffer.capacity()) {
+                    buffer = ByteBuffer.allocate(size + 64 * 1024)
+                    buffers[bestEx] = buffer
+                    size = ex.readSampleData(buffer, 0)
+                    if (size < 0) { done[bestEx] = true; continue }
+                }
+                val pts = ex.sampleTime
+                if (firstPts[bestEx] < 0) firstPts[bestEx] = pts
+                info.offset = 0
+                info.size = size
+                info.presentationTimeUs = (pts - firstPts[bestEx]).coerceAtLeast(0)
+                info.flags = if (ex.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+                    MediaCodec.BUFFER_FLAG_KEY_FRAME
+                } else 0
+                buffer.position(0)
+                mx.writeSampleData(muxTrack.getValue(pick), buffer, info)
+                ex.advance()
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Multi-track remux failed: ${e.message}")
+            false
+        } finally {
+            runCatching { muxer?.stop() }
+            runCatching { muxer?.release() }
+            extractors.forEach { runCatching { it.release() } }
         }
     }
 
