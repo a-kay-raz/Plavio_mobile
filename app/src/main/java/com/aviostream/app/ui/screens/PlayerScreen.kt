@@ -5882,17 +5882,19 @@ fun PlayerScreen(
                             .padding(13.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Nuvio legacy: a loading spinner replaces the icon
-                        // while buffering.
-                        if (state.isBuffering) {
-                            OrbitDots(Modifier.size(34.dp))
-                        } else {
-                            Icon(
-                                if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                if (state.isPlaying) "Pause" else "Play",
-                                tint = Color.White, modifier = Modifier.size(34.dp)
-                            )
-                        }
+                        // No spinner here: while buffering the player
+                        // already shows exactly one wheel — the
+                        // PlayerLoadingOverlay on the initial load, or
+                        // the centred OrbitDots + "Buffering…" on a
+                        // mid-playback rebuffer. A second OrbitDots in
+                        // this button used to spin alongside it (two
+                        // wheels at once); the button just keeps the
+                        // play/pause icon instead.
+                        Icon(
+                            if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            if (state.isPlaying) "Pause" else "Play",
+                            tint = Color.White, modifier = Modifier.size(34.dp)
+                        )
                     }
                     if (!state.currentRequest.isLive) {
                         CenterControlButton(
