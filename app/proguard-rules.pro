@@ -20,6 +20,11 @@
 -keepnames class com.fasterxml.jackson.** { *; }
 -keep class org.jsoup.** { *; }
 -keep class org.mozilla.javascript.** { *; }
+# Rhino references java.beans and jdk.dynalink, which do not exist on
+# Android. R8 fails on these missing classes; they are only used by
+# Rhino's JVM-only paths (guarded by reflection), so silence the warnings.
+-dontwarn java.beans.**
+-dontwarn jdk.dynalink.**
 -keep class com.uwetrottmann.tmdb2.** { *; }
 -keep class me.xdrop.fuzzywuzzy.** { *; }
 -keep class dev.whyoleg.cryptography.** { *; }
