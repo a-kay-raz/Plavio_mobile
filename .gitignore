@@ -5,6 +5,7 @@
 /app/build/
 # Local config
 local.properties
+google-services.json
 *.keystore
 *.jks
 # IDE
