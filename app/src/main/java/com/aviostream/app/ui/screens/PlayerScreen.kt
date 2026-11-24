@@ -206,6 +206,7 @@ import com.aviostream.app.player.AvioAudioRenderersFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.aviostream.app.media.AvioExtractorsFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -729,9 +730,15 @@ fun PlayerScreen(
             val cacheDataSourceFactory = CacheDataSource.Factory()
                 .setCache(PlaybackCache.get(context, maxBytes))
                 .setUpstreamDataSourceFactory(dataSourceFactory)
+            // MKV tail-Cues seeking (v0.14.30 port, feature #20):
+            // Matroska sources are parsed by the tail-cues fork, so
+            // muxes whose head SeekHead omits the Cues index stay
+            // seekable. Every other format keeps its stock extractor.
             DefaultMediaSourceFactory(cacheDataSourceFactory)
+                .setExtractorsFactory(AvioExtractorsFactory())
         } else {
             DefaultMediaSourceFactory(dataSourceFactory)
+                .setExtractorsFactory(AvioExtractorsFactory())
         }
     }
 
