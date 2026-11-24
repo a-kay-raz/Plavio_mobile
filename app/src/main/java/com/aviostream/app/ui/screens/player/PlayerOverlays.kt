@@ -12,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -229,6 +230,14 @@ fun PlayerDeviceStatusStrip(
  * ExtraBold (2 lines); episode code or provider 16sp 0xFFCCCCCC;
  * episode title 28sp; description 16sp/24sp 0xFFD6D6D6, max 3 lines,
  * 0.62 width. Padding 20dp sides, 40dp top, 120dp bottom.
+ *
+ * Compact-height adaptation (Nuvio's BoxWithConstraints rule): a
+ * landscape phone is under 420dp tall, so the fixed 120dp bottom
+ * padding + full-size text overflowed the short height and pushed
+ * "You're watching" up into the top bar. On compact heights the
+ * padding shrinks (24dp top, 40dp bottom; 24dp bottom under 340dp),
+ * the title/episode fonts shrink, and the description caps at 2
+ * lines over 0.82 width — the overlay fits the screen it is on.
  */
 @Composable
 fun PauseMetadataOverlay(
@@ -239,7 +248,7 @@ fun PauseMetadataOverlay(
     description: String?,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(
@@ -252,10 +261,24 @@ fun PauseMetadataOverlay(
                 ),
             ),
     ) {
+        val compactHeight = maxHeight < 420.dp
+        val veryCompactHeight = maxHeight < 340.dp
+        val topPadding = if (compactHeight) 24.dp else 40.dp
+        val bottomPadding = when {
+            veryCompactHeight -> 24.dp
+            compactHeight -> 40.dp
+            else -> 120.dp
+        }
+        val titleFontSize = if (compactHeight) 24.sp else 32.sp
+        val titleLineHeight = if (compactHeight) 28.sp else 37.sp
+        val episodeTitleFontSize = if (compactHeight) 20.sp else 28.sp
+        val episodeTitleLineHeight = if (compactHeight) 24.sp else 32.sp
+        val descriptionMaxLines = if (compactHeight) 2 else 3
+        val descriptionWidthFraction = if (compactHeight) 0.82f else 0.62f
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 120.dp),
+                .padding(start = 20.dp, end = 20.dp, top = topPadding, bottom = bottomPadding),
             verticalArrangement = Arrangement.Bottom,
         ) {
             Text(
@@ -267,8 +290,8 @@ fun PauseMetadataOverlay(
             Text(
                 title,
                 color = Color.White,
-                fontSize = 32.sp,
-                lineHeight = 37.sp,
+                fontSize = titleFontSize,
+                lineHeight = titleLineHeight,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -289,8 +312,8 @@ fun PauseMetadataOverlay(
                 Text(
                     episodeTitle,
                     color = Color.White,
-                    fontSize = 28.sp,
-                    lineHeight = 32.sp,
+                    fontSize = episodeTitleFontSize,
+                    lineHeight = episodeTitleLineHeight,
                     fontWeight = FontWeight.Normal,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -303,10 +326,10 @@ fun PauseMetadataOverlay(
                     color = Color(0xFFD6D6D6),
                     fontSize = 16.sp,
                     lineHeight = 24.sp,
-                    maxLines = 3,
+                    maxLines = descriptionMaxLines,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .fillMaxWidth(0.62f)
+                        .fillMaxWidth(descriptionWidthFraction)
                         .padding(top = 16.dp),
                 )
             }

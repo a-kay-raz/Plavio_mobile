@@ -5602,7 +5602,15 @@ fun PlayerScreen(
         // would otherwise stack a dimmed title block over a dimmed
         // title block; the switch defaults OFF, so this is unchanged
         // unless the user opts into the new screen.
-        if (!settings.pauseScreenEnabled && !state.isPlaying && hasStartedPlayback && state.playerError == null && !inPip) {
+        // Shown ONLY once the controls are gone (!state.showControls):
+        // Nuvio's rule (PauseMetadataOverlay is visible only when
+        // !controlsVisible). Before this, the overlay showed whenever
+        // paused — including while the controls were up — so its
+        // "You're watching" line landed on the top bar's stream label
+        // ("2160P HDR10") and the title/episode showed twice. The
+        // controls auto-hide 3.5 s after pausing, so the overlay
+        // appears a beat after they fade, never over them.
+        if (!settings.pauseScreenEnabled && !state.isPlaying && hasStartedPlayback && state.playerError == null && !inPip && !state.showControls) {
             val pauseDescription = if (!req.isMovie) {
                 req.episodes.firstOrNull { it.season == req.season && it.episode == req.episode }?.overview
             } else null
