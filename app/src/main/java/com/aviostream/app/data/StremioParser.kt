@@ -264,6 +264,10 @@ object StremioParser {
                 // works; StreamRepository replaces it with the real HTTP
                 // link once TorBox resolves it.
                 url = if (magnetHash != null) "infohash:$infoHash" else url ?: "infohash:$infoHash",
+                // Torrent playback: keep the full magnet URI for the
+                // torrent engine — the marker URL above throws its
+                // trackers away.
+                magnetUri = if (magnetHash != null) url else null,
                 name = s.str("name"),
                 title = s.str("title") ?: s.str("description"),
                 headers = parseProxyHeaders(s, embeddedHeaders),

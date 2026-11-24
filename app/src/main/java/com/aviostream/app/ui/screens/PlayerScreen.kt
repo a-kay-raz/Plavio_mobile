@@ -397,6 +397,10 @@ fun PlayerScreen(
      */
     fun saveLinkForReuse(req: PlaybackRequest) {
         if (!settings.reuseLastLinkEnabled || req.isLive || req.isTrailer) return
+        // Torrent gate: the loopback URL is per-session (a fresh port
+        // on every prepare) — caching it would poison later replays
+        // with a dead URL once the engine has stopped.
+        if (req.streamUrl.startsWith("http://127.0.0.1", ignoreCase = true)) return
         linkCache.save(
             streamLinkContentKey(
                 type = req.type,

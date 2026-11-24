@@ -185,6 +185,8 @@ data class StreamItem(
     val infoHash: String? = null,
     /** Index of the requested file within a torrent/file pack, when supplied by the addon. */
     val fileIdx: Int? = null,
+    /** Full magnet URI for torrent rows (trackers included) — the torrent engine uses it when present; the row's URL only carries the infohash marker. */
+    val magnetUri: String? = null,
     /** Exact torrent-relative file path, when supplied by the addon. */
     val filePath: String? = null,
     /** Optional stream MIME hint, from the stream or its behaviorHints. */
@@ -288,6 +290,18 @@ data class PlaybackRequest(
     val episodeTitle: String? = null,
     /** Extra HTTP request headers the stream URL needs (from the addon's proxyHeaders). */
     val headers: Map<String, String> = emptyMap(),
+    /**
+     * Torrent playback: when set, this request names a torrent,
+     * not a URL — [streamUrl] still carries the row's marker
+     * ("infohash:…" / magnet). The player route's torrent gate
+     * resolves it through TorrentEngine to a local HTTP URL before
+     * the player is composed. Null for every normal request.
+     */
+    val torrentInfoHash: String? = null,
+    /** The torrent's own file index, when the row carried one. */
+    val torrentFileIdx: Int? = null,
+    /** The row's full magnet URI (trackers), when it carried one. */
+    val torrentMagnetUri: String? = null,
     /**
      * Trailer playback (Trailers tab): skips auto-play-next-episode, resume
      * position saving, and Trakt/Simkl scrobbling.

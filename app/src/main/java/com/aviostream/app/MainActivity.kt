@@ -188,6 +188,7 @@ import com.aviostream.app.ui.screens.WhatsNewScreen
 import com.aviostream.app.ui.screens.LicensesScreen
 import com.aviostream.app.ui.screens.HomeScreen
 import com.aviostream.app.ui.screens.PlayerScreen
+import com.aviostream.app.ui.screens.TorrentGatePlayer
 import com.aviostream.app.ui.screens.SearchScreen
 import com.aviostream.app.ui.components.MiniTrailerOverlay
 import com.aviostream.app.ui.components.TrailerMiniController
@@ -1924,7 +1925,9 @@ private fun AvioNavGraph(
         }
         composable(Routes.PLAYER) {
             DarkVideoSurface {
-                PlayerScreen(
+                // Torrent requests resolve through the gate first;
+                // everything else passes straight to the player, unchanged.
+                TorrentGatePlayer(
                     repository = repository,
                     onBack = { navController.popBackStack() },
                     onOpenDetail = { addonId, type, metaId ->

@@ -246,6 +246,13 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.zxing.core)
     implementation(libs.nanohttpd)
+    // In-app torrent engine — libtorrent 1.2 via frostwire's
+    // binding. The core JAR only; the arm64 native rides in
+    // src/main/jniLibs (extracted from the jlibtorrent-android
+    // artifacts) because the binding's Android artifacts are plain
+    // JARs AGP won't package natives from. Arm64-only build: no
+    // armeabi-v7a copy is shipped.
+    implementation("com.frostwire:jlibtorrent:1.2.0.18")
     // Background episode-release checks (WorkManager, battery-friendly periodic work).
     implementation(libs.androidx.work.runtime.ktx)
     // Google Drive sync via AccountManager + REST API (no Play Services needed)

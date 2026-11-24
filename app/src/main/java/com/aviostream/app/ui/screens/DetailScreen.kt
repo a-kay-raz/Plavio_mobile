@@ -661,7 +661,14 @@ private fun startPlayback(
     onPlay: () -> Unit,
     fromStart: Boolean = false
 ) {
-    if (stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)) return
+    // Torrent rows no longer dead-end here — they build a torrent
+    // request and the player route's gate resolves it through the
+    // in-app torrent engine. A row counts as a torrent when its URL
+    // is the infohash marker / a magnet, or when it carries both an
+    // infoHash and its magnet URI.
+    val isTorrentRow = stream.url.startsWith("infohash:", true) ||
+        stream.url.startsWith("magnet:", true) ||
+        (!stream.infoHash.isNullOrBlank() && stream.magnetUri != null)
     Log.d("AvioPlay", "startPlayback: stashing request, calling onPlay")
     val meta = (vm.metaState as? MetaUiState.Content)?.meta ?: return
     val isSeries = meta.type == "series" && vm.selectedVideo != null
@@ -674,6 +681,13 @@ private fun startPlayback(
         streamUrl = stream.url,
         headers = stream.headers,
         mimeType = stream.mimeType,
+        // Torrent identity rides along so the gate can resolve
+        // this request before the player composes.
+        torrentInfoHash = if (isTorrentRow) {
+            stream.infoHash ?: com.aviostream.app.data.torrentHashFromMagnet(stream.magnetUri ?: stream.url)
+        } else null,
+        torrentFileIdx = if (isTorrentRow) stream.fileIdx else null,
+        torrentMagnetUri = if (isTorrentRow) (stream.magnetUri ?: stream.url.takeIf { it.startsWith("magnet:", true) }) else null,
         title = title,
         poster = vm.selectedVideo?.thumbnail ?: meta.poster,
         videoId = vm.selectedVideo?.id ?: meta.id,
