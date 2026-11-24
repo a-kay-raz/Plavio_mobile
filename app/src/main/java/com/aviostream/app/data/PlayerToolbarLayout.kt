@@ -8,7 +8,7 @@ package com.aviostream.app.data
  *
  * Bottom pill (in Nuvio's legacy order): PiP, Quality, Subs, Audio,
  * Chapters, Resize, Speed, Sources, Episodes, Live channels.
- * Top cluster: Playback info, External player, Rotate, Lock.
+ * Top cluster: Playback info, External player, Rotate, Lock, Engine.
  * Back stays always last in the top cluster (structural, not
  * customisable — same as Nuvio, where Back is not a layout button).
  *
@@ -16,7 +16,8 @@ package com.aviostream.app.data
  * PARTY / CAST / PICTURE_IN_PICTURE (top) buttons — Avio has no
  * rating, party or cast; video settings is iOS-only in Nuvio; PiP
  * lives in Avio's pill, not the top. Nuvio's SWITCH_ENGINE is
- * ported as the ENGINE pill button (manual mid-play switch).
+ * ported as the ENGINE top-bar button (manual mid-play switch;
+ * moved out of the bottom pill on the owner's order 2026-11-24).
  *
  * Layouts encode as "id:v,id:h" strings in SettingsStore, so an
  * unknown/missing button falls back to visible in its default spot.
@@ -28,7 +29,6 @@ enum class PlayerBottomButton(val storageId: String, val label: String) {
     AUDIO("audio", "Audio tracks"),
     RESIZE("resize", "Resize mode"),
     SPEED("speed", "Playback speed"),
-    ENGINE("engine", "Engine"),
     SLEEP("sleep", "Sleep timer"),
     SOURCES("sources", "Sources"),
     CHAPTERS("chapters", "Chapters"),
@@ -42,6 +42,7 @@ enum class PlayerTopButton(val storageId: String, val label: String) {
     EXTERNAL_PLAYER("external_player", "External player"),
     ROTATE("rotate", "Rotate"),
     LOCK("lock", "Lock controls"),
+    ENGINE("engine", "Engine"),
 }
 
 data class PlayerButtonEntry<B : Enum<B>>(

@@ -69,6 +69,21 @@ class MpvPlayerEngine(
     private val released = AtomicBoolean(false)
     private val initialized = AtomicBoolean(false)
 
+    /**
+     * Posts [block] to the engine thread, silently dropping it when the
+     * engine is already released (the executor is shut down — a bare
+     * execute() would throw RejectedExecutionException on the caller,
+     * e.g. a SurfaceView callback racing with release, and crash the app).
+     */
+    private fun runOnEngineThread(block: () -> Unit) {
+        if (released.get()) return
+        try {
+            executor.execute(block)
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Released concurrently with the post; the engine is gone.
+        }
+    }
+
     @Volatile
     private var attachedSurface: Surface? = null
 
@@ -98,8 +113,8 @@ class MpvPlayerEngine(
 
     /** Creates + initialises the native engine on the engine thread. */
     fun initialize() {
-        executor.execute {
-            if (released.get() || !initialized.compareAndSet(false, true)) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.compareAndSet(false, true)) return@runOnEngineThread
             try {
                 Utils.copyAssets(appContext)
                 mpv.create(appContext)
@@ -157,7 +172,13 @@ class MpvPlayerEngine(
                 observe("track-list", FORMAT_NODE)
                 attachedSurface?.let { mpv.attachSurface(it) }
                 Log.d(TAG, "mpv init ok hwdec=$hwdecMode yuv420p=$yuv420pFilter")
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // A native load failure (LinkageError) is an Error, not
+                // an Exception — it must surface as a fatal error, not
+                // kill the engine thread silently. Reset `initialized`
+                // so every later call no-ops instead of failing again
+                // on the dead engine.
+                initialized.set(false)
                 Log.e(TAG, "mpv init failed", e)
                 if (!released.get()) onFatalError?.invoke("Second engine failed to start")
             }
@@ -167,8 +188,8 @@ class MpvPlayerEngine(
     /** Surface became available (UI thread): hand it to the engine thread. */
     fun attachSurface(surface: Surface) {
         attachedSurface = surface
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.attachSurface(surface)
             } catch (e: Exception) {
@@ -184,8 +205,8 @@ class MpvPlayerEngine(
      */
     fun detachSurface() {
         attachedSurface = null
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyString("vo", "null")
                 mpv.setPropertyString("force-window", "no")
@@ -259,7 +280,7 @@ class MpvPlayerEngine(
                 } else {
                     mpv.command("loadfile", url, "replace")
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "mpv load failed", e)
                 if (!released.get()) onFatalError?.invoke("Unable to play stream")
             }
@@ -578,8 +599,8 @@ class MpvPlayerEngine(
                     seekTo(start)
                 }
                 pendingAudioUrl?.let { audioUrl ->
-                    executor.execute {
-                        if (released.get() || !initialized.get()) return@execute
+                    runOnEngineThread {
+                        if (released.get() || !initialized.get()) return@runOnEngineThread
                         try {
                             mpv.command("audio-add", audioUrl, "auto")
                         } catch (_: Exception) {

@@ -1222,11 +1222,23 @@ fun PlayerScreen(
         Log.d("AvioPlay", "activateMpv yuv420p=" + settings.mpvYuv420pFilter + " hwdec=" + settings.mpvHardwareDecoding)
         // Stop the parked ExoPlayer's audio before MPV starts.
         runCatching { player.pause() }
-        val engine = com.aviostream.app.player.MpvPlayerEngine(
-            context,
-            hardwareDecoding = settings.mpvHardwareDecoding,
-            yuv420pFilter = settings.mpvYuv420pFilter
-        )
+        // The engine constructor loads the native libmpv class — a
+        // missing/corrupt .so throws LinkageError (an Error, not an
+        // Exception) on the main thread. Guard it: a dead engine must
+        // fail over gracefully, never crash the app.
+        val engine = try {
+            com.aviostream.app.player.MpvPlayerEngine(
+                context,
+                hardwareDecoding = settings.mpvHardwareDecoding,
+                yuv420pFilter = settings.mpvYuv420pFilter
+            )
+        } catch (e: Throwable) {
+            Log.e("AvioPlay", "MPV engine construction failed", e)
+            val hook = mpvFatalErrorHook
+            if (hook != null) hook("Second engine failed to start")
+            else state.playerError = "Second engine failed to start"
+            return
+        }
         engine.onFatalError = { message ->
             // libmpv reports on its own event thread — hop to main
             // before touching player state or rebuilding anything.
@@ -1844,10 +1856,35 @@ fun PlayerScreen(
         if (disposed.get()) return
         Log.d("AvioPlay", "MPV fatal: $message")
         val req = state.currentRequest
-        val playerFault = message == "Second engine failed to start" ||
+        val initFailed = message == "Second engine failed to start"
+        val playerFault = initFailed ||
             message.contains("format", ignoreCase = true) ||
             message.contains("codec", ignoreCase = true) ||
             message.contains("decode", ignoreCase = true)
+        // Init failure is an ENGINE fault, not a source fault: the
+        // engine cannot start at all, so retrying the next source
+        // with the same dead engine cannot help. Fall back to Exo
+        // once even when the auto-switch setting is OFF — otherwise
+        // the user is left with a dead player and no recovery. (A
+        // manual switch disarms the general auto-failover, but a dead
+        // engine is not a choice worth preserving.) Live and trailers
+        // never switch engines; they get a clear error instead.
+        if (initFailed && !engineFailoverUsed && !req.isLive && !req.isTrailer) {
+            engineFailoverUsed = true
+            switchPlaybackEngine(
+                com.aviostream.app.player.PlaybackEngine.EXO,
+                activePositionMs()
+            )
+            pokeIndicator(PlayerIndicator.Message("MPV failed to start — using ExoPlayer"))
+            return
+        }
+        if (initFailed) {
+            // Live / trailer, or the one fallback already used: show
+            // a clear error, not a source ladder the dead engine
+            // cannot climb.
+            state.playerError = message
+            return
+        }
         if (playerFault && settings.autoEngineFailover && engineFailoverArmed &&
             !engineFailoverUsed && !req.isLive && !req.isTrailer
         ) {
@@ -5614,9 +5651,10 @@ fun PlayerScreen(
                         }
                     }
                     // Top-right cluster, Nuvio legacy order (only the actions
-                    // Avio has — no cast/party/engine-switch/rate;
-                    // video settings is iOS-only in Nuvio). Step 63: the
-                    // order/visibility follow the user's toolbar layout.
+                    // Avio has — no cast/party/rate; video settings is
+                    // iOS-only in Nuvio). Step 63: the order/visibility
+                    // follow the user's toolbar layout. The engine switch
+                    // sits here too (top bar, not the bottom pill).
                     // Back is last, always.
                     Row(
                         modifier = Modifier.padding(start = if (settings.playerStatusOverlayEnabled) 36.dp else 0.dp),
@@ -5677,6 +5715,47 @@ fun PlayerScreen(
                                             pokeIndicator(PlayerIndicator.Message("Controls locked"))
                                         }
                                     )
+                                }
+                                com.aviostream.app.data.PlayerTopButton.ENGINE -> {
+                                    // Manual mid-play engine switch (top
+                                    // bar, not the bottom pill): a glass
+                                    // pill showing the engine that owns
+                                    // playback right now; tapping opens
+                                    // the picker dialog. A header circle
+                                    // would hide the name — the pill
+                                    // keeps "MPV" / "ExoPlayer" visible.
+                                    Box(
+                                        Modifier
+                                            .height(36.dp)
+                                            .playerLiquidGlass(
+                                                shape = RoundedCornerShape(18.dp),
+                                                refractionHeight = 6.dp,
+                                                refractionAmount = 8.dp,
+                                            )
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .clickable(onClick = { state.engineMenuOpen = true })
+                                            .tvFocusRing(RoundedCornerShape(18.dp))
+                                            .padding(horizontal = 12.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.SwapHoriz,
+                                                "Engine",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                if (activeEngine == com.aviostream.app.player.PlaybackEngine.MPV) "MPV" else "ExoPlayer",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -5905,17 +5984,6 @@ fun PlayerScreen(
                                         SpeedMenuButton(
                                             speed = state.speed,
                                             onClick = { state.speedMenuOpen = true }
-                                        )
-                                    }
-                                    com.aviostream.app.data.PlayerBottomButton.ENGINE -> {
-                                        // Manual mid-play engine switch: the
-                                        // label shows the engine that owns
-                                        // playback right now; tapping opens
-                                        // the picker dialog.
-                                        PillBarButton(
-                                            icon = Icons.Filled.SwapHoriz,
-                                            label = if (activeEngine == com.aviostream.app.player.PlaybackEngine.MPV) "MPV" else "ExoPlayer",
-                                            onClick = { state.engineMenuOpen = true }
                                         )
                                     }
                                     com.aviostream.app.data.PlayerBottomButton.SLEEP -> {
