@@ -7530,6 +7530,21 @@ fun PlayerScreen(
                                     state.engineMenuOpen = false
                                     if (activeEngine != com.aviostream.app.player.PlaybackEngine.EXO) {
                                         engineFailoverArmed = false
+                                        // A manual pick is the engine for
+                                        // this play AND the next source:
+                                        // save it to the setting, so a
+                                        // source change (replaceStream
+                                        // re-resolves from the setting)
+                                        // does not flip it back. Nuvio's
+                                        // rule is the same — the setting
+                                        // decides the engine for a new
+                                        // source — so the pick must land
+                                        // in the setting, not just in the
+                                        // current engine. The auto
+                                        // failover never writes the
+                                        // setting (it stays a one-source
+                                        // override).
+                                        settings.playbackEngine = com.aviostream.app.player.PlaybackEngineResolver.SETTING_EXO
                                         switchPlaybackEngine(
                                             com.aviostream.app.player.PlaybackEngine.EXO,
                                             activePositionMs()
@@ -7547,6 +7562,11 @@ fun PlayerScreen(
                                     state.engineMenuOpen = false
                                     if (activeEngine != com.aviostream.app.player.PlaybackEngine.MPV) {
                                         engineFailoverArmed = false
+                                        // See the ExoPlayer row above: a
+                                        // manual pick is saved to the
+                                        // setting so a source change keeps
+                                        // MPV instead of flipping to Exo.
+                                        settings.playbackEngine = com.aviostream.app.player.PlaybackEngineResolver.SETTING_MPV
                                         switchPlaybackEngine(
                                             com.aviostream.app.player.PlaybackEngine.MPV,
                                             activePositionMs()
