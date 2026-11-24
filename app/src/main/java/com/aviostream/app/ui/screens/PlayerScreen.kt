@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
 import androidx.compose.material.icons.filled.StayCurrentPortrait
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.AspectRatio
@@ -322,9 +323,10 @@ private fun anySheetOpen(
     qualityOpen: Boolean,
     infoOpen: Boolean,
     chaptersOpen: Boolean,
-    speedMenuOpen: Boolean
+    speedMenuOpen: Boolean,
+    engineMenuOpen: Boolean
 ): Boolean = tracksOpen || subSearchOpen || sourcesOpen || episodesOpen ||
-    qualityOpen || infoOpen || chaptersOpen || speedMenuOpen
+    qualityOpen || infoOpen || chaptersOpen || speedMenuOpen || engineMenuOpen
 
 /**
  * Full dialog-open check (sheets + resume offer + player error). The whole
@@ -342,9 +344,10 @@ private fun isDialogOpen(
     infoOpen: Boolean,
     chaptersOpen: Boolean,
     speedMenuOpen: Boolean,
+    engineMenuOpen: Boolean,
     resumeOfferMs: Long?,
     playerError: String?
-): Boolean = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
+): Boolean = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen, engineMenuOpen) ||
     resumeOfferMs != null || playerError != null
 
 /** Full sheet-up check (sheets + resume offer + pending download). Same reason as [isDialogOpen]. */
@@ -357,9 +360,10 @@ private fun isSheetUp(
     infoOpen: Boolean,
     chaptersOpen: Boolean,
     speedMenuOpen: Boolean,
+    engineMenuOpen: Boolean,
     resumeOfferMs: Long?,
     downloadStream: StreamItem?
-): Boolean = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen) ||
+): Boolean = anySheetOpen(tracksOpen, subSearchOpen, sourcesOpen, episodesOpen, qualityOpen, infoOpen, chaptersOpen, speedMenuOpen, engineMenuOpen) ||
     resumeOfferMs != null || downloadStream != null
 
 /**
@@ -4645,7 +4649,7 @@ fun PlayerScreen(
         // A settings sheet/dialog is up: the D-pad must drive the dialog's
         // own focus ( Up/Down through rows, OK to pick ), not the player.
         // Media keys and the channel rocker keep working regardless.
-        val dialogOpen = isDialogOpen(state.tracksOpen, state.subSearchOpen, state.sourcesOpen, state.episodesOpen, state.qualityOpen, state.infoOpen, state.chaptersOpen, state.speedMenuOpen, state.resumeOfferMs, state.playerError)
+        val dialogOpen = isDialogOpen(state.tracksOpen, state.subSearchOpen, state.sourcesOpen, state.episodesOpen, state.qualityOpen, state.infoOpen, state.chaptersOpen, state.speedMenuOpen, state.engineMenuOpen, state.resumeOfferMs, state.playerError)
         Modifier.onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             // Any remote activity keeps the controls on screen (they used to
@@ -4710,7 +4714,7 @@ fun PlayerScreen(
             .focusRequester(containerFocus)
             .focusable()
     } else Modifier
-    val sheetUp = isSheetUp(state.tracksOpen, state.subSearchOpen, state.sourcesOpen, state.episodesOpen, state.qualityOpen, state.infoOpen, state.chaptersOpen, state.speedMenuOpen, state.resumeOfferMs, state.downloadStream)
+    val sheetUp = isSheetUp(state.tracksOpen, state.subSearchOpen, state.sourcesOpen, state.episodesOpen, state.qualityOpen, state.infoOpen, state.chaptersOpen, state.speedMenuOpen, state.engineMenuOpen, state.resumeOfferMs, state.downloadStream)
     LaunchedEffect(state.rootHasFocus, isTv, sheetUp, state.showControls, state.playerError) {
         if (isTv && !state.rootHasFocus && !sheetUp && state.playerError == null) {
             delay(400)
@@ -5901,6 +5905,17 @@ fun PlayerScreen(
                                         SpeedMenuButton(
                                             speed = state.speed,
                                             onClick = { state.speedMenuOpen = true }
+                                        )
+                                    }
+                                    com.aviostream.app.data.PlayerBottomButton.ENGINE -> {
+                                        // Manual mid-play engine switch: the
+                                        // label shows the engine that owns
+                                        // playback right now; tapping opens
+                                        // the picker dialog.
+                                        PillBarButton(
+                                            icon = Icons.Filled.SwapHoriz,
+                                            label = if (activeEngine == com.aviostream.app.player.PlaybackEngine.MPV) "MPV" else "ExoPlayer",
+                                            onClick = { state.engineMenuOpen = true }
                                         )
                                     }
                                     com.aviostream.app.data.PlayerBottomButton.SLEEP -> {
@@ -7349,6 +7364,80 @@ fun PlayerScreen(
                                     activeSetSpeed(s)
                                     state.speedMenuOpen = false
                                     pokeIndicator(PlayerIndicator.Speed(speedLabel(s)))
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Playback engine picker (manual mid-play switch, centered like
+        // Speed): the active engine is selected; tapping the other one
+        // switches at the current position with autoplay on. A manual
+        // switch disarms the auto failover for this play, so a later
+        // error does not bounce back to the engine just left.
+        if (state.engineMenuOpen) {
+            com.aviostream.app.ui.screens.player.PlayerCenteredDialog(
+                onDismiss = { state.engineMenuOpen = false }
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Playback engine",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        com.aviostream.app.ui.screens.player.PlayerDialogCloseButton(
+                            onClick = { state.engineMenuOpen = false }
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(bottom = 2.dp)
+                    ) {
+                        item {
+                            com.aviostream.app.ui.screens.player.QualityOptionRow(
+                                title = "ExoPlayer",
+                                subtitle = "The standard engine",
+                                selected = activeEngine == com.aviostream.app.player.PlaybackEngine.EXO,
+                                onClick = {
+                                    state.engineMenuOpen = false
+                                    if (activeEngine != com.aviostream.app.player.PlaybackEngine.EXO) {
+                                        engineFailoverArmed = false
+                                        switchPlaybackEngine(
+                                            com.aviostream.app.player.PlaybackEngine.EXO,
+                                            activePositionMs()
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                        item {
+                            com.aviostream.app.ui.screens.player.QualityOptionRow(
+                                title = "MPV",
+                                subtitle = "The specialist engine",
+                                selected = activeEngine == com.aviostream.app.player.PlaybackEngine.MPV,
+                                onClick = {
+                                    state.engineMenuOpen = false
+                                    if (activeEngine != com.aviostream.app.player.PlaybackEngine.MPV) {
+                                        engineFailoverArmed = false
+                                        switchPlaybackEngine(
+                                            com.aviostream.app.player.PlaybackEngine.MPV,
+                                            activePositionMs()
+                                        )
+                                    }
                                 }
                             )
                         }

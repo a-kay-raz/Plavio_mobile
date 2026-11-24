@@ -12,10 +12,11 @@ package com.aviostream.app.data
  * Back stays always last in the top cluster (structural, not
  * customisable — same as Nuvio, where Back is not a layout button).
  *
- * Not ported: Nuvio's RATE / SWITCH_ENGINE / VIDEO_SETTINGS /
- * SUBMIT_INTRO / PARTY / CAST / PICTURE_IN_PICTURE (top) buttons —
- * Avio has no rating, engine switch, party or cast; video settings
- * is iOS-only in Nuvio; PiP lives in Avio's pill, not the top.
+ * Not ported: Nuvio's RATE / VIDEO_SETTINGS / SUBMIT_INTRO /
+ * PARTY / CAST / PICTURE_IN_PICTURE (top) buttons — Avio has no
+ * rating, party or cast; video settings is iOS-only in Nuvio; PiP
+ * lives in Avio's pill, not the top. Nuvio's SWITCH_ENGINE is
+ * ported as the ENGINE pill button (manual mid-play switch).
  *
  * Layouts encode as "id:v,id:h" strings in SettingsStore, so an
  * unknown/missing button falls back to visible in its default spot.
@@ -27,6 +28,7 @@ enum class PlayerBottomButton(val storageId: String, val label: String) {
     AUDIO("audio", "Audio tracks"),
     RESIZE("resize", "Resize mode"),
     SPEED("speed", "Playback speed"),
+    ENGINE("engine", "Engine"),
     SLEEP("sleep", "Sleep timer"),
     SOURCES("sources", "Sources"),
     CHAPTERS("chapters", "Chapters"),

@@ -164,6 +164,8 @@ internal class PlayerScreenState(
     var volumeBoost by mutableFloatStateOf(settings.audioBoostDb / 10f)
     var speed by mutableFloatStateOf(1f)
     var speedMenuOpen by mutableStateOf(false)
+    /** Playback engine picker (centered dialog) open — manual mid-play switch. */
+    var engineMenuOpen by mutableStateOf(false)
     /** Sleep timer (v0.14.30 port): wall-clock deadline for the timed options, 0 = none. */
     var sleepDeadlineMs by mutableLongStateOf(0L)
     /** Sleep timer: true while "End of episode" is armed. */
