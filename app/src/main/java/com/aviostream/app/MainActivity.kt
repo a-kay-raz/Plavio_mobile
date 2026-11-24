@@ -1661,6 +1661,7 @@ private fun AvioNavGraph(
         composable(Routes.STREAM_BADGES) {
             StreamBadgesScreen(
                 badgeSettings = streamBadgeSettings,
+                settings = repository.settings,
                 onBack = { navController.popBackStack() }
             )
         }

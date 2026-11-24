@@ -472,6 +472,7 @@ fun rememberStreamBrowserState(
     // Step 42: the Smart prefs are remember keys, so changing a filter/sort in
     // the Smart sheet re-orders the list immediately. Step 44: same for the
     // debrid stream prefs.
+    val context = LocalContext.current
     val ordered = remember(
         streams, settings?.streamsPerSource, settings?.qualityOrder, settings?.pinnedStreamSources,
         settings?.smartSortMode, settings?.smartResolutionLimit, settings?.smartSaveDataOnMobile,
@@ -481,7 +482,7 @@ fun rememberStreamBrowserState(
         settings?.debridMinQuality, settings?.debridDvFilter, settings?.debridHdrFilter,
         settings?.debridCodecFilter, settings?.debridPreferredTags, settings?.debridRequiredTags,
         settings?.debridExcludedTags,
-        settings?.streamBadgeRulesJson,
+        settings?.streamBadgeRulesJson, settings?.fusionBadgeSourcesJson,
         limitPerSource, isEpisode
     ) {
         val base = if (settings != null) applyStreamPreferences(streams, settings, limitPerSource, isEpisode) else streams
@@ -497,7 +498,11 @@ fun rememberStreamBrowserState(
         // Step 61: match imported badge rules onto the ordered list.
         val badgeRules = settings?.let { com.aviostream.app.data.StreamBadgeRules.parseStored(it.streamBadgeRulesJson) }
             ?: com.aviostream.app.data.StreamBadgeRules()
-        if (badgeRules.hasImport) com.aviostream.app.data.StreamBadgePresentation.applyToStreams(effective, badgeRules) else effective
+        val badged = if (badgeRules.hasImport) com.aviostream.app.data.StreamBadgePresentation.applyToStreams(effective, badgeRules) else effective
+        // v0.14.30 #15: Fusion badge packs dress the fact keys the rule
+        // badges didn't cover, first source in list order per key.
+        val fusionIds = settings?.fusionSourceIds().orEmpty()
+        if (fusionIds.isNotEmpty()) applyFusionBadges(context, badged, fusionIds) else badged
     }
     // Saveable: the addon tab the user picked survives rotation. A stale
     // key (tab gone after the stream list changed) falls back to "All".

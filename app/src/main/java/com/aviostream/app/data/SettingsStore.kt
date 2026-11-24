@@ -1495,6 +1495,13 @@ class SettingsStore(
         get() = prefs.getString(KEY_STREAM_BADGE_RULES, "") ?: ""
         set(value) = prefs.edit().putString(KEY_STREAM_BADGE_RULES, value).apply()
 
+    /** Fusion badge sources (v0.14.30 port, feature #15): the stored
+     *  source list as a JSON array of flat objects, or null when no
+     *  Fusion source is installed. */
+    var fusionBadgeSourcesJson: String?
+        get() = prefs.getString(KEY_FUSION_BADGE_SOURCES, null)
+        set(value) = prefs.edit().putString(KEY_FUSION_BADGE_SOURCES, value).apply()
+
     // Step 61: show matched image badges in the player header.
     var showStreamBadgesInPlayer: Boolean
         get() = prefs.getBoolean(KEY_SHOW_STREAM_BADGES_IN_PLAYER, false)
@@ -2398,6 +2405,7 @@ class SettingsStore(
         private const val KEY_FAVORITE_PEOPLE = "favorite_people"
         // Step 61: custom stream badges.
         private const val KEY_STREAM_BADGE_RULES = "stream_badge_rules"
+        private const val KEY_FUSION_BADGE_SOURCES = "fusion_badge_sources"
         private const val KEY_SHOW_STREAM_BADGES_IN_PLAYER = "show_stream_badges_in_player"
         private const val KEY_PLAYER_BADGE_SOURCE = "player_badge_source"
         // Step 62: watch-progress pull.
