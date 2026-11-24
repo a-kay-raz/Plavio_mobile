@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,7 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -74,6 +72,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import coil.compose.AsyncImage
 import com.aviostream.app.data.SettingsStore
+import com.aviostream.app.data.debrid.DebridSupport
 import com.aviostream.app.data.SmartSortMode
 import com.aviostream.app.data.SmartStreamQuality
 import com.aviostream.app.data.SmartStreamRanking
@@ -82,7 +81,6 @@ import com.aviostream.app.data.debridFormattedName
 import com.aviostream.app.data.hasDebridPreferredTag
 import com.aviostream.app.data.matchesDebridStreamPrefs
 import com.aviostream.app.data.StreamItem
-import com.aviostream.app.ui.glass.ambientLiquidGlass
 import com.aviostream.app.ui.theme.AppPalette
 import com.aviostream.app.ui.theme.GlassBorder
 import com.aviostream.app.ui.theme.LocalPalette
@@ -879,132 +877,192 @@ private fun CompactStreamCard(
     description: String? = null
 ) {
     val palette = LocalPalette.current
-    val shape = RoundedCornerShape(12.dp)
     val unresolvedTorrent = stream.url.startsWith("infohash:", true) || stream.url.startsWith("magnet:", true)
-    // Nuvio StreamCard: glass row (blur 18, static backdrop), min height
-    // 68dp, 12dp radius, 14dp padding. Selected = accent-tinted glass +
-    // 1dp accent 0.52 border; unselected = white 0.05 glass, no border.
-    Row(
+    val info = remember(stream) { parseStreamInfo(stream) }
+    val cachedLabel = remember(stream) { DebridSupport.cachedLabel(stream) }
+    val providerLabel = stream.sourceName?.takeIf { it.isNotBlank() } ?: stream.addonKey()
+    // Details-page link box look (SheetStreamCard): 16dp radius, panel
+    // background, 1dp glass border, 16dp padding — the compact glass row
+    // (12dp, blur 18, 14dp padding, min 68dp) is replaced so the player
+    // sources read exactly like the Detail links. The whole card is
+    // clickable (no separate Play button); the current source keeps
+    // its "Playing" pill.
+    val shape = RoundedCornerShape(16.dp)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 68.dp)
             .clip(shape)
-            .ambientLiquidGlass(
-                shape = shape,
-                tint = if (selected) palette.accent.copy(alpha = 0.12f)
-                    else Color.White.copy(alpha = 0.05f),
-                fallback = if (selected) palette.accent.copy(alpha = 0.12f)
-                    else Color.White.copy(alpha = 0.05f),
-                blurRadius = 18.dp,
-                staticFromBackdrop = true,
-            )
-            .then(
-                if (selected) Modifier.border(
-                    1.dp, palette.accent.copy(alpha = 0.52f), shape
-                ) else Modifier
-            )
-            .semantics { this.selected = selected }
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .background(palette.panel)
+            .border(1.dp, GlassBorder, shape)
+            .clickable(enabled = !unresolvedTorrent, onClick = onClick)
+            .tvFocusRing(shape)
+            .padding(16.dp)
     ) {
-        Column(modifier = Modifier.weight(1f).clickable(enabled = !unresolvedTorrent, onClick = onClick).tvFocusRing(shape)) {
-            // A plug row keeps its PLUG tag beside the headline.
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        // Headline — full filename, same size as the Detail card.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = headline ?: display.headline,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                lineHeight = 24.sp,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (stream.sourceId?.startsWith(
+                    com.aviostream.app.data.plugs.PlugService.PLUG_SOURCE_PREFIX
+                ) == true
+            ) {
+                Spacer(Modifier.width(8.dp))
+                PlugTagChip()
+            }
+        }
+        if (cachedLabel != null) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF22C55E).copy(alpha = 0.12f))
+                    .border(1.dp, Color(0xFF22C55E).copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
                 Text(
-                    text = headline ?: display.headline,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = cachedLabel,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    lineHeight = 19.sp,
-                    modifier = Modifier.weight(1f, fill = false)
+                    color = Color(0xFF4ADE80)
                 )
-                if (stream.sourceId?.startsWith(
-                        com.aviostream.app.data.plugs.PlugService.PLUG_SOURCE_PREFIX
-                    ) == true
-                ) {
-                    Spacer(Modifier.width(8.dp))
-                    PlugTagChip()
+            }
+        }
+        if (description != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        // Tag pills, screenshot order: quality, audio, source, codec,
+        // size — then the Download pill inline (same as the Detail card).
+        val pills = remember(info) {
+            listOfNotNull(
+                info.quality?.uppercase()?.let { Triple(it, Color(0xFF2E2440), Color(0xFFC9B8FF)) },
+                info.audio?.let { Triple(it, Color(0xFF3A2323), Color(0xFFFFB4A2)) },
+                info.source?.let { Triple(it, Color(0xFF1F2A44), Color(0xFF9DC2FF)) },
+                info.codec?.uppercase()?.let { Triple(it, Color(0xFF1F2A44), Color(0xFF9DC2FF)) },
+                info.size?.let { Triple(it, Color(0xFF3A2E1F), Color(0xFFD9B48A)) },
+            )
+        }
+        if (pills.isNotEmpty() || (onDownload != null && !unresolvedTorrent)) {
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                pills.forEach { (label, bg, fg) ->
+                    PlayerSheetTagPill(label = label, background = bg, textColor = fg)
                 }
-            }
-            // Addon name (Nuvio StreamCard shows the addon logo + name):
-            // always shown, so the user can see which addon each link is
-            // from even when the filename already mentions it (display
-            // .provider hides it in that case, which is why it was
-            // invisible). Accent so it reads as the source, not the title.
-            val providerLabel = stream.sourceName?.takeIf { it.isNotBlank() } ?: stream.addonKey()
-            if (providerLabel.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = providerLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.accent
-                )
-            }
-            if (description != null) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-            }
-            if (unresolvedTorrent) {
-                Text("Torrent source · cached debrid link required", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-            }
-            if (!unresolvedTorrent && com.aviostream.app.data.isUnseekableStreamUrl(stream.url)) {
-                Text("Seeking not supported by this host", style = MaterialTheme.typography.labelSmall, color = Color(0xFFF59E0B))
-            }
-            // Step 61: matched badge chips from the user's imported rules.
-            if (stream.badges.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    stream.badges.forEach { badge ->
-                        StreamBadgeChip(badge = badge, size = StreamBadgeChipSize.STREAM)
+                if (onDownload != null && !unresolvedTorrent) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(50))
+                            .clickable(role = Role.Button) { onDownload(stream) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Download,
+                                contentDescription = null,
+                                tint = TextPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "Download",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                        }
                     }
                 }
             }
-            // Nuvio CurrentStreamBadge: a 999dp pill (accent fill, onAccent
-            // 11sp SemiBold text) — not plain text.
-            if (selected) {
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(palette.accent)
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "Playing",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
-                    )
+        }
+        if (unresolvedTorrent) {
+            Spacer(Modifier.height(4.dp))
+            Text("Torrent source · cached debrid link required", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+        }
+        if (!unresolvedTorrent && com.aviostream.app.data.isUnseekableStreamUrl(stream.url)) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Seeking not supported by this host",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFFF59E0B)
+            )
+        }
+        // Step 61: matched badge chips from the user's imported rules.
+        if (stream.badges.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                stream.badges.forEach { badge ->
+                    StreamBadgeChip(badge = badge, size = StreamBadgeChipSize.STREAM)
                 }
             }
         }
-        if (onDownload != null) {
-            IconButton(onClick = { onDownload(stream) }, enabled = !unresolvedTorrent, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    Icons.Filled.Download,
-                    contentDescription = "Download",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(22.dp)
+        // Nuvio CurrentStreamBadge: a 999dp pill (accent fill, onAccent
+        // 11sp SemiBold text) — not plain text.
+        if (selected) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(palette.accent)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "Playing",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
                 )
             }
         }
-        IconButton(onClick = onClick, enabled = !unresolvedTorrent, modifier = Modifier.size(48.dp)) {
-            Icon(
-                Icons.Filled.PlayArrow,
-                contentDescription = "Play stream",
-                tint = TextPrimary,
-                modifier = Modifier.size(24.dp)
+        if (providerLabel.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = providerLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = palette.accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+/** One small tinted tag pill for a player source card (same look as the Detail sheet's SheetTagPill). */
+@Composable
+private fun PlayerSheetTagPill(label: String, background: Color, textColor: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            maxLines = 1
+        )
     }
 }
 
