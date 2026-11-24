@@ -1323,11 +1323,28 @@ class SettingsStore(
         get() = getSecret(KEY_PREMIUMIZE_API_KEY)?.takeIf { it.isNotBlank() }
         set(value) = putSecret(KEY_PREMIUMIZE_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
 
+    /** AllDebrid API key (null = not configured). Debrid-only (v0.14.30 port, feature #14). */
+    var allDebridApiKey: String?
+        get() = getSecret(KEY_ALLDEBRID_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_ALLDEBRID_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** Debrid-Link API key (null = not configured). Debrid-only (v0.14.30 port, feature #14). */
+    var debridLinkApiKey: String?
+        get() = getSecret(KEY_DEBRIDLINK_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_DEBRIDLINK_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
+    /** Offcloud API key (null = not configured). Debrid-only (v0.14.30 port, feature #14). */
+    var offcloudApiKey: String?
+        get() = getSecret(KEY_OFFCLOUD_API_KEY)?.takeIf { it.isNotBlank() }
+        set(value) = putSecret(KEY_OFFCLOUD_API_KEY, value?.trim()?.takeIf { it.isNotBlank() })
+
     /**
      * Preferred debrid resolver (Step 43, Nuvio preferredResolverProviderId):
-     * "" = automatic (TorBox → Premiumize → Real-Debrid), otherwise
-     * "torbox" | "premiumize" | "realdebrid" — the preferred provider is
-     * tried first, the rest follow in canonical order.
+     * "" = automatic (TorBox → Premiumize → Real-Debrid → AllDebrid →
+     * Debrid-Link → Offcloud), otherwise "torbox" | "premiumize" |
+     * "realdebrid" | "alldebrid" | "debridlink" | "offcloud" — the
+     * preferred provider is tried first, the rest follow in canonical
+     * order.
      */
     var preferredDebridResolver: String
         get() = prefs.getString(KEY_PREFERRED_DEBRID_RESOLVER, "") ?: ""
@@ -2125,6 +2142,9 @@ class SettingsStore(
         torboxApiKey?.takeIf { it.isNotBlank() }?.let { keys["torbox_api_key"] = it }
         realDebridApiKey?.takeIf { it.isNotBlank() }?.let { keys["realdebrid_api_key"] = it }
         premiumizeApiKey?.takeIf { it.isNotBlank() }?.let { keys["premiumize_api_key"] = it }
+        allDebridApiKey?.takeIf { it.isNotBlank() }?.let { keys["alldebrid_api_key"] = it }
+        debridLinkApiKey?.takeIf { it.isNotBlank() }?.let { keys["debridlink_api_key"] = it }
+        offcloudApiKey?.takeIf { it.isNotBlank() }?.let { keys["offcloud_api_key"] = it }
         tmdbApiKey?.takeIf { it.isNotBlank() }?.let { keys["tmdb_api_key"] = it }
         omdbApiKey?.takeIf { it.isNotBlank() }?.let { keys["omdb_api_key"] = it }
         traktAccessToken?.takeIf { it.isNotBlank() }?.let { keys["trakt_access_token"] = it }
@@ -2141,6 +2161,9 @@ class SettingsStore(
         keys["torbox_api_key"]?.takeIf { it.isNotBlank() && torboxApiKey.isNullOrBlank() }?.let { torboxApiKey = it }
         keys["realdebrid_api_key"]?.takeIf { it.isNotBlank() && realDebridApiKey.isNullOrBlank() }?.let { realDebridApiKey = it }
         keys["premiumize_api_key"]?.takeIf { it.isNotBlank() && premiumizeApiKey.isNullOrBlank() }?.let { premiumizeApiKey = it }
+        keys["alldebrid_api_key"]?.takeIf { it.isNotBlank() && allDebridApiKey.isNullOrBlank() }?.let { allDebridApiKey = it }
+        keys["debridlink_api_key"]?.takeIf { it.isNotBlank() && debridLinkApiKey.isNullOrBlank() }?.let { debridLinkApiKey = it }
+        keys["offcloud_api_key"]?.takeIf { it.isNotBlank() && offcloudApiKey.isNullOrBlank() }?.let { offcloudApiKey = it }
         keys["tmdb_api_key"]?.takeIf { it.isNotBlank() && tmdbApiKey.isNullOrBlank() }?.let { tmdbApiKey = it }
         keys["omdb_api_key"]?.takeIf { it.isNotBlank() && omdbApiKey.isNullOrBlank() }?.let { omdbApiKey = it }
         keys["trakt_access_token"]?.takeIf { it.isNotBlank() && traktAccessToken.isNullOrBlank() }?.let { traktAccessToken = it }
@@ -2394,6 +2417,9 @@ class SettingsStore(
         private const val KEY_TORBOX_API_KEY = "torbox_api_key"
         private const val KEY_REALDEBRID_API_KEY = "realdebrid_api_key"
         private const val KEY_PREMIUMIZE_API_KEY = "premiumize_api_key"
+        private const val KEY_ALLDEBRID_API_KEY = "alldebrid_api_key"
+        private const val KEY_DEBRIDLINK_API_KEY = "debridlink_api_key"
+        private const val KEY_OFFCLOUD_API_KEY = "offcloud_api_key"
         private const val KEY_PREFERRED_DEBRID_RESOLVER = "preferred_debrid_resolver"
         private const val KEY_DEBRID_INSTANT_PREPARE_LIMIT = "debrid_instant_prepare_limit"
         private const val KEY_TMDB_API_KEY = "tmdb_api_key"

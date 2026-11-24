@@ -19,6 +19,8 @@ import com.aviostream.app.data.cloudstream.CloudStreamStorage
 import com.aviostream.app.data.cloudstream.CloudStreamStreamSource
 import com.aviostream.app.data.cloudstream.CloudStreamLoadItem
 import com.aviostream.app.data.cloudstream.CloudStreamSearchItem
+import com.aviostream.app.data.debrid.DebridService
+import com.aviostream.app.data.debrid.DebridSupport
 import com.aviostream.app.data.servers.MediaServer
 import com.aviostream.app.data.servers.MediaServerOps
 import com.aviostream.app.data.servers.ServerItem
@@ -2344,133 +2346,56 @@ class StreamRepository(
                 }
             }
         }
-        // Debrid: resolve infoHash-only streams to direct HTTP links.
+        // Debrid: resolve infoHash-only (and magnet) streams to direct
+        // HTTP links via DebridService (v0.14.30 port, feature #14).
         // Runs after the main fetch so direct streams show first; resolved
         // streams are appended as they complete (parallel, non-blocking).
         // Only active when at least one debrid API key is configured.
-        // Step 43: providers are tried in order — the preferred resolver
-        // first (Settings > Integrations), then the rest in canonical order
-        // (TorBox → Premiumize → Real-Debrid) — and the first success wins.
-        data class DebridProvider(
-            val id: String,
-            val tag: String,
-            val resolve: suspend (String, Int?, String?) -> String?
+        // Providers are tried in order — the preferred resolver first
+        // (Settings > Integrations, Step 43), then the rest in canonical
+        // order (TorBox → Premiumize → Real-Debrid → AllDebrid →
+        // Debrid-Link → Offcloud) — and the first success wins. Magnet
+        // rows are pending too now (DebridSupport.hashFor); unresolved
+        // infohash/magnet rows stay unplayable.
+        val debridService = DebridService.create(
+            torboxApiKey = settings.torboxApiKey,
+            realDebridApiKey = settings.realDebridApiKey,
+            premiumizeApiKey = settings.premiumizeApiKey,
+            allDebridApiKey = settings.allDebridApiKey,
+            debridLinkApiKey = settings.debridLinkApiKey,
+            offcloudApiKey = settings.offcloudApiKey,
+            preferredId = settings.preferredDebridResolver.trim().lowercase().takeIf { it.isNotBlank() },
         )
-        val debridProviders = buildList {
-            val torboxKey = settings.torboxApiKey
-            if (!torboxKey.isNullOrBlank()) {
-                val torbox = com.aviostream.app.data.debrid.TorBoxApi(torboxKey)
-                add(DebridProvider("torbox", "⚡ TorBox") { hash, fileIdx, filePath ->
-                    val started = System.nanoTime()
-                    try {
-                        val result = torbox.resolveCachedDetailed(hash, fileIdx, filePath)
-                        val outcome = when (result) {
-                            is com.aviostream.app.data.debrid.DebridResolveResult.Resolved -> "succeeded"
-                            is com.aviostream.app.data.debrid.DebridResolveResult.NotCached -> "no_results"
-                            is com.aviostream.app.data.debrid.DebridResolveResult.Error ->
-                                if (result.isAuthError) "authentication_needed" else "failed"
-                        }
-                        SourceDiagnostics.record("TorBox", outcome, (System.nanoTime() - started) / 1_000_000)
-                        (result as? com.aviostream.app.data.debrid.DebridResolveResult.Resolved)?.url
-                    }
-                    catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) {
-                        SourceDiagnostics.record("TorBox", "failed", (System.nanoTime() - started) / 1_000_000)
-                        null
-                    }
-                })
-            }
-            val premiumizeKey = settings.premiumizeApiKey
-            if (!premiumizeKey.isNullOrBlank()) {
-                val premiumize = com.aviostream.app.data.debrid.PremiumizeApi(premiumizeKey)
-                add(DebridProvider("premiumize", "⚡ PM") { hash, fileIdx, filePath ->
-                    val started = System.nanoTime()
-                    try {
-                        val result = premiumize.resolveCachedDetailed(hash, fileIdx, filePath)
-                        val outcome = when (result) {
-                            is com.aviostream.app.data.debrid.DebridResolveResult.Resolved -> "succeeded"
-                            is com.aviostream.app.data.debrid.DebridResolveResult.NotCached -> "no_results"
-                            is com.aviostream.app.data.debrid.DebridResolveResult.Error ->
-                                if (result.isAuthError) "authentication_needed" else "failed"
-                        }
-                        SourceDiagnostics.record("Premiumize", outcome, (System.nanoTime() - started) / 1_000_000)
-                        (result as? com.aviostream.app.data.debrid.DebridResolveResult.Resolved)?.url
-                    }
-                    catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) {
-                        SourceDiagnostics.record("Premiumize", "failed", (System.nanoTime() - started) / 1_000_000)
-                        null
-                    }
-                })
-            }
-            val rdKey = settings.realDebridApiKey
-            if (!rdKey.isNullOrBlank()) {
-                val rd = com.aviostream.app.data.debrid.RealDebridApi(rdKey)
-                add(DebridProvider("realdebrid", "⚡ RD") { hash, fileIdx, filePath ->
-                    try { rd.resolveCachedToHttp(hash, fileIdx, filePath) }
-                    catch (cancel: CancellationException) { throw cancel }
-                    catch (_: Exception) { null }
-                })
-            }
-        }.let { providers ->
-            // Preferred resolver first; unknown/blank preference keeps the
-            // canonical order (and falls back to the first configured).
-            val preferred = settings.preferredDebridResolver.trim().lowercase()
-            if (preferred.isBlank()) providers
-            else providers.sortedWith(compareByDescending<DebridProvider> { it.id == preferred })
-        }
-        if (debridProviders.isNotEmpty()) {
-            val pending = mutex.withLock {
-                accStreams.filter { it.infoHash != null && it.url.startsWith("infohash:") }
-            }
+        if (debridService.isActive) {
+            val pending = mutex.withLock { DebridSupport.pendingStreams(accStreams) }
             // Step 43 — instant-preparation limit: at most N infoHash streams
             // are resolved per title (0 = no cap, current behaviour).
             val prepareLimit = settings.debridInstantPrepareLimit
             val toResolve = if (prepareLimit > 0) pending.take(prepareLimit) else pending
             if (toResolve.isNotEmpty()) {
-                val resolveGate = Semaphore(3)
-                coroutineScope {
-                    toResolve.forEach { stream ->
-                        launch {
-                            var resolved: Pair<String, String>? = null
-                            resolveGate.acquire()
-                            try {
-                                withTimeoutOrNull(45_000) {
-                                    for (provider in debridProviders) {
-                                        val httpUrl = provider.resolve(stream.infoHash!!, stream.fileIdx, stream.filePath)
-                                        if (httpUrl != null && isPlayableLiveStreamUrl(httpUrl)) {
-                                            resolved = provider.tag to httpUrl
-                                            break
-                                        }
-                                    }
-                                }
-                            } finally {
-                                resolveGate.release()
-                            }
-                            val (tag, httpUrl) = resolved ?: return@launch
-                            var changed = false
-                            mutex.withLock {
-                                val idx = accStreams.indexOfFirst {
-                                    it.infoHash == stream.infoHash && it.fileIdx == stream.fileIdx &&
-                                        it.filePath == stream.filePath && it.url.startsWith("infohash:")
-                                }
-                                if (idx >= 0 && seenStreams.add(streamIdentity(stream.copy(url = httpUrl, infoHash = null)))) {
-                                    val old = accStreams[idx]
-                                    accStreams[idx] = old.copy(
-                                        url = httpUrl,
-                                        infoHash = null,
-                                        resolvedInfoHash = old.infoHash,
-                                        sourceName = tag + (old.sourceName?.let { " · $it" } ?: "")
-                                    )
-                                    changed = true
-                                }
-                            }
-                            if (changed) {
-                                mutex.withLock { send(StreamResult(prioritize(accStreams.toList()), accSubs.toList())) }
+                debridService.resolveAll(
+                    pending = toResolve,
+                    isPlayable = { isPlayableLiveStreamUrl(it) },
+                    applyResolved = { original, hash, tag, httpUrl ->
+                        var changed = false
+                        mutex.withLock {
+                            val idx = accStreams.indexOfFirst { DebridSupport.isSamePendingRow(it, original) }
+                            if (idx >= 0 && seenStreams.add(streamIdentity(original.copy(url = httpUrl, infoHash = null)))) {
+                                val old = accStreams[idx]
+                                accStreams[idx] = old.copy(
+                                    url = httpUrl,
+                                    infoHash = null,
+                                    resolvedInfoHash = old.infoHash ?: hash,
+                                    sourceName = tag + (old.sourceName?.let { " · $it" } ?: "")
+                                )
+                                changed = true
                             }
                         }
+                        if (changed) {
+                            mutex.withLock { send(StreamResult(prioritize(accStreams.toList()), accSubs.toList())) }
+                        }
                     }
-                }
+                )
             }
         }
         val finalResult = mutex.withLock {

@@ -121,6 +121,15 @@ fun IntegrationsScreen(
                 var showPmDialog by remember { mutableStateOf(false) }
                 var pmTick by remember { mutableIntStateOf(0) }
                 val pmConfigured = remember(pmTick) { !settings.premiumizeApiKey.isNullOrBlank() }
+                var showAllDebridDialog by remember { mutableStateOf(false) }
+                var allDebridTick by remember { mutableIntStateOf(0) }
+                val allDebridConfigured = remember(allDebridTick) { !settings.allDebridApiKey.isNullOrBlank() }
+                var showDebridLinkDialog by remember { mutableStateOf(false) }
+                var debridLinkTick by remember { mutableIntStateOf(0) }
+                val debridLinkConfigured = remember(debridLinkTick) { !settings.debridLinkApiKey.isNullOrBlank() }
+                var showOffcloudDialog by remember { mutableStateOf(false) }
+                var offcloudTick by remember { mutableIntStateOf(0) }
+                val offcloudConfigured = remember(offcloudTick) { !settings.offcloudApiKey.isNullOrBlank() }
                 SettingsGroup(
                     {
                         V117StaticRow(
@@ -196,6 +205,78 @@ fun IntegrationsScreen(
                             },
                             onClick = { showRdDialog = true }
                         )
+                    },
+                    {
+                        V117StaticRow(
+                            icon = Icons.Filled.Bolt,
+                            title = "AllDebrid",
+                            subtitle = if (allDebridConfigured) "API key saved" else "Add your API key for cached streams",
+                            trailing = {
+                                if (allDebridConfigured) {
+                                    Text(
+                                        "Saved",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = LocalPalette.current.accent
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = "Configure AllDebrid",
+                                        tint = TextSecondary
+                                    )
+                                }
+                            },
+                            onClick = { showAllDebridDialog = true }
+                        )
+                    },
+                    {
+                        V117StaticRow(
+                            icon = Icons.Filled.Bolt,
+                            title = "Debrid-Link",
+                            subtitle = if (debridLinkConfigured) "API key saved" else "Add your API key for cached streams",
+                            trailing = {
+                                if (debridLinkConfigured) {
+                                    Text(
+                                        "Saved",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = LocalPalette.current.accent
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = "Configure Debrid-Link",
+                                        tint = TextSecondary
+                                    )
+                                }
+                            },
+                            onClick = { showDebridLinkDialog = true }
+                        )
+                    },
+                    {
+                        V117StaticRow(
+                            icon = Icons.Filled.Bolt,
+                            title = "Offcloud",
+                            subtitle = if (offcloudConfigured) "API key saved" else "Add your API key for cached streams",
+                            trailing = {
+                                if (offcloudConfigured) {
+                                    Text(
+                                        "Saved",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = LocalPalette.current.accent
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = "Configure Offcloud",
+                                        tint = TextSecondary
+                                    )
+                                }
+                            },
+                            onClick = { showOffcloudDialog = true }
+                        )
                     }
                 )
                 if (showTorboxDialog) {
@@ -234,6 +315,42 @@ fun IntegrationsScreen(
                         onDismiss = { showPmDialog = false }
                     )
                 }
+                if (showAllDebridDialog) {
+                    ApiKeyDialog(
+                        title = "AllDebrid API Key",
+                        keyLinkText = "Get your API key at alldebrid.com",
+                        keyLinkUrl = "https://alldebrid.com",
+                        currentKey = settings.allDebridApiKey,
+                        enabled = true,
+                        helpText = "Paste your AllDebrid API key and tap Save. To remove it, clear the field and save. Saving does not validate the key.",
+                        onSave = { settings.allDebridApiKey = it; allDebridTick++ },
+                        onDismiss = { showAllDebridDialog = false }
+                    )
+                }
+                if (showDebridLinkDialog) {
+                    ApiKeyDialog(
+                        title = "Debrid-Link API Key",
+                        keyLinkText = "Get your API key at debrid-link.com",
+                        keyLinkUrl = "https://debrid-link.com",
+                        currentKey = settings.debridLinkApiKey,
+                        enabled = true,
+                        helpText = "Paste your Debrid-Link API token and tap Save. To remove it, clear the field and save. Saving does not validate the key.",
+                        onSave = { settings.debridLinkApiKey = it; debridLinkTick++ },
+                        onDismiss = { showDebridLinkDialog = false }
+                    )
+                }
+                if (showOffcloudDialog) {
+                    ApiKeyDialog(
+                        title = "Offcloud API Key",
+                        keyLinkText = "Get your API key at offcloud.com",
+                        keyLinkUrl = "https://offcloud.com",
+                        currentKey = settings.offcloudApiKey,
+                        enabled = true,
+                        helpText = "Paste your Offcloud API key and tap Save. To remove it, clear the field and save. Saving does not validate the key.",
+                        onSave = { settings.offcloudApiKey = it; offcloudTick++ },
+                        onDismiss = { showOffcloudDialog = false }
+                    )
+                }
             }
 
             // Step 43 — Debrid options: preferred resolver (tried first) and
@@ -247,6 +364,9 @@ fun IntegrationsScreen(
                         "torbox" -> "TorBox"
                         "premiumize" -> "Premiumize"
                         "realdebrid" -> "Real-Debrid"
+                        "alldebrid" -> "AllDebrid"
+                        "debridlink" -> "Debrid-Link"
+                        "offcloud" -> "Offcloud"
                         else -> "Automatic"
                     }
                 }
@@ -296,6 +416,9 @@ fun IntegrationsScreen(
                             "torbox" to "TorBox",
                             "premiumize" to "Premiumize",
                             "realdebrid" to "Real-Debrid",
+                            "alldebrid" to "AllDebrid",
+                            "debridlink" to "Debrid-Link",
+                            "offcloud" to "Offcloud",
                         ),
                         selected = settings.preferredDebridResolver,
                         onSelect = { settings.preferredDebridResolver = it; resolverTick++ },
