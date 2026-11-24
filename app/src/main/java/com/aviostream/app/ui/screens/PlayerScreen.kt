@@ -6580,7 +6580,11 @@ fun PlayerScreen(
                             // + target apply on the next video (the channel
                             // count is negotiated when the player is built);
                             // centre level + keep-original apply live.
-                            Column(
+                            // Hidden on MPV: the Exo DownmixAudioProcessor
+                            // does not run there, so the section would be a
+                            // dead control. (User, 2026-11-24: "MPV me
+                            // downmix option hi na dikhe".)
+                            if (!mpvActive()) Column(
                                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
