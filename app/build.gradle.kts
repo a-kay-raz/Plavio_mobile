@@ -12,14 +12,13 @@ plugins {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
-        // Plugs (#22): quickjs-kt 1.0.18 is published against
-        // Kotlin 2.4.x metadata; the project compiles with Kotlin
-        // 2.3.10, so the metadata-version check is skipped — and
-        // the runtime libraries are aligned UP to the versions the
-        // binding was built against (see the resolutionStrategy
-        // below): its bytecode calls stdlib-2.3-only internals
-        // (kotlin.coroutines.jvm.internal.SpillingKt), so shipping
-        // the older stdlib would crash plug runs at runtime.
+        // Plugs (#22): quickjs-kt 1.0.15 — 1.0.18 needs compileSdk
+        // 37 (build 71 failed checkAarMetadata); 1.0.15's AAR
+        // declares minCompileSdk 36 (verified from the published
+        // AAR). The metadata-version check is skipped and the
+        // runtime libraries are aligned UP (see the
+        // resolutionStrategy below) so plug runs don't crash on
+        // stdlib/coroutines internals.
         freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
@@ -156,17 +155,13 @@ android {
     }
 }
 
-// Plugs (#22): quickjs-kt 1.0.18 was built against
-// kotlin-stdlib 2.4.21 and kotlinx-coroutines 1.11.0 — align the
-// whole app to those exact versions. The stdlib is backward
-// compatible with everything compiled here; see the kotlinOptions
-// note above for why this is load-bearing. The pairing is not
-// optional: with an older coroutines version every plug run dies
-// at runtime with NoSuchMethodError on Mutex.unlock$default —
-// 1.0.18's bytecode calls the 1.11.0 synthetic. (Coroutines is
-// also strictly pinned to 1.11.0 in the constraints block below;
-// the two mechanisms agree.) The fork compiles against API 36,
-// so the zip's AarMetadata check workaround is not needed here.
+// Plugs (#22): quickjs-kt 1.0.15 (downgraded from 1.0.18 —
+// 1.0.18 requires compileSdk 37, build 71 failed
+// checkAarMetadata; 1.0.15 needs only 36, verified from its
+// published AAR). The stdlib / coroutines forcing below is
+// retained from the 1.0.18 setup — it compiled fine in build
+// 71 and keeps plug runs safe. The fork compiles against API
+// 36, so no SDK bump is needed here.
 configurations.all {
     resolutionStrategy {
         force("org.jetbrains.kotlin:kotlin-stdlib:2.4.21")
