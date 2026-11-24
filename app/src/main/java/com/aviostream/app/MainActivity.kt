@@ -77,6 +77,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -106,7 +107,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -598,7 +600,7 @@ class MainActivity : ComponentActivity() {
 private data class Tab(
     val route: String,
     val label: String,
-    val icon: ImageVector,
+    val icon: Painter,
 )
 /**
  * One item in the floating dock (v0.12.7, owner's pick — sample A
@@ -650,7 +652,7 @@ private fun DockItem(
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            tab.icon,
+            painter = tab.icon,
             contentDescription = tab.label,
             tint = if (selected) (if (palette.light) palette.accentText else palette.accent)
                 else if (palette.light) palette.textPrimary.copy(alpha = 0.72f)
@@ -700,11 +702,11 @@ private fun DarkVideoSurface(content: @Composable () -> Unit) {
 /** Bottom-dock tabs; labels come from string resources so they follow the app language. */
 @Composable
 private fun appTabs() = listOf(
-    Tab(Routes.HOME, stringResource(R.string.nav_home), Icons.Filled.Home),
-    Tab(Routes.LIBRARY, stringResource(R.string.nav_library), ImageVector.vectorResource(R.drawable.sidebar_library)),
-    Tab(Routes.LIVE, stringResource(R.string.nav_live), Icons.Filled.LiveTv),
-    Tab(Routes.SEARCH, stringResource(R.string.nav_search), Icons.Filled.Search),
-    Tab(Routes.SETTINGS, stringResource(R.string.nav_settings), Icons.Filled.Settings)
+    Tab(Routes.HOME, stringResource(R.string.nav_home), rememberVectorPainter(Icons.Filled.Home)),
+    Tab(Routes.LIBRARY, stringResource(R.string.nav_library), painterResource(R.drawable.sidebar_library)),
+    Tab(Routes.LIVE, stringResource(R.string.nav_live), rememberVectorPainter(Icons.Filled.LiveTv)),
+    Tab(Routes.SEARCH, stringResource(R.string.nav_search), rememberVectorPainter(Icons.Filled.Search)),
+    Tab(Routes.SETTINGS, stringResource(R.string.nav_settings), rememberVectorPainter(Icons.Filled.Settings))
 )
 
 @Composable
