@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Card
@@ -3592,10 +3593,12 @@ internal fun HeroTrailerPlayer(
 }
 
 /**
- * Ratings row (Nuvio `DetailRatingsRow`): IMDb / Rotten Tomatoes /
- * Metacritic scores in one line, plus your stars when rated. Always
- * rendered — with no scores it reads "Rate this title" so the Rate
- * action stays reachable.
+ * Ratings row (Nuvio `DetailRatingsRow`, v0.14.30 brand marks):
+ * each source's official brand icon with its number beside it,
+ * in one line, plus your stars when rated. Always rendered —
+ * with no scores it reads "Rate this title" so the Rate action
+ * stays reachable. Slots that don't fit the width are dropped
+ * from the end (the auto-fit rule in RatingSlots.kt).
  */
 @Composable
 private fun DetailRatingsRow(
@@ -3603,27 +3606,45 @@ private fun DetailRatingsRow(
     userStars: Int?,
     onClick: () -> Unit
 ) {
-    val shortLabel = mapOf(
-        "Internet Movie Database" to "IMDb",
-        "Rotten Tomatoes" to "RT",
-        "Metacritic" to "Metacritic",
-        "Trakt" to "Trakt"
-    )
-    val parts = ratings.mapNotNull { rating ->
-        shortLabel[rating.source]?.let { label -> "$label ${rating.value}" }
-    }.toMutableList()
-    if (userStars != null) {
-        parts += "You ${"★".repeat(userStars)}${"☆".repeat(5 - userStars)}"
+    val slots = remember(ratings) { ratingSlots(ratings) }
+    val starsText = userStars?.let { "You ${"★".repeat(it)}${"☆".repeat(5 - it)}" }
+    if (slots.isEmpty() && starsText == null) {
+        Text(
+            text = com.aviostream.app.ui.components.accentStarText("★ Rate this title", LocalPalette.current.accent),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clickable(onClick = onClick)
+        )
+        return
     }
-    val text = if (parts.isNotEmpty()) parts.joinToString("  •  ") else "★ Rate this title"
-    Text(
-        text = com.aviostream.app.ui.components.accentStarText(text, LocalPalette.current.accent),
-        style = MaterialTheme.typography.bodyMedium,
-        color = TextSecondary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+    BoxWithConstraints(
         modifier = Modifier.clickable(onClick = onClick)
-    )
+    ) {
+        // Rough width of the "You ★★★★★" stars text, held back so the
+        // chips never squeeze it off the row.
+        val starsWidthDp = if (starsText != null) 96f else 0f
+        val fit = ratingFitCount(slots, maxWidth.value - starsWidthDp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RATING_ROW_MIN_GAP_DP.dp)
+        ) {
+            slots.take(fit).forEach { slot ->
+                RatingChipInline(slot)
+            }
+            if (starsText != null) {
+                Text(
+                    text = com.aviostream.app.ui.components.accentStarText(starsText, LocalPalette.current.accent),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            }
+        }
+    }
 }
 
 /**
