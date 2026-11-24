@@ -42,6 +42,7 @@ import androidx.compose.material3.FilterChip
 import com.aviostream.app.data.DiscoverCatalog
 import com.aviostream.app.data.MetaPreview
 import com.aviostream.app.ui.components.OrbitDots
+import com.aviostream.app.ui.components.VoiceSearchButton
 import com.aviostream.app.ui.components.CustomPosterScreen
 import com.aviostream.app.ui.components.PosterCard
 import com.aviostream.app.ui.components.ShimmerPoster
@@ -491,6 +492,10 @@ fun SearchScreen(
                         onValueChange = { query = it },
                         placeholder = { Text("Movies, shows…", color = TextSecondary) },
                         leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextSecondary) },
+                        // Voice search (v0.14.30 port): renders ONLY when a recognition service resolves — otherwise this slot is empty and the bar is unchanged. A result writes the SAME query state typed text uses, so everything downstream is identical.
+                        trailingIcon = {
+                            VoiceSearchButton(onResult = { query = it })
+                        },
                         singleLine = true,
                         shape = RoundedCornerShape(50),
                         colors = OutlinedTextFieldDefaults.colors(
