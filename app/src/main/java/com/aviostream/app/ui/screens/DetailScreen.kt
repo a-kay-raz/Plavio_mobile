@@ -539,7 +539,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         Log.d("AvioPlay", "onPlayPressed fromStart=" + fromStart + " streamsState=" + streamsState::class.simpleName)
         when (val s = streamsState) {
             is StreamsUiState.Content -> playBestOrFirst()
-            is StreamsUiState.Error -> { /* nothing playable — leave the error visible */ }
+            is StreamsUiState.Error -> { Log.d("AvioPlay", "onPlayPressed: streams in error, nothing playable") /* nothing playable — leave the error visible */ }
             else -> {
                 pendingAutoPlay = true
                 // Make sure a load is in flight for the current selection.
@@ -557,7 +557,11 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
         // Only consider playable streams - skip unresolved infohash: placeholders.
         // Debrid resolution replaces these with real HTTP links asynchronously.
         val playableStreams = s.streams.filter { com.aviostream.app.data.isPlayableLiveStreamUrl(it.url) }
-        if (playableStreams.isEmpty()) { pendingAutoPlay = true; return }
+        if (playableStreams.isEmpty()) {
+            Log.d("AvioPlay", "playBestOrFirst: no playable streams, waiting for debrid")
+            pendingAutoPlay = true
+            return
+        }
         // Settings > Streams autoplay: pick by the user's quality/size rule
         // instead of the probed fastest stream. Step 42: "Auto" picks the
         // Smart Streams scored best (episode runtime for series).
@@ -570,6 +574,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
             }
             // No playable streams yet - wait for debrid resolution instead of
             // playing an unresolvable placeholder.
+            Log.d("AvioPlay", "playBestOrFirst: autoplay rule found nothing, waiting for debrid")
             return
         }
         val pick = pickState as? PickState.Found
@@ -578,6 +583,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
             return
         }
         if (pickState is PickState.Probing) {
+            Log.d("AvioPlay", "playBestOrFirst: waiting for probe")
             viewModelScope.launch {
                 withTimeoutOrNull(2500) { probeJob?.join() }
                 val best = pickState as? PickState.Found
@@ -585,6 +591,7 @@ class DetailViewModel(private val repo: StreamRepository) : ViewModel() {
                 val curPlayable = cur.streams.filter { com.aviostream.app.data.isPlayableLiveStreamUrl(it.url) }
                 if (best != null && !best.stream.url.startsWith("infohash:")) autoPlayEvent = AutoPlay(best.stream, cur.subtitles, playFromStartRequest)
                 else if (curPlayable.isNotEmpty()) autoPlayEvent = AutoPlay(curPlayable.first(), cur.subtitles, playFromStartRequest)
+                else Log.d("AvioPlay", "playBestOrFirst: probe finished, no playable stream")
             }
             return
         }
@@ -664,7 +671,10 @@ fun DetailScreen(
             Log.d("AvioPlay", "autoPlay consumed, starting playback")
             // #12: streams may finish loading after the user already backed
             // out — never navigate to the player from a dead screen.
-            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                Log.d("AvioPlay", "autoPlay dropped: screen not RESUMED, event consumed")
+                return@LaunchedEffect
+            }
             val allStreams = (vm.streamsState as? StreamsUiState.Content)?.streams ?: emptyList()
             startPlayback(vm, repository, autoplay.stream, autoplay.subtitles, allStreams, onPlay, fromStart = autoplay.fromStart)
         }
@@ -703,6 +713,18 @@ fun DetailScreen(
 }
 
 /**
+ * Host/domain of a stream URL for the AvioPlay breadcrumbs — never the
+ * full URL (it can carry tokens). magnet:/infohash: rows report their scheme.
+ */
+private fun streamUrlHost(url: String): String {
+    return when {
+        url.startsWith("magnet:", true) -> "magnet"
+        url.startsWith("infohash:", true) -> "infohash"
+        else -> runCatching { android.net.Uri.parse(url).host }.getOrNull() ?: "?"
+    }
+}
+
+/**
  * Builds a [PlaybackRequest] for a stream and hands it to the player.
  * Shared by autoplay, the Play button and tapping a stream card.
  */
@@ -723,8 +745,12 @@ private fun startPlayback(
     val isTorrentRow = stream.url.startsWith("infohash:", true) ||
         stream.url.startsWith("magnet:", true) ||
         (!stream.infoHash.isNullOrBlank() && stream.magnetUri != null)
-    Log.d("AvioPlay", "startPlayback: stashing request, calling onPlay")
-    val meta = (vm.metaState as? MetaUiState.Content)?.meta ?: return
+    Log.d("AvioPlay", "startPlayback entry host=" + streamUrlHost(stream.url) + " torrent=" + isTorrentRow)
+    val meta = (vm.metaState as? MetaUiState.Content)?.meta
+    if (meta == null) {
+        Log.d("AvioPlay", "startPlayback: meta not loaded, aborting")
+        return
+    }
     val isSeries = meta.type == "series" && vm.selectedVideo != null
     val title = if (isSeries) {
         val v = vm.selectedVideo!!
@@ -760,6 +786,7 @@ private fun startPlayback(
         episodeTitle = vm.selectedVideo?.title,
         playFromStart = fromStart
     )
+    Log.d("AvioPlay", "startPlayback: request stashed, calling onPlay")
     onPlay()
 }
 
@@ -2975,6 +3002,7 @@ private fun DetailContent(
         onDismiss = { sourcePickerOpen = false },
         onRetry = { vm.loadStreams(meta.type, vm.selectedVideo?.id ?: meta.id, meta.name) },
         onPick = { stream ->
+            Log.d("AvioPlay", "onPick host=" + streamUrlHost(stream.url) + " torrent=" + (stream.infoHash != null || stream.magnetUri != null || stream.url.startsWith("magnet:", true) || stream.url.startsWith("infohash:", true)))
             sourcePickerOpen = false
             if (streamsContent != null) {
                 startPlayback(vm, repository, stream, streamsContent.subtitles, streamsContent.streams, onPlay)
@@ -3004,6 +3032,7 @@ private fun DetailContent(
             onBack = { fullPageSourceOpen = false },
             onRetry = { vm.loadStreams(meta.type, vm.selectedVideo?.id ?: meta.id, meta.name) },
             onPick = { stream ->
+                Log.d("AvioPlay", "onPick host=" + streamUrlHost(stream.url) + " torrent=" + (stream.infoHash != null || stream.magnetUri != null || stream.url.startsWith("magnet:", true) || stream.url.startsWith("infohash:", true)))
                 fullPageSourceOpen = false
                 if (streamsContent != null) {
                     startPlayback(vm, repository, stream, streamsContent.subtitles, streamsContent.streams, onPlay)

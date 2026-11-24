@@ -1325,10 +1325,14 @@ private fun AvioNavGraph(
                 Log.d("AvioPlay", "playRequest BUILT_IN, navigating PLAYER")
                 navController.navigate(Routes.PLAYER)
             }
-            PlayerChoice.EXTERNAL -> playExternal(req)
+            PlayerChoice.EXTERNAL -> {
+                Log.d("AvioPlay", "playRequest EXTERNAL, opening external player")
+                playExternal(req)
+            }
             PlayerChoice.ASK -> {
                 val act = activity
                 if (act == null || act.isFinishing) {
+                    Log.d("AvioPlay", "playRequest ASK: no activity, navigating PLAYER")
                     repository.pendingPlayback = req
                     navController.navigate(Routes.PLAYER)
                 } else {
@@ -1336,8 +1340,10 @@ private fun AvioNavGraph(
                         .setTitle("Play with")
                         .setItems(arrayOf("Built-in player", "External player")) { _, which ->
                             if (which == 1) {
+                                Log.d("AvioPlay", "playRequest ASK: external chosen")
                                 playExternal(req)
                             } else {
+                                Log.d("AvioPlay", "playRequest ASK: built-in chosen, navigating PLAYER")
                                 repository.pendingPlayback = req
                                 navController.navigate(Routes.PLAYER)
                             }
@@ -1870,8 +1876,12 @@ private fun AvioNavGraph(
                     // startPlayback() stashed the request; honor the
                     // preferred-player setting instead of always navigating.
                     val req = repository.pendingPlayback
+                    Log.d("AvioPlay", "onPlay: pendingPlayback null=" + (req == null))
                     if (req != null) playRequest(req)
-                    else navController.navigate(Routes.PLAYER)
+                    else {
+                        Log.d("AvioPlay", "onPlay: no request, navigating PLAYER directly")
+                        navController.navigate(Routes.PLAYER)
+                    }
                 },
                 onPlayTrailer = { req ->
                     repository.pendingPlayback = req
@@ -1924,6 +1934,7 @@ private fun AvioNavGraph(
             )
         }
         composable(Routes.PLAYER) {
+            Log.d("AvioPlay", "PLAYER destination entered")
             DarkVideoSurface {
                 // Torrent requests resolve through the gate first;
                 // everything else passes straight to the player, unchanged.

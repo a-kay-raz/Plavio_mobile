@@ -930,6 +930,28 @@ fun PlayerScreen(
             }
     }
 
+    /**
+     * The initial ExoPlayer build runs during composition — a throw
+     * there used to crash the whole player entry (no player, no error,
+     * just a dead screen). Fall back to a stock builder so the screen
+     * still composes, and report the failure so it surfaces as an
+     * on-screen error instead of a silent blank player.
+     */
+    fun buildExoSafe(req: PlaybackRequest): Pair<ExoPlayer, Throwable?> {
+        try {
+            return buildExo(req) to null
+        } catch (e: Throwable) {
+            Log.e("AvioPlay", "buildExo failed, stock fallback", e)
+            val fallback = try {
+                ExoPlayer.Builder(context).build()
+            } catch (e2: Throwable) {
+                Log.e("AvioPlay", "stock ExoPlayer build also failed", e2)
+                throw e
+            }
+            return fallback to e
+        }
+    }
+
 
     // ---- Per-title subtitle style overrides (#27) ----
     // Settings → Subtitles is the ONLY home of the global subtitle
@@ -1046,8 +1068,17 @@ fun PlayerScreen(
     LaunchedEffect(state.currentRequest.videoId, state.currentRequest.liveChannel) {
         state.liveRebufferRecoveries = 0
     }
+    // The initial ExoPlayer build runs during composition — a throw
+    // there used to crash the whole player entry. buildExoSafe falls
+    // back to a stock builder so the screen still composes; the
+    // failure surfaces as an on-screen error below.
+    val (initialPlayer, exoBuildFailure) = remember { buildExoSafe(initialRequest) }
     var player by remember {
-        mutableStateOf(buildExo(initialRequest).also { it.addListener(guardedPlayerListener()) })
+        mutableStateOf(initialPlayer.also { it.addListener(guardedPlayerListener()) })
+    }
+    LaunchedEffect(exoBuildFailure) {
+        val e = exoBuildFailure ?: return@LaunchedEffect
+        state.playerError = "Couldn't start playback: " + (e.message ?: e::class.simpleName)
     }
     val latestPlayer = rememberUpdatedState(player)
     val latestRequest = rememberUpdatedState(state.currentRequest)
@@ -1823,8 +1854,14 @@ fun PlayerScreen(
         } else {
             releaseMpv()
             val old = player
-            val fresh = buildExo(req, emptyList())
-                .also { it.addListener(guardedPlayerListener()) }
+            val fresh = try {
+                buildExo(req, emptyList())
+                    .also { it.addListener(guardedPlayerListener()) }
+            } catch (e: Throwable) {
+                Log.e("AvioPlay", "buildExo switch failed", e)
+                state.playerError = "Couldn't start playback: " + (e.message ?: e::class.simpleName)
+                return
+            }
             fresh.setPlaybackSpeed(state.speed)
             state.playerView?.player = null
             player = fresh
@@ -4228,6 +4265,7 @@ fun PlayerScreen(
 
     // One-time init: begin buffering immediately, then apply saved-position / autoplay policy.
     LaunchedEffect(Unit) {
+        Log.d("AvioPlay", "init LaunchedEffect entered")
         // Second engine: resolved once for this play; MPV skips every
         // Exo prepare/seek below and activates its own engine instead.
         val startOnMpv = startEngine == com.aviostream.app.player.PlaybackEngine.MPV
@@ -4338,7 +4376,13 @@ fun PlayerScreen(
             val oldPlayer = player
             state.playerView?.player = null
             oldPlayer.release()
-            val rebuilt = buildExo(req).also { it.addListener(guardedPlayerListener()) }
+            val rebuilt = try {
+                buildExo(req).also { it.addListener(guardedPlayerListener()) }
+            } catch (e: Throwable) {
+                Log.e("AvioPlay", "buildExo rebuild failed", e)
+                state.playerError = "Couldn't start playback: " + (e.message ?: e::class.simpleName)
+                return@LaunchedEffect
+            }
             rebuilt.setPlaybackSpeed(state.speed)
             player = rebuilt
             state.mimeHealAttempted = false
@@ -4357,7 +4401,16 @@ fun PlayerScreen(
             // The parked ExoPlayer never prepared; MPV owns playback now.
             // A resume offer starts paused at the saved position — the
             // prompt's Resume / Start over buttons drive MPV from there.
-            activateMpv(req, saved, autoplay = !offerResume && settings.autoplay)
+            // activateMpv guards its own constructor, but a throw from
+            // any later step would kill this effect and leave a dead
+            // player — route it to the fatal-error path so the Exo
+            // fallback is attempted instead.
+            try {
+                activateMpv(req, saved, autoplay = !offerResume && settings.autoplay)
+            } catch (e: Throwable) {
+                Log.e("AvioPlay", "activateMpv threw in init", e)
+                handleMpvFatalError("Second engine failed to start")
+            }
             if (offerResume) {
                 state.resumeOfferMs = saved
                 state.showControls = true

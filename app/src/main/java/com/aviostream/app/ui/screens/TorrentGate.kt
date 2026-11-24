@@ -56,9 +56,11 @@ fun TorrentGatePlayer(
 ) {
     val initial = remember { repository.pendingPlayback }
     if (initial == null || initial.torrentInfoHash == null) {
+        android.util.Log.d("AvioPlay", "TorrentGate: pass-through, request null=" + (initial == null))
         PlayerScreen(repository = repository, onBack = onBack, onOpenDetail = onOpenDetail)
         return
     }
+    android.util.Log.d("AvioPlay", "TorrentGate: resolving torrent")
     val context = LocalContext.current
     var resolved by remember { mutableStateOf<PlaybackRequest?>(null) }
     var failed by remember { mutableStateOf(false) }
@@ -71,8 +73,10 @@ fun TorrentGatePlayer(
             fileIdx = initial.torrentFileIdx
         )
         if (url == null) {
+            android.util.Log.e("AvioPlay", "TorrentGate: resolve failed")
             failed = true
         } else {
+            android.util.Log.d("AvioPlay", "TorrentGate: torrent resolved")
             val ready = initial.copy(streamUrl = url)
             repository.pendingPlayback = ready
             resolved = ready
