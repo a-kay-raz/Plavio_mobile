@@ -584,12 +584,20 @@ fun PlayerScreen(
                 // Auto-failover: generic playback tries 3 sources; mobile Live
                 // uses its separate bounded forward-only policy.
                 // Also covers decoder errors (e.g. 4K on phones that can't decode it).
+                // FORMAT_EXCEEDS (4004) / FORMAT_UNSUPPORTED (4005) were
+                // missing: a source whose format the device cannot play
+                // showed the error screen at once instead of trying the
+                // next source (which may be a different quality/codec).
+                // A format error is a property of the SOURCE, not the
+                // player, so it belongs in the failover list.
                 val isSourceError = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                     error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
                     error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
                 val mobileLiveFallback = com.aviostream.app.data.LivePlaybackPolicy.shouldRetry(
                     isLive = initialRequest.isLive,
                     isTv = isTv,
