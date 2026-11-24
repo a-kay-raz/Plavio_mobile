@@ -111,13 +111,23 @@ class MpvPlayerEngine(
                 mpv.setOptionString("icc-cache-dir", cacheDir.absolutePath)
                 mpv.setOptionString("vo", "gpu-next")
                 mpv.setOptionString("profile", "fast")
-                // yuv420p filter + hwdec: hardware decoding hands frames
-                // to the GPU before the vf chain runs, so a format filter
-                // is bypassed (or forces a slow GPU readback). When the
-                // filter is on, force software decoding for this engine
-                // instance so the filter actually applies.
-                val useHwdec = hardwareDecoding && !yuv420pFilter
-                mpv.setOptionString("hwdec", if (useHwdec) "auto" else "no")
+                // yuv420p filter + hwdec: with hwdec=auto the decoder
+                // hands frames to the GPU before the vf chain runs, so
+                // a format filter is bypassed — and on this device the
+                // hwdec+vf combination stalls the video decoder after
+                // the first frame (audio keeps playing, seeks do not
+                // revive the video). Full software decoding (hwdec=no)
+                // makes the filter apply but is too slow for HEVC
+                // 1080p. mediacodec-copy is the middle path: MediaCodec
+                // still decodes in hardware, but frames are copied back
+                // to system memory, so the vf chain sees ordinary CPU
+                // frames and gpu-next uploads them normally.
+                val hwdecMode = when {
+                    !hardwareDecoding -> "no"
+                    yuv420pFilter -> "mediacodec-copy"
+                    else -> "auto"
+                }
+                mpv.setOptionString("hwdec", hwdecMode)
                 if (yuv420pFilter) mpv.setOptionString("vf", "format=yuv420p")
                 mpv.setOptionString("msg-level", "all=warn")
                 mpv.setOptionString("tls-verify", "yes")
@@ -146,7 +156,7 @@ class MpvPlayerEngine(
                 observe("height", FORMAT_INT64)
                 observe("track-list", FORMAT_NODE)
                 attachedSurface?.let { mpv.attachSurface(it) }
-                Log.d(TAG, "mpv init ok hwdec=$useHwdec yuv420p=$yuv420pFilter")
+                Log.d(TAG, "mpv init ok hwdec=$hwdecMode yuv420p=$yuv420pFilter")
             } catch (e: Exception) {
                 Log.e(TAG, "mpv init failed", e)
                 if (!released.get()) onFatalError?.invoke("Second engine failed to start")
