@@ -581,6 +581,21 @@ fun PlayerScreen(
                     state.retryWithDownmix?.invoke()
                     return
                 }
+                // Reverse audio self-heal: downmix is ON and an audio
+                // error still fired. The DownmixAudioProcessor itself
+                // may be what fails on this format (a channel layout
+                // it cannot mix) — retry the SAME source once with
+                // downmix OFF. If it plays, downmix was the cause and
+                // it stays off (the user asked for this: the error
+                // must go even if downmix has to be auto-offed). If
+                // it fails too, the downmix-ON heal above takes its
+                // turn, so the setting ends back ON when downmix was
+                // not the cause. Bounded by downmixOffFailoverAttempted.
+                if ((isAudioOutputError || isAudioDecoderError || isAudioFormatError) && state.downmixOn && !state.downmixOffFailoverAttempted) {
+                    state.downmixOffFailoverAttempted = true
+                    state.retryWithoutDownmix?.invoke()
+                    return
+                }
                 // Auto-failover: generic playback tries 3 sources; mobile Live
                 // uses its separate bounded forward-only policy.
                 // Also covers decoder errors (e.g. 4K on phones that can't decode it).
@@ -1527,6 +1542,37 @@ fun PlayerScreen(
     // not in onPlayerError, because it is declared after that listener.)
     state.retryWithDownmix = {
         setDownmixEnabled(true)
+        val req = latestRequest.value
+        val old = latestPlayer.value
+        ioScope.launch {
+            withContext(Dispatchers.Main) {
+                if (disposed.get() || latestRequest.value != req || latestPlayer.value !== old) return@withContext
+                val playWhenReady = old.playWhenReady
+                val position = old.currentPosition
+                val playbackSpeed = old.playbackParameters.speed
+                val fresh = buildExo(req, state.resolvedSubs)
+                    .also { it.addListener(guardedPlayerListener()) }
+                state.playerView?.player = null
+                old.release()
+                player = fresh
+                state.playerError = null
+                fresh.setPlaybackSpeed(playbackSpeed)
+                fresh.seekTo(position)
+                fresh.prepare()
+                fresh.playWhenReady = playWhenReady
+            }
+        }
+    }
+
+    // Reverse audio self-heal: retry the SAME source once with downmix
+    // OFF (mirror of retryWithDownmix). The new player reads
+    // downmixConfig.enabled when its DownmixAudioProcessor configures,
+    // so with it off the multichannel PCM reaches the AudioTrack
+    // unmixed. setDownmixEnabled persists the change, same as the
+    // downmix-ON heal — the user ordered the error gone even if
+    // downmix has to be auto-offed.
+    state.retryWithoutDownmix = {
+        setDownmixEnabled(false)
         val req = latestRequest.value
         val old = latestPlayer.value
         ioScope.launch {
@@ -2803,10 +2849,19 @@ fun PlayerScreen(
                     // the source just proved it needs downmix, so retrying
                     // without it would fail the same way again.
                     if (!preserveAudioHeal) {
-                        if (state.downmixFailoverAttempted) {
+                        // Restore the user's downmix setting only when the
+                        // downmix-ON heal alone fired (user had it OFF,
+                        // heal turned it ON). When the reverse heal also
+                        // fired, the two cancelled out (ON -> OFF -> ON)
+                        // and downmix is already at the user's setting;
+                        // when only the reverse heal fired, downmix stays
+                        // OFF — the user ordered the error gone even if
+                        // downmix has to be auto-offed.
+                        if (state.downmixFailoverAttempted && !state.downmixOffFailoverAttempted) {
                             setDownmixEnabled(false)
                         }
                         state.downmixFailoverAttempted = false
+                        state.downmixOffFailoverAttempted = false
                     }
                     if (oldReq.type != newReq.type || oldReq.videoId != newReq.videoId || oldReq.liveChannel != newReq.liveChannel) {
                         state.streamsJob?.cancel()
@@ -4401,10 +4456,16 @@ fun PlayerScreen(
             rebuilt.setPlaybackSpeed(state.speed)
             player = rebuilt
             state.mimeHealAttempted = false
-            if (state.downmixFailoverAttempted) {
+            // Same restore rule as replaceStream above: only turn downmix
+            // back OFF when the downmix-ON heal alone fired; when the
+            // reverse heal also fired the two cancelled out, and when
+            // only the reverse heal fired downmix stays OFF by the
+            // user's order.
+            if (state.downmixFailoverAttempted && !state.downmixOffFailoverAttempted) {
                 setDownmixEnabled(false)
             }
             state.downmixFailoverAttempted = false
+            state.downmixOffFailoverAttempted = false
             state.currentRequest = req
             rebuiltForFreshResumeUrl = true
         }

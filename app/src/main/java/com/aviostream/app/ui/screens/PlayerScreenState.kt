@@ -77,6 +77,18 @@ internal class PlayerScreenState(
      */
     var retryWithDownmix: (() -> Unit)? by mutableStateOf(null)
     /**
+     * Reverse audio self-heal: retry once with downmix OFF after an audio
+     * error while downmix is ON. If the DownmixAudioProcessor itself is
+     * what fails on a format (e.g. a channel layout it cannot mix), the
+     * same source plays fine without it — and turning it off is the
+     * fix, not a workaround. Bounded by this flag (once per source);
+     * if the retry also fails, the downmix-ON self-heal above takes
+     * its turn, so the setting ends back ON when downmix was not
+     * the cause.
+     */
+    var downmixOffFailoverAttempted by mutableStateOf(false)
+    var retryWithoutDownmix: (() -> Unit)? by mutableStateOf(null)
+    /**
      * Set after the local helpers below are declared; invoked by errorListener
      * for the auto-failover path. Indirection avoids forward-reference issues
      * (same pattern as healOnFormatError).
