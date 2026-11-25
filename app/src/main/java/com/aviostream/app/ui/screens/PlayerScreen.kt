@@ -4091,6 +4091,10 @@ fun PlayerScreen(
         // over a segment marks it auto-skipped, Nuvio
         // intervalsAtSeekPositions).
         var lastPollPositionMs = -1L
+        // P3: AudioManager IPC re-read counter — the system volume
+        // is re-read only every 4th tick (see below), not on every
+        // 500 ms tick.
+        var pollTickCount = 0
         // T2: when the current source started playing continuously.
         // Only sustained playback resets the failover counter; a
         // source switch clears the clock.
@@ -4145,7 +4149,14 @@ fun PlayerScreen(
                 c.currentTracks.groups.isEmpty() -> "Reading tracks…"
                 else -> "Buffering…"
             }
-            state.volumePercent = displayVolumePercent()
+            // P3: the AudioManager.getStreamVolume IPC ran on every
+            // 500 ms tick although the system volume almost never
+            // changes mid-play. Re-read it only every 4th tick
+            // (2 s); the volume gesture reads it directly on every
+            // drag, so gesture feedback stays live, and a hardware
+            // volume-key press shows up within 2 s.
+            if (pollTickCount % 4 == 0) state.volumePercent = displayVolumePercent()
+            pollTickCount++
             // A rebuilt player (source/episode switch) has a new audio
             // session — re-attach the boost enhancer to it.
             if (state.volumeBoost > 0f) applyVolumeBoost()
@@ -4375,7 +4386,13 @@ fun PlayerScreen(
                     ended
                 )
             }
-            delay(if (isTv) 1000 else 500) // low-end TVs: half the recompositions
+            // P3: while the controls are hidden the poll only feeds
+            // the seekbar/time chips and the background checks, so it
+            // runs at 1 s instead of 500 ms — playback continues
+            // unchanged; the seekbar and time chips update at 1 s
+            // until the controls come back. Visible controls keep
+            // the 500 ms tick (TVs already poll at 1 s).
+            delay(if (isTv || !state.showControls) 1000 else 500) // low-end TVs: half the recompositions
         }
     }
 
