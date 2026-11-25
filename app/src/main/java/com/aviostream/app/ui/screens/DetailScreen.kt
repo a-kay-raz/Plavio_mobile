@@ -3772,7 +3772,9 @@ internal fun HeroTrailerPlayer(
     // Letterbox sampling (same pattern as TrailerPlayerScreen): every
     // 400ms while playing, past the first 20% of the trailer, downscale
     // the current frame and measure its bars; four stable samples agree
-    // and the surface zooms in to crop them out.
+    // and the surface zooms in to crop them out — then sampling stops
+    // (P2: the loop used to keep reading the frame back every 400ms
+    // for the whole trailer).
     LaunchedEffect(player, textureView) {
         val tv = textureView ?: return@LaunchedEffect
         letterboxZoom = 1f
@@ -3790,7 +3792,12 @@ internal fun HeroTrailerPlayer(
             scaled.getPixels(pixels, 0, TrailerLetterbox.SAMPLE_WIDTH, 0, 0, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT)
             scaled.recycle()
             val bar = TrailerLetterbox.detectBar(pixels, TrailerLetterbox.SAMPLE_WIDTH, TrailerLetterbox.SAMPLE_HEIGHT) ?: continue
-            tracker.onSample(bar)?.let { letterboxZoom = it }
+            // P2: the zoom has locked in (4 stable samples; 0f counts
+            // for a bar-less trailer) — stop sampling. A new trailer
+            // restarts this effect with a fresh player and tracker.
+            val zoom = tracker.onSample(bar) ?: continue
+            letterboxZoom = zoom
+            return@LaunchedEffect
         }
     }
     LaunchedEffect(letterboxZoom) {
