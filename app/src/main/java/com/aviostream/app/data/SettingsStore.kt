@@ -473,17 +473,32 @@ class SettingsStore(
     // Type-tolerant numeric reads. A backup restore (org.json turns 1.0 into
     // an Int) or an older version can store a number under a key in the wrong
     // numeric type, and the strict SharedPreferences getters then throw
-    // ClassCastException (Sentry AVIO-1). These coerce any stored Number;
-    // a missing or non-numeric value falls back to the default, exactly like
-    // the typed getters did for absent keys.
+    // ClassCastException (Sentry AVIO-1). The typed getter is tried first so
+    // the common path never copies the whole prefs map (P6: prefs.all
+    // copies every key on every read, and the player poll tick reads
+    // skipIntroOffsetSeconds every 500 ms); only a wrong-type value falls
+    // back to the map read, which coerces any stored Number. A missing or
+    // non-numeric value falls back to the default, exactly as before.
     private fun prefFloat(key: String, default: Float): Float =
-        (prefs.all[key] as? Number)?.toFloat() ?: default
+        try {
+            prefs.getFloat(key, default)
+        } catch (_: ClassCastException) {
+            (prefs.all[key] as? Number)?.toFloat() ?: default
+        }
 
     private fun prefInt(key: String, default: Int): Int =
-        (prefs.all[key] as? Number)?.toInt() ?: default
+        try {
+            prefs.getInt(key, default)
+        } catch (_: ClassCastException) {
+            (prefs.all[key] as? Number)?.toInt() ?: default
+        }
 
     private fun prefLong(key: String, default: Long): Long =
-        (prefs.all[key] as? Number)?.toLong() ?: default
+        try {
+            prefs.getLong(key, default)
+        } catch (_: ClassCastException) {
+            (prefs.all[key] as? Number)?.toLong() ?: default
+        }
 
     init {
         migrateLegacySecrets()
