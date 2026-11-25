@@ -409,7 +409,7 @@ enum class PlayerChoice(val label: String, val blurb: String) {
 class SettingsStore(
     context: Context,
     /** Step 56: per-profile settings file. The global file ("avio_settings") holds device-level keys only. */
-    prefsName: String = "avio_settings"
+    private val prefsName: String = "avio_settings"
 ) {
 
     private val appContext = context.applicationContext
