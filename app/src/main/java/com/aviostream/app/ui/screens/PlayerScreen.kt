@@ -2882,6 +2882,17 @@ fun PlayerScreen(
                     if (gen != replaceGen.get() || disposed.get()) return@withContext
                     state.playerError = null
                     state.mimeHealAttempted = false
+                    // T8: a new source/episode re-arms the one silent engine
+                    // failover — the flag is one-shot per play, not per
+                    // PlayerScreen session, so a later episode in the same
+                    // binge can fail over its engine once, like the first
+                    // one. Engine failover itself never passes through here
+                    // (switchPlaybackEngine switches engine on the same
+                    // request), so this cannot re-arm mid-failover. The
+                    // wave-1 T2 reset (autoFailoverCount after 30 s of
+                    // sustained play) is independent: T2 is the count, this
+                    // is the one-shot engine flag.
+                    engineFailoverUsed = false
                     // Audio setting reset (user: reset on source failure):
                     // if the previous source's audio failure auto-enabled
                     // downmix (self-heal), turn it back OFF for the new
