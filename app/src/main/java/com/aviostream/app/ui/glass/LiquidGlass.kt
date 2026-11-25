@@ -1,6 +1,7 @@
 package com.aviostream.app.ui.glass
 
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.runtime.Composable
@@ -80,6 +81,17 @@ import com.aviostream.app.ui.theme.LocalPalette
 fun isLiquidGlassAvailable(): Boolean =
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
+/**
+ * P1: minimum gap between backdrop re-records. The backdrop is a
+ * blurred, low-detail layer — it does not need a fresh full-screen
+ * record on every draw. A hero trailer redraws every video frame and
+ * a scroll fling redraws constantly; without this the whole screen is
+ * re-recorded at video frame rate. ~15fps is plenty for glass: the
+ * glass keeps the last recorded frame between re-records, so the
+ * look (blur / strength) is unchanged. Main thread only.
+ */
+private const val BACKDROP_RECORD_THROTTLE_MS = 66L
+
 /** RuntimeShader refraction (the lens) needs Android 13+. The lens
  * effect itself is also a no-op below 33 inside the library. */
 fun isLiquidRefractionSupported(): Boolean =
@@ -110,6 +122,14 @@ class AvioBackdrop internal constructor(
      * Main thread only.
      */
     var suspendRecording: Boolean = false
+
+    /**
+     * Last backdrop re-record, monotonic ms (P1 throttle). Only
+     * updated when a record actually happens, so a record can never
+     * be starved by draws arriving faster than the throttle — the
+     * first draw after the gap always records. Main thread only.
+     */
+    internal var lastRecordMs: Long = 0L
 
     override val isCoordinatesDependent: Boolean = true
 
@@ -196,6 +216,14 @@ private class AvioBackdropSourceNode(
         // drawing the scaled 4K TextureView into the recording layer
         // force-stops the app past ~1.2x. The glass keeps the last frame.
         if (backdrop.suspendRecording) return
+        // P1: throttle the full-screen re-record to ~15fps. Every video
+        // frame and every scroll step invalidates this draw; recording
+        // the whole screen each time is the Home/Detail scroll jank and
+        // battery cost. The glass keeps the last recorded frame between
+        // re-records — blurred glass hides the staleness, look unchanged.
+        val nowMs = SystemClock.uptimeMillis()
+        if (nowMs - backdrop.lastRecordMs < BACKDROP_RECORD_THROTTLE_MS) return
+        backdrop.lastRecordMs = nowMs
         val nodeDensity = requireDensity()
         val contentScope = this
         backdrop.graphicsLayer.record {
