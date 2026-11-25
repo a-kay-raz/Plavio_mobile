@@ -54,6 +54,13 @@ internal const val VOD_STARTUP_STALL_TIMEOUT_MS = 25_000L
 internal const val VOD_REBUFFER_STALL_TIMEOUT_MS = 30_000L
 
 /**
+ * T2: continuous playing this long earns a fresh failover counter.
+ * A source that plays only a few seconds then errors must NOT reset
+ * the counter, or two flaky sources rotate forever.
+ */
+internal const val SUSTAINED_PLAY_RESET_MS = 30_000L
+
+/**
  * VOD stall rule (owner's player round, 2026-10-23): a movie/episode source
  * that never starts, or freezes with NO position progress — hosts that
  * ignore range requests behave exactly like this — fails over to the next

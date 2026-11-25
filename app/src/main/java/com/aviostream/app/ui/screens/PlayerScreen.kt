@@ -667,9 +667,11 @@ fun PlayerScreen(
             override fun onIsPlayingChanged(playing: Boolean) {
                 // Keeps the PiP window's play/pause RemoteAction icon in sync.
                 (activity as? MainActivity)?.updatePipActions(playing)
-                // Reset auto-failover counter on successful playback
+                // T2: the failover counter is NOT reset here any more —
+                // any playing, even ~2s before an error, used to reset
+                // it, so two flaky sources rotated forever. Only
+                // sustained playback resets it (500ms poll below).
                 if (playing) {
-                    state.autoFailoverCount = 0
                     // Step 40: a source that plays again earns a fresh
                     // stall-resume attempt (Nuvio PlaybackReopenSession.onReady).
                     state.vodStallResumeAttemptedFor = null
@@ -3245,10 +3247,15 @@ fun PlayerScreen(
     }
 
     /**
-     * Advances to the next available stream for this title (#4). When there is
-     * nothing to advance to, says so and quietly refreshes the Sources list.
+     * Advances to the next available stream for this title (#4). Returns
+     * false when there is nothing to advance to — the ladder is
+     * exhausted. T2: no wrap-around — the list is a straight ladder,
+     * not a cycle, so flaky sources cannot rotate forever. A manual
+     * tap on the last source still just says "No other sources
+     * available"; the automatic failover path turns false into the
+     * error screen.
      */
-    fun nextSource(automaticLiveFallback: Boolean = false) {
+    fun nextSource(automaticLiveFallback: Boolean = false): Boolean {
         val streams = state.availableStreams.filter { com.aviostream.app.data.isPlayableLiveStreamUrl(it.url) }
         val mobileLive = state.currentRequest.isLive && !isTv
         val next = if (automaticLiveFallback && mobileLive) {
@@ -3265,18 +3272,19 @@ fun PlayerScreen(
             val cur = streams.indexOfFirst {
                 it.url == state.currentRequest.streamUrl && it.headers == state.currentRequest.headers
             }
-            if (streams.size < 2) null else streams[(cur + 1).mod(streams.size)]
+            if (streams.size < 2) null else streams.getOrNull(cur + 1)
         }
         if (next == null) {
             if (automaticLiveFallback && mobileLive) {
                 awaitMobileLiveFallbackCandidate()
-                return
+                return true
             }
             pokeIndicator(PlayerIndicator.Message("No other sources available"))
             refreshStreamsBackground(state.currentRequest.type, state.currentRequest.videoId)
-            return
+            return false
         }
         switchSource(next)
+        return true
     }
 
     // Wire the auto-failover path now that the helpers exist.
@@ -3284,7 +3292,13 @@ fun PlayerScreen(
         val maxAttempts = if (state.currentRequest.isLive && !isTv)
             com.aviostream.app.data.LivePlaybackPolicy.MAX_MOBILE_LIVE_FAILOVERS else settings.fallbackMaxSources
         pokeIndicator(PlayerIndicator.Message("Trying next source… ($attempt/$maxAttempts)"))
-        nextSource(automaticLiveFallback = state.currentRequest.isLive && !isTv)
+        // T2: ladder exhausted (mobile Live waits for a candidate
+        // instead, so it never reports false) — stop with the error
+        // screen instead of cycling back to the first source.
+        val advanced = nextSource(automaticLiveFallback = state.currentRequest.isLive && !isTv)
+        if (!advanced && !(state.currentRequest.isLive && !isTv)) {
+            state.playerError = "All sources failed. Try Retry or choose another source."
+        }
     }
 
     // A mobile Live source can stall in BUFFERING forever without producing a
@@ -4077,6 +4091,11 @@ fun PlayerScreen(
         // over a segment marks it auto-skipped, Nuvio
         // intervalsAtSeekPositions).
         var lastPollPositionMs = -1L
+        // T2: when the current source started playing continuously.
+        // Only sustained playback resets the failover counter; a
+        // source switch clears the clock.
+        var sustainedPlaySinceMs: Long? = null
+        var sustainedPlayUrl: String? = null
         while (true) {
             val c = player
             val snap = if (mpvActive()) mpvEngine?.snapshot?.value else null
@@ -4095,6 +4114,28 @@ fun PlayerScreen(
             // instead of the logo loading screen. Exo is unaffected
             // (its isPlaying is false while buffering).
             if (state.isPlaying && !state.isBuffering) hasStartedPlayback = true
+            // T2: only SUSTAINED playback earns a fresh failover
+            // counter. A source that plays ~2s then errors must not
+            // reset it, or two flaky sources rotate forever. 30s of
+            // continuous playing (not buffering) resets the counter
+            // once; the clock then restarts, so the next reset needs
+            // another 30s. A source switch clears the clock.
+            val tickNowMs = System.nanoTime() / 1_000_000L
+            if (state.currentRequest.streamUrl != sustainedPlayUrl) {
+                sustainedPlayUrl = state.currentRequest.streamUrl
+                sustainedPlaySinceMs = null
+            }
+            if (state.isPlaying && !state.isBuffering) {
+                if (sustainedPlaySinceMs == null) sustainedPlaySinceMs = tickNowMs
+                if (tickNowMs - sustainedPlaySinceMs!! >= SUSTAINED_PLAY_RESET_MS &&
+                    state.autoFailoverCount != 0
+                ) {
+                    state.autoFailoverCount = 0
+                    sustainedPlaySinceMs = null
+                }
+            } else {
+                sustainedPlaySinceMs = null
+            }
             // Step 59: the seek-preview prefetch pauses while buffering.
             seekPreviewController?.playbackBuffering = state.isBuffering
             state.loadingStep = when {
