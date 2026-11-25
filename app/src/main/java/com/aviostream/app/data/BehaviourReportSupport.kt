@@ -144,6 +144,153 @@ object BehaviourReportSupport {
         return if (countToday >= maxPerDay) null else countToday + 1
     }
 
+    // ---- TEST v0.14.85: process-death records (Items 33/34) ----
+    //
+    // The .84 machinery's proven hole: a NATIVE death (the
+    // 2026-11-23 Newest/Oldest death, the 2026-11-24 QuickJS
+    // deaths) kills the process before any Java reporter runs,
+    // and the next start's unclean-exit upload could silently
+    // drop it — the daily cap, or a null log tail, ended the
+    // path with nothing sent, and the phone's own record of the
+    // death (reason, signal) was never read at all. From .85 the
+    // next start ALSO reads the Android historical exit records
+    // (ApplicationExitInfo, API 30+) and sends every death the
+    // system recorded as its own event. The pure rules live here;
+    // the Android glue is ExitDeathReporter + DiagTracker's
+    // reportPreviousDeaths. Death reports are NEVER capped and
+    // NEVER depend on a log tail existing.
+
+    /**
+     * ApplicationExitInfo reason codes, mirrored as plain ints so
+     * this file stays Android-free (the values are the platform's
+     * stable constants): LOW_MEMORY=3, CRASH=4, CRASH_NATIVE=5,
+     * ANR=6. Only these four are deaths a report must carry —
+     * user-requested stops, dependency deaths, package updates
+     * and clean self-exits are not deaths.
+     */
+    const val EXIT_REASON_LOW_MEMORY: Int = 3
+    const val EXIT_REASON_CRASH: Int = 4
+    const val EXIT_REASON_CRASH_NATIVE: Int = 5
+    const val EXIT_REASON_ANR: Int = 6
+
+    /** One historical process death, flattened from the OS record. */
+    data class ExitDeath(
+        val timestampMs: Long,
+        val pid: Int,
+        val reason: Int,
+        /** Signal number for signalled/native deaths, else 0. */
+        val status: Int,
+        val description: String?,
+        val importance: Int,
+        val pssKb: Long,
+        val rssKb: Long,
+        /** The record's trace text when it provides one (ANR). */
+        val trace: String? = null
+    )
+
+    /** True when [reason] is a death the server must hear about. */
+    fun isReportableDeath(reason: Int): Boolean = reason == EXIT_REASON_LOW_MEMORY ||
+        reason == EXIT_REASON_CRASH ||
+        reason == EXIT_REASON_CRASH_NATIVE ||
+        reason == EXIT_REASON_ANR
+
+    /** The platform name of a reason code, for tags and text. */
+    fun exitReasonName(reason: Int): String = when (reason) {
+        0 -> "REASON_UNKNOWN"
+        1 -> "REASON_EXIT_SELF"
+        2 -> "REASON_SIGNALED"
+        EXIT_REASON_LOW_MEMORY -> "REASON_LOW_MEMORY"
+        EXIT_REASON_CRASH -> "REASON_CRASH"
+        EXIT_REASON_CRASH_NATIVE -> "REASON_CRASH_NATIVE"
+        EXIT_REASON_ANR -> "REASON_ANR"
+        7 -> "REASON_INITIALIZATION_FAILURE"
+        8 -> "REASON_PERMISSION_CHANGE"
+        9 -> "REASON_EXCESSIVE_RESOURCE_USAGE"
+        10 -> "REASON_USER_REQUESTED"
+        11 -> "REASON_USER_STOPPED"
+        12 -> "REASON_DEPENDENCY_DIED"
+        13 -> "REASON_OTHER"
+        14 -> "REASON_FREEZER"
+        15 -> "REASON_PACKAGE_STATE_CHANGE"
+        16 -> "REASON_PACKAGE_UPDATED"
+        else -> "REASON_$reason"
+    }
+
+    /**
+     * The dedupe key of one death record. Timestamp + pid +
+     * reason identifies a death: a process dies once, and the
+     * system never reuses a pid within the same millisecond for
+     * this package's records in practice. Persisted across starts
+     * (see [mergeReportedDeathKeys]) so a death reports exactly
+     * once, however often the app restarts afterwards.
+     */
+    fun deathKey(death: ExitDeath): String =
+        "${death.timestampMs}:${death.pid}:${death.reason}"
+
+    /**
+     * The deaths from [deaths] that still owe the server a
+     * report: reportable reasons whose key is not in
+     * [reportedKeys], OLDEST FIRST — events leave in the order
+     * the deaths happened, so a morning of crashes reads in
+     * sequence at the server.
+     */
+    fun unreportedDeaths(
+        deaths: List<ExitDeath>,
+        reportedKeys: Set<String>
+    ): List<ExitDeath> = deaths
+        .filter { isReportableDeath(it.reason) && deathKey(it) !in reportedKeys }
+        .sortedBy { it.timestampMs }
+
+    /** How many reported-death keys are kept (the system's own
+     *  record list is short; 64 keys cover it many times over). */
+    const val MAX_REPORTED_DEATH_KEYS: Int = 64
+
+    /**
+     * Merges freshly-reported keys into the persisted list:
+     * order preserved, duplicates dropped, only the newest
+     * [MAX_REPORTED_DEATH_KEYS] survive.
+     */
+    fun mergeReportedDeathKeys(
+        existing: List<String>,
+        newKeys: List<String>
+    ): List<String> = (existing + newKeys).distinct().takeLast(MAX_REPORTED_DEATH_KEYS)
+
+    /** Hard cap for a death record's carried trace text. */
+    const val MAX_DEATH_TRACE_CHARS: Int = 24_000
+
+    /**
+     * Bounds a record's trace text to [MAX_DEATH_TRACE_CHARS],
+     * keeping the HEAD: an ANR trace opens with the main thread —
+     * the part that names the hang — while its tail is thread
+     * dumps of idle workers. Null/blank stays null.
+     */
+    fun boundDeathTrace(trace: String?): String? {
+        val text = trace?.takeIf { it.isNotBlank() } ?: return null
+        return if (text.length <= MAX_DEATH_TRACE_CHARS) text
+        else text.substring(0, MAX_DEATH_TRACE_CHARS)
+    }
+
+    /**
+     * The plain-text summary of one death — the body its server
+     * event carries (inside the event, like every behaviour
+     * payload; never an attachment). Every field the OS record
+     * holds, one per line, so the server copy answers "what
+     * killed it" without the phone: reason (name + code), the
+     * signal/status, the system's own description, importance,
+     * memory at death, and when it happened.
+     */
+    fun deathReportText(death: ExitDeath): String = buildString {
+        append("reason=").append(exitReasonName(death.reason))
+        append(" (").append(death.reason).append(")\n")
+        append("status=").append(death.status).append('\n')
+        append("timestampMs=").append(death.timestampMs).append('\n')
+        append("pid=").append(death.pid).append('\n')
+        append("importance=").append(death.importance).append('\n')
+        append("pssKb=").append(death.pssKb).append('\n')
+        append("rssKb=").append(death.rssKb).append('\n')
+        append("description=").append(death.description ?: "(none)")
+    }
+
     /**
      * TEST v0.14.75 (item 6): does this main-thread stack look
      * IDLE rather than stuck? The .74 phone session proved the

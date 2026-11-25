@@ -68,6 +68,19 @@ import java.util.concurrent.LinkedBlockingQueue
  *      upload dies with the process leaves its exact final lines
  *      for the next start's unclean-exit report.
  *
+ * TEST v0.14.85 (items 33/34 — owner's order: "make our crash
+ * reporting better so it send everything better to server"):
+ * the .84 paths still had a proven hole — a NATIVE death's
+ * unclean-exit report silently vanished when the daily cap was
+ * spent or the log tail was missing, and the death's actual
+ * cause (the OS exit record: reason, signal) was never read at
+ * all. (d) PROCESS DEATHS: at init the tracker now also reads
+ * the Android historical exit records (API 30+; see
+ * [reportPreviousDeaths] and ExitDeathReporter) and sends every
+ * not-yet-reported death as its own event. Death reports are
+ * never capped and never need a log tail — a death cannot be
+ * silently dropped again.
+ *
  * Every write is asynchronous on one daemon writer thread fed by a
  * bounded queue: [log] never blocks and never touches disk, so the
  * tracker cannot become the hang it is hunting.
@@ -215,6 +228,12 @@ object DiagTracker {
         // marker is never cleared on backgrounding and every start
         // would false-report.
         if (processGateArmed) reportPreviousUncleanExit()
+        // TEST v0.14.85 (item d): the previous deaths themselves,
+        // from the phone's own exit records — independent of the
+        // marker machinery above (a death reports even when its
+        // session never armed the marker, and even when the
+        // unclean-exit path above capped out or had no tail).
+        reportPreviousDeaths()
         // This session starts "in use" (see the marker rules in
         // the header): only a full backgrounding clears it.
         markSessionActive()
@@ -364,6 +383,12 @@ object DiagTracker {
     // counters share the freeze reports' prefs file.
     private const val UNCLEAN_PREF_DAY = "unclean_day"
     private const val UNCLEAN_PREF_COUNT = "unclean_count"
+
+    // TEST v0.14.85 (item d): the reported-death dedupe keys
+    // (newline-joined BehaviourReportSupport.deathKey values),
+    // in the same prefs file. No counter beside them: deaths
+    // are never capped.
+    private const val EXIT_PREF_KEYS = "exit_reported_keys"
     private const val SLOW_PREF_DAY = "slow_day"
     private const val SLOW_PREF_COUNT = "slow_count"
 
@@ -442,6 +467,116 @@ object DiagTracker {
             io.sentry.Sentry.captureEvent(event)
         }
     }
+
+    /**
+     * TEST v0.14.85 (item d): the previous process deaths,
+     * reported from the phone's own historical exit records
+     * (ApplicationExitInfo, API 30+ — a no-op below). Runs on a
+     * daemon thread: the records read is a binder call plus
+     * bounded trace IO, and startup must never wait on it.
+     *
+     * Each death the system recorded (native crash, Java crash,
+     * ANR, low-memory kill — [BehaviourReportSupport
+     * .isReportableDeath]) that has not been reported yet goes
+     * out as its OWN event titled "Behaviour report (process
+     * death)", tagged behaviour_report=process_death and
+     * exit_reason=<name>, carrying the death's full OS record
+     * (reason, status/signal, description, importance, PSS/RSS,
+     * timestamp — [BehaviourReportSupport.deathReportText]),
+     * the record's trace text when it provides one (bounded),
+     * and the behaviour log tail when one exists.
+     *
+     * The two proven silent drops of the .84 path cannot happen
+     * here: there is NO daily cap on deaths (caps still govern
+     * the slow/freeze repeats, never a death), and a missing log
+     * tail only means the event carries no tail — the death
+     * still sends. Dedupe is a persisted key set (timestamp +
+     * pid + reason per death), so restarts never re-send a
+     * death and a death is never skipped for having an old
+     * timestamp: on the first .85 start the phone's whole
+     * recorded death history reports once, including the deaths
+     * earlier builds lost. Keys are persisted after the sends
+     * are attempted — when the user has crash reports off, the
+     * SDK drops the events silently and the keys still advance,
+     * so a disabled reporter does not retry the same deaths on
+     * every start forever. Events flush immediately, like the
+     * freeze reports: a queued report must not die with a young
+     * process. Every failure is swallowed.
+     */
+    private fun reportPreviousDeaths() {
+        if (android.os.Build.VERSION.SDK_INT <
+            android.os.Build.VERSION_CODES.R
+        ) return
+        val context = appContext ?: return
+        val thread = Thread({
+            runCatching {
+                val deaths = ExitDeathReporter.collect(context)
+                if (deaths.isEmpty()) return@runCatching
+                val prefs = context.getSharedPreferences(
+                    FREEZE_PREFS, Context.MODE_PRIVATE
+                )
+                val storedKeys = prefs.getString(EXIT_PREF_KEYS, null)
+                    ?.split('\n')
+                    ?.filter { it.isNotEmpty() }
+                    ?: emptyList()
+                val fresh = BehaviourReportSupport.unreportedDeaths(
+                    deaths, storedKeys.toSet()
+                )
+                if (fresh.isEmpty()) return@runCatching
+                val tail = runCatching { tailText() }.getOrNull()
+                var sent = 0
+                for (death in fresh) {
+                    val captured = runCatching {
+                        val event = io.sentry.SentryEvent()
+                        event.message = io.sentry.protocol.Message().apply {
+                            message = "Behaviour report (process death)"
+                        }
+                        event.level =
+                            if (death.reason ==
+                                BehaviourReportSupport.EXIT_REASON_LOW_MEMORY
+                            ) {
+                                io.sentry.SentryLevel.INFO
+                            } else {
+                                io.sentry.SentryLevel.ERROR
+                            }
+                        event.setTag("behaviour_report", "process_death")
+                        event.setTag(
+                            "exit_reason",
+                            BehaviourReportSupport.exitReasonName(death.reason)
+                        )
+                        val payload = LinkedHashMap<String, Any>()
+                        payload["exit_death"] =
+                            BehaviourReportSupport.deathReportText(death)
+                        BehaviourReportSupport.boundDeathTrace(death.trace)
+                            ?.let { payload["exit_trace"] = it }
+                        tail?.let { payload["log_tail"] = it }
+                        event.contexts["behaviour_report"] = payload
+                        io.sentry.Sentry.captureEvent(event)
+                        true
+                    }.getOrDefault(false)
+                    if (captured) sent++
+                }
+                val merged = BehaviourReportSupport.mergeReportedDeathKeys(
+                    storedKeys,
+                    fresh.map { BehaviourReportSupport.deathKey(it) }
+                )
+                prefs.edit()
+                    .putString(EXIT_PREF_KEYS, merged.joinToString("\n"))
+                    .apply()
+                if (sent > 0) {
+                    runCatching {
+                        io.sentry.Sentry.flush(DEATH_FLUSH_TIMEOUT_MS)
+                    }
+                    log("BEHAVIOUR REPORT SENT (process deaths x$sent)")
+                }
+            }
+        }, "diag-exit-deaths")
+        thread.isDaemon = true
+        thread.start()
+    }
+
+    /** Bounded network flush for just-captured death reports. */
+    private const val DEATH_FLUSH_TIMEOUT_MS = 3_000L
 
     /**
      * TEST v0.14.84 (item 1b): a measured slowness self-report —
