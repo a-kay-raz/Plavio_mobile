@@ -59,6 +59,7 @@ import com.aviostream.app.ui.theme.TextSecondary
 import fi.iki.elonen.NanoHTTPD
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -103,18 +104,48 @@ class TvPairServer(
 
     val code: String = (100000..999999).random().toString()
 
+    // S9: brute-force throttle — the code is only 6 digits (the user reads
+    // it off the TV, so it stays short) and the server is LAN-reachable
+    // while this screen is open. After 5 wrong codes the server refuses
+    // every pairing attempt for 60 seconds. The counter resets on a
+    // correct code, and a fresh server (new code) starts at zero — the
+    // server is created when this screen opens and stopped when it closes.
+    private val failedAttempts = AtomicInteger(0)
+    @Volatile private var lockedUntilMs = 0L
+
     fun pairUrl(): String = "http://$lanIp:$listeningPort/pair?code=$code"
+
+    private fun isLockedOut(): Boolean = System.currentTimeMillis() < lockedUntilMs
+
+    private fun recordFailedAttempt() {
+        if (failedAttempts.incrementAndGet() >= 5) {
+            lockedUntilMs = System.currentTimeMillis() + 60_000L
+            failedAttempts.set(0)
+        }
+    }
+
+    private fun recordSuccess() {
+        failedAttempts.set(0)
+    }
 
     override fun serve(session: IHTTPSession): Response {
         return try {
+            if (isLockedOut()) {
+                return newFixedLengthResponse(
+                    Response.Status.TOO_MANY_REQUESTS, "text/html",
+                    errorPage("Too many wrong codes. Wait a minute, then try again.")
+                )
+            }
             when {
                 session.uri == "/pair" && session.method == Method.GET -> {
                     if (session.parameters["code"]?.firstOrNull() != code) {
+                        recordFailedAttempt()
                         newFixedLengthResponse(
                             Response.Status.FORBIDDEN, "text/html",
                             errorPage("Wrong pairing code.")
                         )
                     } else {
+                        recordSuccess()
                         newFixedLengthResponse(Response.Status.OK, "text/html", formPage())
                     }
                 }
@@ -133,8 +164,10 @@ class TvPairServer(
         session.parseBody(files)
         val params = session.parameters
         if (params["code"]?.firstOrNull() != code) {
+            recordFailedAttempt()
             return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/html", errorPage("Wrong pairing code."))
         }
+        recordSuccess()
         val urls = (params["urls"]?.firstOrNull() ?: "")
             .split("\n", ",", ";")
             .map { it.trim() }
