@@ -2204,6 +2204,14 @@ class SettingsStore(
         }
     }
 
+    /**
+     * S3: raw encrypted-secret access for callers that own their own
+     * keys (the Avio account's Supabase tokens). Same AES-GCM /
+     * Keystore store as every other secret — never plaintext prefs.
+     */
+    fun getSecretValue(key: String): String? = getSecret(key)
+    fun putSecretValue(key: String, value: String?) = putSecret(key, value)
+
     private fun getSecret(key: String): String? {
         val encoded = secretPrefs.getString(key, null)
         if (encoded != null) return runCatching { decryptSecret(encoded) }.getOrNull()

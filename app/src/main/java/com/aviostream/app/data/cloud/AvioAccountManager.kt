@@ -2,6 +2,7 @@ package com.aviostream.app.data.cloud
 
 import android.content.Context
 import com.aviostream.app.BuildConfig
+import com.aviostream.app.data.SettingsStore
 import com.aviostream.app.data.StreamRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +36,14 @@ class AvioAccountManager(
 ) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    /**
+     * S3: the session tokens live in the encrypted secret store
+     * (SettingsStore's AES-GCM/Keystore file), not in the plaintext
+     * plavio_account prefs — the refresh token is long-lived, so it
+     * gets the same protection as every other secret. Lazy: the
+     * store is only built when a token is actually read or written.
+     */
+    private val secrets: SettingsStore by lazy { SettingsStore(appContext) }
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -55,8 +64,28 @@ class AvioAccountManager(
                 BuildConfig.AVIO_SUPABASE_ANON_KEY.isNotBlank()
     }
 
-    fun isSignedIn(): Boolean = prefs.getString(KEY_ACCESS, null) != null &&
+    fun isSignedIn(): Boolean = accessToken() != null &&
         prefs.getString(KEY_USER_ID, null) != null
+
+    /** S3: encrypted-store read, with a one-time move of a plaintext token left in plavio_account by older builds. */
+    private fun accessToken(): String? = secrets.getSecretValue(KEY_ACCESS) ?: migrateLegacyToken(KEY_ACCESS)
+
+    /** S3: same as [accessToken], for the long-lived refresh token. */
+    private fun refreshToken(): String? = secrets.getSecretValue(KEY_REFRESH) ?: migrateLegacyToken(KEY_REFRESH)
+
+    /**
+     * One-time move of a plaintext token from plavio_account into
+     * the encrypted store. The plaintext entry is deleted only
+     * after the encrypted copy is confirmed persisted; the token
+     * is returned either way, so a failed move never signs the
+     * user out — it just retries on the next read.
+     */
+    private fun migrateLegacyToken(key: String): String? {
+        val legacy = prefs.getString(key, null) ?: return null
+        runCatching { secrets.putSecretValue(key, legacy) }
+        if (secrets.getSecretValue(key) != null) prefs.edit().remove(key).apply()
+        return legacy
+    }
 
     fun accountEmail(): String? = prefs.getString(KEY_EMAIL, null)
 
@@ -116,11 +145,13 @@ class AvioAccountManager(
     }
 
     suspend fun signOut() {
-        val token = prefs.getString(KEY_ACCESS, null)
+        val token = accessToken()
         if (token != null) {
             runCatching { post("/auth/v1/logout", JSONObject(), accessToken = token) }
         }
         prefs.edit().clear().apply()
+        secrets.putSecretValue(KEY_ACCESS, null)
+        secrets.putSecretValue(KEY_REFRESH, null)
     }
 
     /** Sends the 6-digit reset code email. */
@@ -271,9 +302,9 @@ class AvioAccountManager(
         val expiresIn = json.optLong("expires_in", 3600)
         val userId = json.optJSONObject("user")?.optString("id").orEmpty()
         if (access.isBlank() || userId.isBlank()) throw AuthException("Unexpected sign-in response.")
+        secrets.putSecretValue(KEY_ACCESS, access)
+        secrets.putSecretValue(KEY_REFRESH, refresh)
         prefs.edit()
-            .putString(KEY_ACCESS, access)
-            .putString(KEY_REFRESH, refresh)
             .putLong(KEY_EXPIRES, System.currentTimeMillis() + expiresIn * 1000)
             .putString(KEY_USER_ID, userId)
             .putString(KEY_EMAIL, json.optJSONObject("user")?.optString("email")?.ifBlank { null } ?: email)
@@ -282,26 +313,26 @@ class AvioAccountManager(
 
     /** Runs [block] with a valid access token, refreshing (and retrying once on 401). */
     private suspend fun withFreshToken(block: suspend (String) -> Unit) {
-        var token = prefs.getString(KEY_ACCESS, null)
+        var token = accessToken()
             ?: throw AuthException("Not signed in.")
         val expires = prefs.getLong(KEY_EXPIRES, 0L)
         if (System.currentTimeMillis() > expires - 60_000) {
             refreshSession()
-            token = prefs.getString(KEY_ACCESS, null) ?: throw AuthException("Session expired.")
+            token = accessToken() ?: throw AuthException("Session expired.")
         }
         try {
             block(token)
         } catch (e: AuthException) {
             if (e.message?.contains("401") == true) {
                 refreshSession()
-                val fresh = prefs.getString(KEY_ACCESS, null) ?: throw e
+                val fresh = accessToken() ?: throw e
                 block(fresh)
             } else throw e
         }
     }
 
     private suspend fun refreshSession() {
-        val refresh = prefs.getString(KEY_REFRESH, null)
+        val refresh = refreshToken()
             ?: throw AuthException("Session expired. Please sign in again.")
         val body = JSONObject().put("refresh_token", refresh)
         val resp = post("/auth/v1/token?grant_type=refresh_token", body, accessToken = null)
