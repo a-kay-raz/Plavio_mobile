@@ -27,6 +27,12 @@ internal object MobileReleaseManifest {
             (segments[4] == "v$version" ||
                 segments[4].matches(Regex("v${Regex.escape(version)}-dev-[0-9]+"))) &&
             segments[5] == "Avio-v$version-arm64.apk") { "APK does not match stable mobile version" }
-        return UpdateInfo(version, json.optString("notes").take(16_000), url, json.optBoolean("major", false))
+        // S6: optional SHA-256 — when the manifest carries one it
+        // must be a 64-hex digest; a malformed value fails the whole
+        // check rather than installing unverified. Absent = install
+        // as before (the current stable.json carries no hash yet).
+        val sha256 = json.optString("sha256").lowercase().takeIf { it.isNotBlank() }
+        if (sha256 != null) require(sha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid APK SHA-256 in manifest" }
+        return UpdateInfo(version, json.optString("notes").take(16_000), url, json.optBoolean("major", false), sha256)
     }
 }

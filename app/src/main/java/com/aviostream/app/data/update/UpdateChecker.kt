@@ -19,7 +19,9 @@ data class UpdateInfo(
     val notes: String,
     val apkUrl: String,
     /** True when Najam marked this as a "major update" — auto-popup shows. False = silent, only visible on manual check. */
-    val isMajor: Boolean = false
+    val isMajor: Boolean = false,
+    /** S6: SHA-256 of the APK from the manifest, when the manifest carries one — verified before install. */
+    val apkSha256: String? = null
 )
 
 /**

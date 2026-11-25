@@ -72,6 +72,7 @@ fun UpdatePrompt(
                     appContext,
                     info.apkUrl,
                     info.version,
+                    expectedSha256 = info.apkSha256,
                     onProgress = { downloaded, total ->
                         downloadedBytes = downloaded
                         totalBytes = total

@@ -55,13 +55,19 @@ object ApkInstaller {
         context: Context,
         url: String,
         version: String,
+        expectedSha256: String? = null,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
         onDone: () -> Unit,
         onError: (String) -> Unit = {}
     ): DownloadHandle {
+        // S6: plain http is refused — the APK comes from GitHub
+        // releases, always https; an http URL here means a tampered
+        // manifest or a stale link. (The manifest parser already
+        // requires https + github.com; this is the installer-side
+        // backstop for any other caller.)
         val scheme = runCatching { Uri.parse(url).scheme }.getOrNull()?.lowercase()
-        if (scheme != "http" && scheme != "https") {
-            onError("That download link isn't a valid update URL ($url).")
+        if (scheme != "https") {
+            onError("That download link isn't a secure (https) update URL ($url).")
             return DownloadHandle {}
         }
         val fileName = "Avio-v$version.apk"
@@ -102,7 +108,7 @@ object ApkInstaller {
                 // report — cancel already tore everything down.
                 if (cancelled.get()) return
                 try {
-                    verifyAndInstall(context, dm, downloadId, fileName, onDone, onError)
+                    verifyAndInstall(context, dm, downloadId, fileName, expectedSha256, onDone, onError)
                 } catch (e: Exception) {
                     deletePartial(context, fileName)
                     onError("The update download failed: ${e.message ?: "unknown error"}.")
@@ -188,12 +194,16 @@ object ApkInstaller {
     /**
      * ACTION_DOWNLOAD_COMPLETE fires for failures too — check the real
      * status (and a non-trivial file) before touching the installer.
+     * When [expectedSha256] is set (manifest carries a hash), the
+     * downloaded file must match it — a mismatch deletes the file
+     * and never reaches the installer.
      */
     private fun verifyAndInstall(
         context: Context,
         dm: DownloadManager,
         downloadId: Long,
         fileName: String,
+        expectedSha256: String?,
         onDone: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -222,6 +232,14 @@ object ApkInstaller {
         if (failure == null && (!file.exists() || file.length() <= 0)) {
             failure = "Download failed (the file came back empty)."
         }
+        // S6: when the manifest carries a SHA-256, verify the
+        // download against it before the installer ever sees it.
+        if (failure == null && expectedSha256 != null) {
+            val actual = sha256Hex(file)
+            if (actual == null || !actual.equals(expectedSha256, ignoreCase = true)) {
+                failure = "Download failed (the file doesn't match the release checksum)."
+            }
+        }
         if (failure != null) {
             deletePartial(context, fileName)
             onError(failure!!)
@@ -237,6 +255,20 @@ object ApkInstaller {
         context.startActivity(install)
         onDone()
     }
+
+    /** Lowercase hex SHA-256 of [file], or null when it cannot be read. */
+    private fun sha256Hex(file: File): String? = runCatching {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }.getOrNull()
 
     private fun reasonMessage(reason: Int?): String = when (reason) {
         DownloadManager.ERROR_INSUFFICIENT_SPACE -> "not enough storage space"
