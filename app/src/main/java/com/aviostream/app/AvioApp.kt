@@ -8,6 +8,8 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.aviostream.app.data.AppIcon
+import com.aviostream.app.data.BehaviourReportSupport
+import com.aviostream.app.data.ExitDeathReporter
 import com.aviostream.app.data.ProfileStore
 import com.aviostream.app.data.SettingsStore
 import com.aviostream.app.data.StremioApi
@@ -317,10 +319,36 @@ class AvioApp : Application(), ImageLoaderFactory {
         }
     }
 
-    /** Crash log from the previous run, if the app died with an exception. */
+    /**
+     * Crash log from the previous run, if the app died with an exception.
+     * T6: a native death (libmpv SIGABRT, QuickJS abort) writes no
+     * last_crash.txt, so the file can be an OLDER Java crash — showing
+     * it as if it were the latest one misleads diagnosis. When the
+     * most recent OS-recorded death is a native/ANR/low-memory death
+     * newer than the file, the file is stale: drop it and show nothing
+     * (the death itself is already reported to Sentry by
+     * DiagTracker.reportPreviousDeaths). A Java crash (REASON_CRASH)
+     * always matches its own file, so it still shows.
+     */
     fun readCrashReport(): String? {
         val f = java.io.File(filesDir, "last_crash.txt")
-        return if (f.exists()) f.readText().take(6000) else null
+        if (!f.exists()) return null
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val latestDeath = runCatching {
+                ExitDeathReporter.collect(this)
+                    .firstOrNull { BehaviourReportSupport.isReportableDeath(it.reason) }
+            }.getOrNull()
+            if (latestDeath != null &&
+                latestDeath.reason != BehaviourReportSupport.EXIT_REASON_CRASH &&
+                latestDeath.timestampMs > f.lastModified() + STALE_CRASH_MARGIN_MS
+            ) {
+                // Stale Java crash: the latest death was native (or an
+                // ANR / low-memory kill) and happened after it.
+                runCatching { f.delete() }
+                return null
+            }
+        }
+        return f.readText().take(6000)
     }
 
     fun clearCrashReport() {
@@ -332,5 +360,7 @@ class AvioApp : Application(), ImageLoaderFactory {
 
     companion object {
         private const val DB_NAME = "avio-stream.db"
+        /** T6: a death must beat the crash file by this much to count as newer (clock granularity). */
+        private const val STALE_CRASH_MARGIN_MS = 1_000L
     }
 }
