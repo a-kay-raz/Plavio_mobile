@@ -9,6 +9,8 @@ import `is`.xyz.mpv.MPVNode
 import `is`.xyz.mpv.Utils
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,11 @@ import kotlinx.coroutines.flow.update
  *    destroy → executor shutdown. No `stop` command.
  *  - Observers (this class) check the released flag in every
  *    callback, so a dying instance can never write into a new play.
+ *  - load() never issues loadfile before a surface is natively
+ *    attached: the load is deferred to attachSurfaceNow, or fails
+ *    over after 10s with no surface (the gate — the black-screen
+ *    fix; the vo re-set alone did not restore rendering on the
+ *    phone, so the load must not win the race in the first place).
  *
  * State is published as StateFlows: a position/duration/paused
  * snapshot (fed by observed properties) and the track list.
@@ -65,6 +72,14 @@ class MpvPlayerEngine(
         val fileLoaded: Boolean = false,
     )
 
+    /** A loadfile waiting for a surface (the gate). */
+    private data class PendingLoad(
+        val url: String,
+        val headers: Map<String, String>,
+        val startMs: Long,
+        val mergeAudioUrl: String?,
+    )
+
     private val appContext = context.applicationContext
     private val mpv = MPV()
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -90,6 +105,41 @@ class MpvPlayerEngine(
 
     @Volatile
     private var attachedSurface: Surface? = null
+
+    /**
+     * True only once the native attach has actually completed for
+     * the still-current surface (set at the end of a successful
+     * attachSurfaceNow, cleared by detachSurface). This is the
+     * gate's signal — NOT attachedSurface: that field is set on the
+     * UI thread the moment attachSurface() is called, while the
+     * native mpv.attachSurface() runs later in a queued engine
+     * task, so a field-only check would still let loadfile run
+     * before the VO has a surface.
+     */
+    @Volatile
+    private var surfaceReady = false
+
+    /**
+     * A load deferred for want of a surface (the gate). Stateful,
+     * never just an event, so no ordering of surface creation vs
+     * load can lose it.
+     */
+    @Volatile
+    private var pendingLoad: PendingLoad? = null
+
+    /**
+     * One-shot timer for a deferred load: a surface that never
+     * arrives must fail over, never hang the player on the loading
+     * screen forever. Runs on its own daemon thread and only ever
+     * posts back onto the engine thread, so it cannot race the
+     * attach path.
+     */
+    private val surfaceTimeoutScheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "AvioMpvSurfaceTimeout").apply { isDaemon = true }
+    }
+
+    @Volatile
+    private var surfaceTimeoutFuture: ScheduledFuture<*>? = null
 
     /** The video output Nuvio uses and Avio matches (vo=gpu-next). */
     private val voName = "gpu-next"
@@ -226,12 +276,25 @@ class MpvPlayerEngine(
      * Runs only on the engine thread.
      */
     private fun attachSurfaceNow(surface: Surface) {
-        try {
+        val attached = try {
             mpv.attachSurface(surface)
             mpv.setOptionString("force-window", "yes")
             mpv.setPropertyString("vo", voName)
+            true
         } catch (e: Exception) {
             Log.d(TAG, "attachSurface failed: ${e.message}")
+            false
+        }
+        // The gate: only a still-current surface that actually
+        // attached counts. A detach that raced this attach (surface
+        // destroyed mid-attach) leaves surfaceReady false and the
+        // load pending for the next surface or the timeout — a load
+        // fired against a dying surface would be black with no
+        // backstop left. A load deferred for want of a surface
+        // fires here, after the VO is (re)created against it.
+        if (attached && attachedSurface === surface) {
+            surfaceReady = true
+            firePendingLoad()
         }
     }
 
@@ -245,8 +308,10 @@ class MpvPlayerEngine(
      */
     fun detachSurface() {
         attachedSurface = null
+        surfaceReady = false
         runOnEngineThread {
             if (released.get() || !initialized.get()) return@runOnEngineThread
+            surfaceReady = false
             try {
                 mpv.setPropertyString("vo", "null")
                 mpv.setPropertyString("force-window", "no")
@@ -275,6 +340,15 @@ class MpvPlayerEngine(
             } catch (e: Exception) {
                 Log.d(TAG, "mpv destroy failed: ${e.message}")
             } finally {
+                // The gate's state dies with the engine: a load
+                // deferred while waiting is dropped silently, its
+                // timeout cancelled, and the timer thread shut down
+                // so no release leaks a thread.
+                pendingLoad = null
+                surfaceTimeoutFuture?.cancel(false)
+                surfaceTimeoutFuture = null
+                surfaceTimeoutScheduler.shutdownNow()
+                surfaceReady = false
                 executor.shutdown()
             }
         }
@@ -284,44 +358,119 @@ class MpvPlayerEngine(
     // Loading + transport
     // -----------------------------------------------------------------
 
+    /**
+     * Loads a stream — but only once a surface is natively attached
+     * (the gate). The loadfile used to be queued on the engine
+     * thread the moment activateMpv ran, while the SurfaceView was
+     * still being created on the UI thread, so the load almost
+     * always won the race and the VO was created (or failed) with
+     * no surface: audio played, position advanced, black screen,
+     * forever — and the later vo re-set in attachSurfaceNow did not
+     * restore rendering on the phone (08a2d8e was a theory; dev-89
+     * proved it incomplete, and hwdec-off still black killed the
+     * decoder theory too). Now the loadfile waits: if a surface is
+     * already natively attached it runs at once; otherwise the
+     * params are stashed and the load fires from attachSurfaceNow
+     * when the surface arrives. `surfaceReady` is state, not an
+     * event, so no ordering of surface creation vs load can lose
+     * it — including re-activation, where the SurfaceView already
+     * exists and no new surfaceCreated fires (activateMpv hands
+     * the existing surface over). If no surface arrives within
+     * SURFACE_TIMEOUT_MS the load fails over through onFatalError
+     * ("Second engine failed to start" — the engine-fault route:
+     * Exo fallback once, else a clear error) instead of hanging
+     * on the loading screen forever. A release while waiting drops
+     * the pending load silently, and a surface destroyed while
+     * waiting leaves it pending for the next surface.
+     */
     fun load(url: String, headers: Map<String, String>, startMs: Long, mergeAudioUrl: String?) {
         runOnEngineThread {
             if (released.get() || !initialized.get()) return@runOnEngineThread
-            try {
-                _snapshot.update { it.copy(fileLoaded = false, eofReached = false) }
-                pendingStartMs = startMs
-                pendingAudioUrl = mergeAudioUrl
-                // Request headers: User-Agent gets its own property;
-                // the rest ride http-header-fields (commas in values
-                // escaped, matching libmpv's option parsing).
-                var userAgent: String? = null
-                val fields = ArrayList<String>()
-                for ((name, value) in headers) {
-                    if (name.equals("User-Agent", ignoreCase = true)) {
-                        userAgent = value
-                    } else if (value.isNotBlank()) {
-                        fields += "$name: ${value.replace(",", "\\,")}"
+            if (surfaceReady && attachedSurface != null) {
+                // Surface already attached: any stale deferred load
+                // (a second load() call) is dropped first, so only
+                // this load runs and no timeout outlives it.
+                pendingLoad = null
+                surfaceTimeoutFuture?.cancel(false)
+                surfaceTimeoutFuture = null
+                doLoad(url, headers, startMs, mergeAudioUrl)
+                return@runOnEngineThread
+            }
+            // No surface yet: stash the load and wait for the
+            // attach. A second load replaces the first (one engine
+            // serves one activation; the old timeout is cancelled).
+            surfaceTimeoutFuture?.cancel(false)
+            surfaceTimeoutFuture = null
+            pendingLoad = PendingLoad(url, headers, startMs, mergeAudioUrl)
+            surfaceTimeoutFuture = surfaceTimeoutScheduler.schedule({
+                // The check hops onto the engine thread, so an
+                // attach queued ahead of it runs first and clears
+                // the pending load — the timeout can never fire
+                // against a load that is about to run.
+                runOnEngineThread {
+                    if (!released.get() && pendingLoad != null) {
+                        pendingLoad = null
+                        Log.w(TAG, "mpv load timed out waiting for a surface")
+                        onFatalError?.invoke("Second engine failed to start")
                     }
                 }
-                if (userAgent != null) mpv.setPropertyString("user-agent", userAgent)
-                mpv.setPropertyString(
-                    "http-header-fields",
-                    if (fields.isEmpty()) "" else fields.joinToString(","),
-                )
-                mpv.setPropertyString("aid", "auto")
-                // No vf re-assert here anymore: the yuv420p filter path
-                // is gone (it stalled the decoder across qualities —
-                // see the hwdec note in initialize()).
-                if (startMs > 0L) {
-                    mpv.command("loadfile", url, "replace", "-1", "start=${startMs / 1000.0}")
-                } else {
-                    mpv.command("loadfile", url, "replace")
-                }
-            } catch (e: Throwable) {
-                Log.e(TAG, "mpv load failed", e)
-                if (!released.get()) onFatalError?.invoke("Unable to play stream")
-            }
+            }, SURFACE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         }
+    }
+
+    /** The loadfile itself — engine thread only, surface attached. */
+    private fun doLoad(url: String, headers: Map<String, String>, startMs: Long, mergeAudioUrl: String?) {
+        try {
+            _snapshot.update { it.copy(fileLoaded = false, eofReached = false) }
+            pendingStartMs = startMs
+            pendingAudioUrl = mergeAudioUrl
+            // Request headers: User-Agent gets its own property;
+            // the rest ride http-header-fields (commas in values
+            // escaped, matching libmpv's option parsing).
+            var userAgent: String? = null
+            val fields = ArrayList<String>()
+            for ((name, value) in headers) {
+                if (name.equals("User-Agent", ignoreCase = true)) {
+                    userAgent = value
+                } else if (value.isNotBlank()) {
+                    fields += "$name: ${value.replace(",", "\\,")}"
+                }
+            }
+            if (userAgent != null) mpv.setPropertyString("user-agent", userAgent)
+            mpv.setPropertyString(
+                "http-header-fields",
+                if (fields.isEmpty()) "" else fields.joinToString(","),
+            )
+            mpv.setPropertyString("aid", "auto")
+            // No vf re-assert here anymore: the yuv420p filter path
+            // is gone (it stalled the decoder across qualities —
+            // see the hwdec note in initialize()).
+            if (startMs > 0L) {
+                mpv.command("loadfile", url, "replace", "-1", "start=${startMs / 1000.0}")
+            } else {
+                mpv.command("loadfile", url, "replace")
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "mpv load failed", e)
+            if (!released.get()) onFatalError?.invoke("Unable to play stream")
+        }
+    }
+
+    /**
+     * Fires a load deferred for want of a surface, now that one is
+     * attached. Engine thread only; called at the end of a
+     * successful attachSurfaceNow, so it runs after the VO is
+     * (re)created against the surface. If the surface went away
+     * again before this ran (detach raced the attach), the load
+     * stays pending for the next surface or the timeout.
+     */
+    private fun firePendingLoad() {
+        val pending = pendingLoad ?: return
+        if (released.get() || !surfaceReady || attachedSurface == null) return
+        pendingLoad = null
+        surfaceTimeoutFuture?.cancel(false)
+        surfaceTimeoutFuture = null
+        doLoad(pending.url, pending.headers, pending.startMs, pending.mergeAudioUrl)
     }
 
     fun setPaused(paused: Boolean) {
@@ -717,6 +866,14 @@ class MpvPlayerEngine(
 
     private companion object {
         const val TAG = "MpvPlayerEngine"
+        /**
+         * How long a deferred load waits for a surface before
+         * failing over. Surface creation after composition is
+         * normally well under a second; 10s is an order of
+         * magnitude of headroom for slow devices, and bounds the
+         * loading screen when a surface never comes.
+         */
+        const val SURFACE_TIMEOUT_MS = 10_000L
         // libmpv mpv_format values.
         const val FORMAT_FLAG = 3
         const val FORMAT_INT64 = 4

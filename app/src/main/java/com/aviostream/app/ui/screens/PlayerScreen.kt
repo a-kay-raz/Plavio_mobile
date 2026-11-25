@@ -1343,6 +1343,20 @@ fun PlayerScreen(
         engine.setSpeed(state.speed)
         engine.setResizeMode(mpvAspectMode())
         engine.setAudioDelay(settings.audioDelayMs.toLong())
+        // H3: re-activation while the SurfaceView is already composed
+        // (replaceStream with an MPV target): no new surfaceCreated
+        // will fire for the new engine, so hand it the existing
+        // surface now. Without this the new engine's attachedSurface
+        // stays null and its load waits for a surface that never
+        // comes (until the gate timeout fails over). The old engine's
+        // detach runs on its own thread against the old mpv instance;
+        // the Surface itself is refcounted, so the new attach is
+        // safe. If the view has no valid surface yet, the load
+        // simply waits for surfaceCreated as on a first activation.
+        // (The attach runs twice here when init's trailing attach
+        // also fires — same surface, same thread, before the first
+        // frame — harmless.)
+        state.mpvSurfaceView?.holder?.surface?.takeIf { it.isValid }?.let { engine.attachSurface(it) }
         engine.load(
             req.streamUrl,
             com.aviostream.app.data.PlaybackHeaders.buildPlaybackHeaders(req.headers, isTv),
