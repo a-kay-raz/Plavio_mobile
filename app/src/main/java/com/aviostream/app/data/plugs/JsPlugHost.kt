@@ -861,10 +861,20 @@ class JsPlugHost(
         }
 
         /**
-         * The QuickJS job dispatcher: a cached pool, so concurrent
-         * plug runs (and their blocking fetch bridges) never starve
-         * each other. Daemon threads — a wedged plug can never keep
-         * the process alive.
+         * The QuickJS job dispatcher: a BOUNDED pool (T5). It used to
+         * be an unbounded cached pool, so a plug parked in an
+         * uninterruptible native loop — a runtime the reaper can
+         * never force-close — kept its thread for the life of the
+         * process, and fast title-browsing could stack such threads
+         * without limit. The plug gate caps concurrent runs at 8
+         * (PlugService.MAX_CONCURRENT_PLUG_RUNS), so 16 threads
+         * leaves 2 per run for a blocking fetch bridge alongside
+         * its job queue — normal plug concurrency is unchanged —
+         * while stuck runtimes can pin at most 16 threads. A stuck
+         * runtime itself still cannot be force-closed (see the
+         * retirement comment above); this only bounds the damage.
+         * Daemon threads — a wedged plug can never keep the
+         * process alive.
          * TEST v0.14.71 (item 1b): the pool's threads run at
          * BACKGROUND priority, like PlugService's executor — a
          * QuickJS run blocks its pool thread for its whole life,
@@ -873,7 +883,7 @@ class JsPlugHost(
          * unit tests, where the Android priority call cannot land.
          */
         private val JS_DISPATCHER: CoroutineDispatcher =
-            Executors.newCachedThreadPool { r ->
+            Executors.newFixedThreadPool(16) { r ->
                 Thread({
                     runCatching {
                         android.os.Process.setThreadPriority(
