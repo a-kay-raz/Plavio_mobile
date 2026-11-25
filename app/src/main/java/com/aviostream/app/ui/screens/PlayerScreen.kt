@@ -1529,7 +1529,11 @@ fun PlayerScreen(
                     val fresh = buildExo(req, state.resolvedSubs, forcedMime = probed)
                         .also { it.addListener(guardedPlayerListener()) }
                     state.playerView?.player = null
-                    old.release()
+                    // T10: release off the main thread — a wedged renderer
+                    // tearing down must not freeze the UI. The old player
+                    // is already detached from the view and nothing touches
+                    // it after this point; release() is thread-safe.
+                    ioScope.launch { runCatching { old.release() } }
                     player = fresh
                     state.playerError = null
                     fresh.setPlaybackSpeed(playbackSpeed)
@@ -1576,7 +1580,9 @@ fun PlayerScreen(
                 val fresh = buildExo(req, state.resolvedSubs)
                     .also { it.addListener(guardedPlayerListener()) }
                 state.playerView?.player = null
-                old.release()
+                // T10: release off the main thread (see healOnFormatError
+                // above — detached already, nothing touches it after).
+                ioScope.launch { runCatching { old.release() } }
                 player = fresh
                 state.playerError = null
                 fresh.setPlaybackSpeed(playbackSpeed)
@@ -1607,7 +1613,9 @@ fun PlayerScreen(
                 val fresh = buildExo(req, state.resolvedSubs)
                     .also { it.addListener(guardedPlayerListener()) }
                 state.playerView?.player = null
-                old.release()
+                // T10: release off the main thread (see healOnFormatError
+                // above — detached already, nothing touches it after).
+                ioScope.launch { runCatching { old.release() } }
                 player = fresh
                 state.playerError = null
                 fresh.setPlaybackSpeed(playbackSpeed)
@@ -1969,7 +1977,9 @@ fun PlayerScreen(
             fresh.setPlaybackSpeed(state.speed)
             state.playerView?.player = null
             player = fresh
-            runCatching { old.release() }
+            // T10: release off the main thread (detached already, nothing
+            // touches the old player after the switch).
+            ioScope.launch { runCatching { old.release() } }
             state.subsAttached = null
             fresh.seekTo(resumeAtMs)
             fresh.prepare()
@@ -2954,7 +2964,9 @@ fun PlayerScreen(
                         // Detach the surface from the old player before releasing it.
                         state.playerView?.player = null
                         player = fresh
-                        old.release()
+                        // T10: release off the main thread (detached already,
+                        // nothing touches the old player after the switch).
+                        ioScope.launch { runCatching { old.release() } }
                         seekToPlaybackStart(
                             isMobileLive = newReq.isLive && !isTv,
                             startAtMs = startAtMs,
@@ -4577,7 +4589,9 @@ fun PlayerScreen(
             // prepare already uses the fresh URL (#15; guarded by #9 above).
             val oldPlayer = player
             state.playerView?.player = null
-            oldPlayer.release()
+            // T10: release off the main thread (detached already, nothing
+            // touches the old player after the rebuild).
+            ioScope.launch { runCatching { oldPlayer.release() } }
             val rebuilt = try {
                 buildExo(req).also { it.addListener(guardedPlayerListener()) }
             } catch (e: Throwable) {
@@ -4774,7 +4788,9 @@ fun PlayerScreen(
         MainActivity.pipEmergencyStop = {
             runCatching { savePosition() }
             runCatching { latestPlayer.value.stop() }
-            runCatching { latestPlayer.value.release() }
+            // T10: stop() stays synchronous (it kills the audio now);
+            // release() moves off the main thread.
+            ioScope.launch { runCatching { latestPlayer.value.release() } }
             runCatching { mpvEngine?.release() }
         }
         activity?.requestedOrientation = if (initialRequest.sourceName == "YouTube")
@@ -4821,7 +4837,11 @@ fun PlayerScreen(
             // are cancelled. savePosition()'s save runs NonCancellable so it
             // survives this; the scrobblers' final stop-events are best-effort.
             ioScope.coroutineContext.cancelChildren()
-            latestPlayer.value.release()
+            // T10: ioScope's children were just cancelled above, so the
+            // release cannot ride it — a short-lived background thread
+            // instead. release() is thread-safe in Media3 and nothing
+            // touches the player after dispose.
+            Thread({ runCatching { latestPlayer.value.release() } }, "avio-player-release").start()
             mpvEngine?.release()
             // Step 64: stop the background-audio service + session with the player.
             com.aviostream.app.data.BackgroundAudioController.unregister()
