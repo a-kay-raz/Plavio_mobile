@@ -53,12 +53,22 @@ class StreamLinkCache(context: Context) {
     /**
      * Stores [link] under [contentKey]. Only real direct links are cached —
      * unresolved torrents (`infohash:`/`magnet:`) and local files never are.
+     *
+     * S7: a link that only plays with secret material is never written to
+     * disk — this cache is plain SharedPreferences, so a token-bearing URL
+     * or an Authorization/Cookie header stored here would be a replayable
+     * credential for any local reader of the app's private files. Such
+     * titles simply re-resolve on next play (the resume path already
+     * re-resolves when there is no cached link); token-free entries cache
+     * exactly as before, and TTL/eviction behaviour is unchanged.
      */
     fun save(contentKey: String, link: CachedStreamLink) {
         val url = link.url
         if (!url.startsWith("http://", ignoreCase = true) &&
             !url.startsWith("https://", ignoreCase = true)
         ) return
+        if (urlHasTokenParam(url)) return
+        if (link.requestHeaders.keys.any { isSensitiveHeader(it) }) return
         val payload = JSONObject().apply {
             put("url", link.url)
             put("streamName", link.streamName)
@@ -94,6 +104,15 @@ class StreamLinkCache(context: Context) {
             prefs.edit().remove(hashed).apply()
             return null
         }
+        // S7: purge entries cached before the save() guard (or written by
+        // an older build) that carry secret material — they are never
+        // handed back for playback.
+        if (urlHasTokenParam(entry.url) ||
+            entry.requestHeaders.keys.any { isSensitiveHeader(it) }
+        ) {
+            prefs.edit().remove(hashed).apply()
+            return null
+        }
         return entry
     }
 
@@ -122,6 +141,39 @@ class StreamLinkCache(context: Context) {
             fileIdx = json.optInt("fileIdx").takeIf { json.has("fileIdx") },
             mimeType = json.optString("mimeType").takeIf { it.isNotEmpty() },
         )
+    }
+
+    /**
+     * S7: true when a header carries a credential rather than a transport
+     * hint — Authorization/Cookie and anything token/secret/key/auth-named.
+     * Mirrors PlaybackHeaders.isSensitiveHeader (same set, plus the
+     * underscore spelling); Referer/Origin are not credentials and are
+     * left alone.
+     */
+    private fun isSensitiveHeader(name: String): Boolean {
+        val normalized = name.lowercase().replace("_", "-")
+        return normalized in setOf(
+            "authorization", "proxy-authorization", "cookie", "set-cookie"
+        ) || listOf("token", "secret", "api-key", "apikey", "auth")
+            .any { it in normalized }
+    }
+
+    /**
+     * S7: true when the URL's query carries a token the server needs for
+     * playback — Plex's X-Plex-Token, Jellyfin/Emby's api_key, and any
+     * token=/key=/access_token=/auth= param (including *_token suffixes).
+     * The token is required to play, so the entry cannot be stored with
+     * the token stripped — it is not cached at all instead.
+     */
+    private fun urlHasTokenParam(url: String): Boolean {
+        val query = url.substringAfter("?", "").substringBefore("#")
+        if (query.isEmpty()) return false
+        return query.split("&").any { part ->
+            val name = part.substringBefore("=").lowercase()
+            name in setOf("x-plex-token", "api_key", "token", "key", "access_token", "auth") ||
+                name.endsWith("_token") || name.endsWith("-token") ||
+                "apikey" in name
+        }
     }
 
     /** Nuvio's fold hash: the raw key never hits disk, only `stream_link_<hash>`. */
