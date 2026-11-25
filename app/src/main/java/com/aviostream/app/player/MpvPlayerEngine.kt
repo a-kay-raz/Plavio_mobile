@@ -285,8 +285,8 @@ class MpvPlayerEngine(
     // -----------------------------------------------------------------
 
     fun load(url: String, headers: Map<String, String>, startMs: Long, mergeAudioUrl: String?) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 _snapshot.update { it.copy(fileLoaded = false, eofReached = false) }
                 pendingStartMs = startMs
@@ -325,8 +325,8 @@ class MpvPlayerEngine(
     }
 
     fun setPaused(paused: Boolean) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyBoolean("pause", paused)
             } catch (_: Exception) {
@@ -335,8 +335,8 @@ class MpvPlayerEngine(
     }
 
     fun seekTo(positionMs: Long) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 // Nuvio's method (PlayerEngine.android.kt seekToMs):
                 // plain "absolute", no +exact / +keyframes flag — MPV
@@ -356,8 +356,8 @@ class MpvPlayerEngine(
     }
 
     fun seekBy(deltaMs: Long) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 // Nuvio's method (seekByMs): plain "relative".
                 mpv.command("seek", (deltaMs / 1000.0).toString(), "relative")
@@ -367,8 +367,8 @@ class MpvPlayerEngine(
     }
 
     fun setSpeed(speed: Float) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyDouble("speed", speed.toDouble())
             } catch (_: Exception) {
@@ -378,8 +378,8 @@ class MpvPlayerEngine(
 
     /** Resize modes mirror the player's: 0 = Fit, 1 = Fill, 2 = Zoom. */
     fun setResizeMode(mode: Int) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 when (mode) {
                     1 -> {
@@ -407,8 +407,8 @@ class MpvPlayerEngine(
     // -----------------------------------------------------------------
 
     fun selectAudio(id: Int?) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 if (id == null) mpv.setPropertyString("aid", "no")
                 else mpv.setPropertyInt("aid", id)
@@ -418,8 +418,8 @@ class MpvPlayerEngine(
     }
 
     fun selectSubtitle(id: Int?) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 if (id == null) mpv.setPropertyString("sid", "no")
                 else mpv.setPropertyInt("sid", id)
@@ -430,8 +430,8 @@ class MpvPlayerEngine(
 
     /** Adds an external subtitle file/URL; [select] makes it current. */
     fun addExternalSubtitle(url: String, select: Boolean) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.command("sub-add", url, if (select) "select" else "cached")
             } catch (_: Exception) {
@@ -440,8 +440,8 @@ class MpvPlayerEngine(
     }
 
     fun setSubtitleDelay(delayMs: Long) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyDouble("sub-delay", delayMs / 1000.0)
             } catch (_: Exception) {
@@ -454,8 +454,8 @@ class MpvPlayerEngine(
      * multiplier. 1.0 = no correction.
      */
     fun setSubtitleSpeed(speed: Double) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyDouble("sub-speed", speed.coerceIn(0.9, 1.1))
             } catch (_: Exception) {
@@ -469,8 +469,8 @@ class MpvPlayerEngine(
      * audio-delay API (the fork shifts it at the renderer instead).
      */
     fun setAudioDelay(delayMs: Long) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyDouble("audio-delay", delayMs / 1000.0)
             } catch (_: Exception) {
@@ -493,8 +493,8 @@ class MpvPlayerEngine(
         bold: Boolean,
         fontFamily: Int = 0,
     ) {
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 fun hex(color: Int): String = String.format("#%08X", color)
                 mpv.setPropertyString("sub-color", hex(textColor))
@@ -558,8 +558,8 @@ class MpvPlayerEngine(
         val u = units.coerceIn(0, 60)
         if (u == subLiftUnits) return
         subLiftUnits = u
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             pushSubPos()
         }
     }
@@ -572,8 +572,8 @@ class MpvPlayerEngine(
      */
     fun setVolumeFine(totalPercent: Float) {
         val v = totalPercent.coerceIn(0f, 160f).toDouble()
-        executor.execute {
-            if (released.get() || !initialized.get()) return@execute
+        runOnEngineThread {
+            if (released.get() || !initialized.get()) return@runOnEngineThread
             try {
                 mpv.setPropertyDouble("volume", v)
             } catch (_: Exception) {
