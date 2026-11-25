@@ -2,6 +2,7 @@ package com.aviostream.app.data
 
 import android.content.Context
 import com.aviostream.app.BuildConfig
+import io.sentry.SentryEvent
 import io.sentry.android.core.SentryAndroid
 
 /**
@@ -30,6 +31,46 @@ object CrashReports {
         }
     }
 
+    /**
+     * S11: scrubs secret-bearing patterns from an event's message and
+     * breadcrumbs in place. The throwable is handled separately (see
+     * [scrubThrowable]) because Throwable messages are immutable.
+     */
+    private fun scrubEvent(event: SentryEvent) {
+        event.message?.let { message ->
+            message.formatted?.let { message.formatted = DebugLog.scrubSecrets(it) }
+            message.message?.let { message.message = DebugLog.scrubSecrets(it) }
+        }
+        event.throwable?.let { event.throwable = scrubThrowable(it) }
+        event.breadcrumbs?.forEach { crumb ->
+            crumb.message?.let { crumb.message = DebugLog.scrubSecrets(it) }
+            runCatching {
+                crumb.data.entries.forEach { (key, value) ->
+                    if (value is String) crumb.data[key] = DebugLog.scrubSecrets(value)
+                }
+            }
+        }
+    }
+
+    /**
+     * S11: returns [throwable] with secret-bearing patterns scrubbed from
+     * its message (and its cause chain). A Throwable's message cannot be
+     * rewritten in place, so a scrubbed copy is built — but only when
+     * scrubbing actually changes something, so ordinary crashes keep
+     * their exact exception type and grouping; only a message that
+     * really contained a secret becomes a RuntimeException carrying the
+     * original stack trace (and scrubbed suppressed exceptions).
+     */
+    private fun scrubThrowable(throwable: Throwable): Throwable {
+        val scrubbedMessage = throwable.message?.let { DebugLog.scrubSecrets(it) }
+        val scrubbedCause = throwable.cause?.let { scrubThrowable(it) }
+        if (scrubbedMessage == throwable.message && scrubbedCause === throwable.cause) return throwable
+        val copy = RuntimeException(scrubbedMessage, scrubbedCause)
+        copy.stackTrace = throwable.stackTrace
+        throwable.suppressed.forEach { copy.addSuppressed(scrubThrowable(it)) }
+        return copy
+    }
+
     private fun init(context: Context) {
         val dsn = BuildConfig.SENTRY_DSN
         if (dsn.isBlank()) return
@@ -56,15 +97,26 @@ object CrashReports {
                 // returns null and this is a no-op. The read is one
                 // bounded seek+read, and every failure is swallowed
                 // — capture must never break because of the ride-along.
+                // S11: the event is scrubbed before it leaves the phone —
+                // exception messages, the event message, breadcrumb
+                // messages, and the log tail all pass through the same
+                // redaction as the shared debug log (URLs wiped, secret
+                // values hidden). Scrubbing must never drop a crash
+                // report: any failure sends the event unscrubbed instead.
                 options.beforeSend =
                     io.sentry.SentryOptions.BeforeSendCallback { event, _ ->
-                        runCatching {
+                        try {
                             val tail = DiagTracker.tailText()
                             if (!tail.isNullOrEmpty()) {
                                 event.contexts["behaviour_report"] =
-                                    mapOf("log_tail" to tail)
+                                    mapOf("log_tail" to DebugLog.scrubSecrets(tail))
                                 event.setTag("behaviour_report", "attached")
                             }
+                            scrubEvent(event)
+                        } catch (_: Throwable) {
+                            // Send unscrubbed — dropping the report is
+                            // worse than a theoretical leak to our own
+                            // self-hosted GlitchTip.
                         }
                         event
                     }

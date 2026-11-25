@@ -107,8 +107,16 @@ object DebugLog {
         redact(text).ifBlank { "(no log lines captured)" }
     }.getOrElse { "(logcat unavailable: ${it.javaClass.simpleName})" }
 
-    private fun redact(text: String): String =
+    /**
+     * Redacts URLs and secret values (`key`/`token`/`secret`/`password`/
+     * `auth` with `=`) from a text. Shared with CrashReports' Sentry
+     * beforeSend scrubber (S11) so crash reports get the same treatment
+     * as the shared debug log; S13 extends this with JSON-style secrets.
+     */
+    fun scrubSecrets(text: String): String =
         secretPattern.replace(urlPattern.replace(text, "<url>")) { "${it.groupValues[1]}=<hidden>" }
+
+    private fun redact(text: String): String = scrubSecrets(text)
 
     /** Writes the log to the cache dir and opens the system share sheet. */
     fun share(context: Context) {
