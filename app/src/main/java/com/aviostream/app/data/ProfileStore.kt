@@ -304,6 +304,13 @@ class ProfilesRepository(private val db: AppDatabase) {
                 ProfileStore.profilePrefsName(profile.id), Context.MODE_PRIVATE
             ).edit().clear().apply()
         }
+        // S4: a deleted profile's secrets go with it.
+        runCatching {
+            context.getSharedPreferences(
+                SettingsStore.secretPrefsName(ProfileStore.profilePrefsName(profile.id)),
+                Context.MODE_PRIVATE
+            ).edit().clear().apply()
+        }
         return true
     }
 }

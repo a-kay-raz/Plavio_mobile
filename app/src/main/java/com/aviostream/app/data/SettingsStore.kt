@@ -460,8 +460,15 @@ class SettingsStore(
      */
     private val onboardingPrefs: SharedPreferences =
         appContext.getSharedPreferences("avio_onboarding", Context.MODE_PRIVATE)
+    /**
+     * S4: the secret store is per-profile — a PIN-locked profile's
+     * media-server accounts and debrid keys must not leak into
+     * another (unlocked) profile. The global store keeps the
+     * original shared file (device-level secrets, e.g. the Avio
+     * account tokens, live there).
+     */
     private val secretPrefs: SharedPreferences =
-        appContext.getSharedPreferences("avio_secret_settings", Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(secretPrefsName(prefsName), Context.MODE_PRIVATE)
 
     // Type-tolerant numeric reads. A backup restore (org.json turns 1.0 into
     // an Int) or an older version can store a number under a key in the wrong
@@ -480,6 +487,7 @@ class SettingsStore(
 
     init {
         migrateLegacySecrets()
+        migrateSharedSecretsIntoProfile()
         // Haptics (v0.14.30 port): seed the UI-wide flag from the stored value.
         Haptics.sync(hapticsEnabled)
         // DNS (v0.14.30 port, #42): seed the live resolver choice from the
@@ -2195,6 +2203,22 @@ class SettingsStore(
         get() = prefInt(KEY_AUTOPLAY_MAX_SIZE, 0).coerceAtLeast(0)
         set(value) = prefs.edit().putInt(KEY_AUTOPLAY_MAX_SIZE, value.coerceAtLeast(0)).apply()
 
+    /**
+     * S4: while the one-time migration has not run yet, a
+     * per-profile store copies the shared secrets into its own
+     * file on first construction — this covers stores built by
+     * background workers before AvioApp's startup migration runs.
+     * Once the migration flag is set, no more copying happens, so
+     * profiles created afterwards start with empty secrets.
+     */
+    private fun migrateSharedSecretsIntoProfile() {
+        if (prefsName == "avio_settings") return
+        val global = appContext.getSharedPreferences("avio_settings", Context.MODE_PRIVATE)
+        if (global.getBoolean(KEY_SECRETS_MIGRATED_TO_PROFILES, false)) return
+        val shared = appContext.getSharedPreferences("avio_secret_settings", Context.MODE_PRIVATE)
+        copySecretsInto(shared, secretPrefs)
+    }
+
     private fun migrateLegacySecrets() {
         for (key in SECRET_KEYS) {
             val legacy = prefs.getString(key, null) ?: continue
@@ -2346,6 +2370,54 @@ class SettingsStore(
             val id = ProfileStore.activeProfileId(context)
             return if (id != null) SettingsStore(context, ProfileStore.profilePrefsName(id))
             else SettingsStore(context)
+        }
+
+        /** S4: per-profile secret file for a settings file name. */
+        fun secretPrefsName(prefsName: String): String =
+            if (prefsName == "avio_settings") "avio_secret_settings"
+            else "avio_secret_settings_" + prefsName.removePrefix("avio_settings_")
+
+        /** S4: set once the shared secrets have been copied into every existing profile's secret file. */
+        private const val KEY_SECRETS_MIGRATED_TO_PROFILES = "secrets_migrated_to_profiles"
+
+        /**
+         * S4: one-time migration — copies the shared secret file
+         * into EACH existing profile's secret file first, so nobody
+         * loses access when reads switch to the per-profile file.
+         * New profiles created afterwards start with empty secrets.
+         * Runs once (guarded by the flag); safe to call again.
+         */
+        fun migrateSharedSecretsToProfiles(context: Context, profileIds: List<String>) {
+            val appContext = context.applicationContext
+            val global = appContext.getSharedPreferences("avio_settings", Context.MODE_PRIVATE)
+            if (global.getBoolean(KEY_SECRETS_MIGRATED_TO_PROFILES, false)) return
+            val shared = appContext.getSharedPreferences("avio_secret_settings", Context.MODE_PRIVATE)
+            for (id in profileIds) {
+                val target = appContext.getSharedPreferences(
+                    secretPrefsName(ProfileStore.profilePrefsName(id)), Context.MODE_PRIVATE
+                )
+                copySecretsInto(shared, target)
+            }
+            global.edit().putBoolean(KEY_SECRETS_MIGRATED_TO_PROFILES, true).apply()
+        }
+
+        /** Copies every entry of [from] into [to] without overwriting keys [to] already has. */
+        private fun copySecretsInto(from: SharedPreferences, to: SharedPreferences) {
+            val entries = from.all
+            if (entries.isEmpty()) return
+            val editor = to.edit()
+            var changed = false
+            for ((k, v) in entries) {
+                // The Avio account tokens are device-level, not
+                // profile secrets — they stay in the shared file
+                // only (AvioAccountManager reads the global store).
+                if (k == "access_token" || k == "refresh_token") continue
+                if (v is String && to.getString(k, null) == null) {
+                    editor.putString(k, v)
+                    changed = true
+                }
+            }
+            if (changed) editor.apply()
         }
 
         private const val SECRET_KEY_ALIAS = "plavio.settings.secrets.v1"

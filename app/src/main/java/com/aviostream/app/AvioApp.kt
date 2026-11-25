@@ -142,6 +142,16 @@ class AvioApp : Application(), ImageLoaderFactory {
             ?: error("Profiles migration did not set an active profile")
         profileDatabase = ProfileStore.openProfileDatabase(this, activeProfileId)
         settings = SettingsStore(this, ProfileStore.profilePrefsName(activeProfileId))
+        // S4: one-time move of the shared secrets into every
+        // existing profile's own secret file, so the per-profile
+        // reads below never lose access. Guarded — a failure here
+        // must never block startup (the lazy copy in SettingsStore
+        // covers the active profile anyway).
+        runCatching {
+            SettingsStore.migrateSharedSecretsToProfiles(
+                this, db.profileDao().getAll().map { it.id }
+            )
+        }
         // Step 70: re-apply the stored launcher icon on every cold start.
         // The picker only applies it on tap, so after a reinstall/restore
         // the launcher reverted to the default icon while the setting
