@@ -42,7 +42,13 @@ data class MediaServer(
     val userId: String?,
     val accessToken: String,
     val refreshToken: String?,
-    val tokenExpiresAtMs: Long
+    val tokenExpiresAtMs: Long,
+    /**
+     * S1: the user confirmed the public-plain-http warning for this
+     * server once. LAN http stays silent, so this is only ever true
+     * for a server the user knowingly added over public http.
+     */
+    val publicHttpAcknowledged: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -54,6 +60,7 @@ data class MediaServer(
         put("accessToken", accessToken)
         put("refreshToken", refreshToken)
         put("tokenExpiresAtMs", tokenExpiresAtMs)
+        put("publicHttpAcknowledged", publicHttpAcknowledged)
     }
 
     companion object {
@@ -71,7 +78,8 @@ data class MediaServer(
                 userId = obj.optString("userId").takeIf { it.isNotBlank() },
                 accessToken = token,
                 refreshToken = obj.optString("refreshToken").takeIf { it.isNotBlank() },
-                tokenExpiresAtMs = obj.optLong("tokenExpiresAtMs", 0L)
+                tokenExpiresAtMs = obj.optLong("tokenExpiresAtMs", 0L),
+                publicHttpAcknowledged = obj.optBoolean("publicHttpAcknowledged", false)
             )
         }
     }
@@ -119,4 +127,38 @@ internal fun decodeServers(raw: String?): List<MediaServer> {
         val arr = JSONArray(raw)
         (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let(MediaServer::fromJson) }
     }.getOrDefault(emptyList())
+}
+
+/**
+ * S1: true when [rawUrl] is plain http to a host that is NOT the local
+ * network — a token or password sent to it travels the public internet
+ * unencrypted. Private LAN addresses (10/8, 172.16/12, 192.168/16,
+ * loopback, localhost) and any https URL return false, so the user's
+ * home-network media servers stay silent. A host that is not a
+ * private IP — a public IP, a public hostname, or an unparseable host
+ * on an http URL — is treated as public: warn first.
+ */
+fun isPublicHttpUrl(rawUrl: String): Boolean {
+    val uri = runCatching { java.net.URI(rawUrl.trim()) }.getOrNull() ?: return false
+    if (!uri.scheme.equals("http", ignoreCase = true)) return false
+    val host = uri.host ?: return true
+    return !isPrivateOrLocalHost(host)
+}
+
+fun isPrivateOrLocalHost(host: String): Boolean {
+    val h = host.trim().trim('[', ']').lowercase()
+    if (h == "localhost" || h == "127.0.0.1" || h == "::1") return true
+    val parts = h.split(".")
+    if (parts.size != 4) return false
+    val octets = IntArray(4)
+    for (i in 0..3) {
+        val n = parts[i].toIntOrNull() ?: return false
+        if (n !in 0..255) return false
+        octets[i] = n
+    }
+    if (octets[0] == 10) return true
+    if (octets[0] == 172 && octets[1] in 16..31) return true
+    if (octets[0] == 192 && octets[1] == 168) return true
+    if (octets[0] == 127) return true
+    return false
 }

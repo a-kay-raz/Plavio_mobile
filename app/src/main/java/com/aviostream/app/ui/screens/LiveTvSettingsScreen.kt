@@ -45,6 +45,7 @@ import com.aviostream.app.data.M3uParser
 import com.aviostream.app.data.StreamRepository
 import com.aviostream.app.data.fetchStalkerChannels
 import com.aviostream.app.data.fetchXtreamChannels
+import com.aviostream.app.data.servers.isPublicHttpUrl
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.theme.GlassBorder
 import com.aviostream.app.ui.theme.LocalPalette
@@ -100,6 +101,42 @@ fun LiveTvSettingsScreen(
         settings.liveTvStalkerUsername = stalkerUser
         settings.liveTvStalkerPassword = stalkerPass
         settings.liveTvStalkerEnabled = stalkerEnabled
+    }
+
+    // S1: which provider ("Xtream" / "Stalker") is waiting on the
+    // public-plain-http confirm before its login is sent.
+    var publicHttpTest by remember { mutableStateOf<String?>(null) }
+
+    fun testXtream() {
+        saveXtream()
+        xtreamTesting = true
+        xtreamTest = null
+        scope.launch {
+            val result = runCatching {
+                fetchXtreamChannels(settings.liveTvXtreamSettings())
+            }
+            xtreamTest = result.fold(
+                onSuccess = { "Found ${it.size} channels ✓" },
+                onFailure = { "Failed: ${it.message ?: "couldn't connect"}" }
+            )
+            xtreamTesting = false
+        }
+    }
+
+    fun testStalker() {
+        saveStalker()
+        stalkerTesting = true
+        stalkerTest = null
+        scope.launch {
+            val result = runCatching {
+                fetchStalkerChannels(settings.liveTvStalkerSettings())
+            }
+            stalkerTest = result.fold(
+                onSuccess = { "Found ${it.size} channels ✓" },
+                onFailure = { "Failed: ${it.message ?: "couldn't connect"}" }
+            )
+            stalkerTesting = false
+        }
     }
 
     GlowBackground {
@@ -175,18 +212,17 @@ fun LiveTvSettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
                             onClick = {
-                                saveXtream()
-                                xtreamTesting = true
-                                xtreamTest = null
-                                scope.launch {
-                                    val result = runCatching {
-                                        fetchXtreamChannels(settings.liveTvXtreamSettings())
-                                    }
-                                    xtreamTest = result.fold(
-                                        onSuccess = { "Found ${it.size} channels ✓" },
-                                        onFailure = { "Failed: ${it.message ?: "couldn't connect"}" }
-                                    )
-                                    xtreamTesting = false
+                                // S1: fields save as typed, so Test login
+                                // is the point the password is actually
+                                // sent — a public plain-http provider
+                                // asks first, every time (no stored ack:
+                                // these credentials live in SettingsStore).
+                                if (isPublicHttpUrl(xtreamServer) &&
+                                    (xtreamUser.isNotBlank() || xtreamPass.isNotBlank())
+                                ) {
+                                    publicHttpTest = "Xtream"
+                                } else {
+                                    testXtream()
                                 }
                             },
                             enabled = !xtreamTesting
@@ -268,18 +304,15 @@ fun LiveTvSettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
                             onClick = {
-                                saveStalker()
-                                stalkerTesting = true
-                                stalkerTest = null
-                                scope.launch {
-                                    val result = runCatching {
-                                        fetchStalkerChannels(settings.liveTvStalkerSettings())
-                                    }
-                                    stalkerTest = result.fold(
-                                        onSuccess = { "Found ${it.size} channels ✓" },
-                                        onFailure = { "Failed: ${it.message ?: "couldn't connect"}" }
-                                    )
-                                    stalkerTesting = false
+                                // S1: same gate as Xtream — the MAC /
+                                // login is sent by Test login, so a
+                                // public plain-http portal asks first.
+                                if (isPublicHttpUrl(stalkerPortal) &&
+                                    (stalkerMac.isNotBlank() || stalkerUser.isNotBlank() || stalkerPass.isNotBlank())
+                                ) {
+                                    publicHttpTest = "Stalker"
+                                } else {
+                                    testStalker()
                                 }
                             },
                             enabled = !stalkerTesting
@@ -512,6 +545,35 @@ fun LiveTvSettingsScreen(
                 epgSources = epgSources + source
                 settings.liveTvEpgSources = epgSources
                 addEpgOpen = false
+            }
+        )
+    }
+
+    // S1: public plain-http confirm for Xtream / Stalker Test login.
+    // Shown every time (no stored ack: these credentials live in
+    // SettingsStore, which this wave does not touch). LAN http and
+    // https never reach here.
+    if (publicHttpTest != null) {
+        val which = publicHttpTest!!
+        AlertDialog(
+            onDismissRequest = { publicHttpTest = null },
+            containerColor = LocalPalette.current.background,
+            title = { Text("Unencrypted connection", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This $which provider uses plain http on a public address, so your login will travel unencrypted and anyone on the network could read it. Your home-network addresses are not affected.\n\nUse https for this provider if it offers it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    publicHttpTest = null
+                    if (which == "Xtream") testXtream() else testStalker()
+                }) { Text("Use http anyway", color = LocalPalette.current.accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { publicHttpTest = null }) { Text("Cancel", color = TextSecondary) }
             }
         )
     }

@@ -50,6 +50,7 @@ import com.aviostream.app.data.servers.PlexClient
 import com.aviostream.app.data.servers.ServerKind
 import com.aviostream.app.data.servers.ServerLibrary
 import com.aviostream.app.data.servers.SiloClient
+import com.aviostream.app.data.servers.isPublicHttpUrl
 import com.aviostream.app.ui.components.GlassCard
 import com.aviostream.app.ui.components.GlowBackground
 import com.aviostream.app.ui.theme.LocalPalette
@@ -79,9 +80,17 @@ fun MediaServersScreen(
     var showAdd by remember { mutableStateOf(false) }
     var addKind by remember { mutableStateOf<ServerKind?>(null) }
     var removeTarget by remember { mutableStateOf<MediaServer?>(null) }
+    var pendingPublicHttpServer by remember { mutableStateOf<MediaServer?>(null) }
     var expandedServer by remember { mutableStateOf<String?>(null) }
 
     fun save(server: MediaServer) {
+        // S1: a token travelling over plain http to a public host gets
+        // one confirm; LAN http (private IP / localhost) stays silent,
+        // and the choice is stored on the server itself.
+        if (isPublicHttpUrl(server.baseUrl) && !server.publicHttpAcknowledged) {
+            pendingPublicHttpServer = server
+            return
+        }
         val current = settings.getMediaServers().filter { it.id != server.id } + server
         settings.saveMediaServers(current)
         tick++
@@ -230,6 +239,35 @@ fun MediaServersScreen(
                 }) { Text("Remove") }
             },
             dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } }
+        )
+    }
+
+    // S1: plain http to a public address — the sign-in token travels
+    // unencrypted. LAN http never reaches here; cancelling simply does
+    // not add the server, and confirming stores the choice on it.
+    if (pendingPublicHttpServer != null) {
+        AlertDialog(
+            onDismissRequest = { pendingPublicHttpServer = null },
+            containerColor = LocalPalette.current.background,
+            title = { Text("Unencrypted connection", color = TextPrimary) },
+            text = {
+                Text(
+                    "This server uses plain http on a public address (${pendingPublicHttpServer!!.baseUrl}), so your sign-in token will travel unencrypted and anyone on the network could read it. Your home-network servers (192.168.x.x, 10.x.x.x) are not affected.\n\nUse https for this server if it offers it.",
+                    color = V117Muted
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val server = pendingPublicHttpServer!!.copy(publicHttpAcknowledged = true)
+                    pendingPublicHttpServer = null
+                    val current = settings.getMediaServers().filter { it.id != server.id } + server
+                    settings.saveMediaServers(current)
+                    tick++
+                }) { Text("Use http anyway") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPublicHttpServer = null }) { Text("Cancel", color = V117Muted) }
+            }
         )
     }
 }
