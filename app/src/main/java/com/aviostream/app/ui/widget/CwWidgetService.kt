@@ -11,7 +11,13 @@ import com.aviostream.app.R
 import com.aviostream.app.data.db.PlaybackState
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlinx.coroutines.runBlocking
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Backing service for the Continue Watching widget grid. Reads the
@@ -45,39 +51,62 @@ private class CwWidgetFactory(
     )
 
     @Volatile private var rows: List<CwRow> = emptyList()
-    private val posters = HashMap<String, android.graphics.Bitmap?>()
+    // ConcurrentHashMap: getViewAt reads posters on the host's binder
+    // thread while the background load below writes them. Null bitmaps
+    // are never stored (ConcurrentHashMap forbids null values) — a
+    // failed fetch simply leaves the poster absent, as before.
+    private val posters = ConcurrentHashMap<String, android.graphics.Bitmap>()
+    // T12: the data load runs on this scope, not on the host's binder
+    // thread — onDataSetChanged used to runBlocking the DB read (plus
+    // the poster fetches) here, stalling every widget refresh.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var loadJob: Job? = null
 
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
-        rows = runBlocking {
-            runCatching {
-                val app = context.applicationContext as AvioApp
-                // Same one-card-per-series collapse as the in-app
-                // Continue Watching list — newest first, so the first
-                // row per series is its last opened episode.
-                val seenSeries = HashSet<String>()
-                app.profileDatabase.playbackDao().getAll()
-                    .filter { state ->
-                        val duration = state.durationMs
-                        state.positionMs > 0L &&
-                            (duration <= 0L || state.positionMs * 100L < duration * 98L)
-                    }
-                    .sortedByDescending { it.updatedAt }
-                    .filter { state ->
-                        val seriesKey = seriesKeyForPlayback(state)
-                            ?: return@filter true
-                        seenSeries.add(seriesKey)
-                    }
-                    .take(12)
-                    .map { it.toRow() }
-            }.getOrDefault(emptyList())
+        // Return at once with the previously-loaded rows (empty on the
+        // very first load); the background load below re-binds the grid
+        // when the new rows land. A load already in flight is not
+        // restarted — its completion still refreshes.
+        if (loadJob?.isActive == true) return
+        loadJob = scope.launch {
+            val loaded = runCatching { loadRows() }.getOrDefault(emptyList())
+            val changed = loaded != rows
+            rows = loaded
+            // Pre-fetch posters for the visible set, before the refresh,
+            // so the re-bind finds them ready.
+            for (row in loaded) {
+                val url = row.posterUrl ?: continue
+                if (url !in posters) fetchPoster(url)?.let { posters[url] = it }
+            }
+            // Only re-bind when the rows actually changed: the refresh
+            // makes the host call onDataSetChanged again, and that second
+            // load finds identical rows and stops here — no refresh loop.
+            if (changed) CwWidgetUpdater.refresh(context)
         }
-        // Pre-fetch posters for the visible set.
-        for (row in rows) {
-            val url = row.posterUrl ?: continue
-            if (url !in posters) posters[url] = fetchPoster(url)
-        }
+    }
+
+    private suspend fun loadRows(): List<CwRow> {
+        val app = context.applicationContext as AvioApp
+        // Same one-card-per-series collapse as the in-app
+        // Continue Watching list — newest first, so the first
+        // row per series is its last opened episode.
+        val seenSeries = HashSet<String>()
+        return app.profileDatabase.playbackDao().getAll()
+            .filter { state ->
+                val duration = state.durationMs
+                state.positionMs > 0L &&
+                    (duration <= 0L || state.positionMs * 100L < duration * 98L)
+            }
+            .sortedByDescending { it.updatedAt }
+            .filter { state ->
+                val seriesKey = seriesKeyForPlayback(state)
+                    ?: return@filter true
+                seenSeries.add(seriesKey)
+            }
+            .take(12)
+            .map { it.toRow() }
     }
 
     /** One card per series (its imdbId) or per movie (its videoId). */
@@ -136,6 +165,7 @@ private class CwWidgetFactory(
     override fun getItemId(position: Int): Long = position.toLong()
     override fun hasStableIds(): Boolean = false
     override fun onDestroy() {
+        scope.cancel()
         posters.clear()
     }
 }
