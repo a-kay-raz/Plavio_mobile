@@ -126,8 +126,19 @@ class AvioApp : Application(), ImageLoaderFactory {
         // ordering: nothing below may run before the migration has
         // seeded the profile database.
         val legacySettings = SettingsStore(this)
-        ProfileStore.migrateLegacyData(this@AvioApp, db, legacySettings)
-        val activeProfileId = ProfileStore.activeProfileId(this)
+        // T7: a migration failure must never throw in onCreate on
+        // every launch — log it and fall back to a default profile
+        // (or the first existing one) instead of crashing.
+        runCatching {
+            ProfileStore.migrateLegacyData(this@AvioApp, db, legacySettings)
+        }.onFailure {
+            Log.e("AvioApp", "Profile migration failed; falling back to a default profile", it)
+        }
+        val activeProfileId = runCatching {
+            ProfileStore.ensureActiveProfile(this@AvioApp, db, legacySettings)
+        }.onFailure {
+            Log.e("AvioApp", "Could not resolve an active profile", it)
+        }.getOrNull()
             ?: error("Profiles migration did not set an active profile")
         profileDatabase = ProfileStore.openProfileDatabase(this, activeProfileId)
         settings = SettingsStore(this, ProfileStore.profilePrefsName(activeProfileId))

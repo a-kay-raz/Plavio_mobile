@@ -111,6 +111,39 @@ object ProfileStore {
         Process.killProcess(Process.myPid())
     }
 
+    /**
+     * T7: make sure an active profile is persisted and return its id.
+     * Adopts the first profile when one exists but none is active
+     * (a restore can leave rows with no active id); seeds a fresh
+     * "Main" profile when the table is empty. Returns null only when
+     * the database itself fails.
+     */
+    suspend fun ensureActiveProfile(
+        context: Context,
+        globalDb: AppDatabase,
+        legacySettings: SettingsStore
+    ): String? {
+        activeProfileId(context)?.let { return it }
+        globalDb.profileDao().getAll().firstOrNull()?.let {
+            setActiveProfileId(context, it.id)
+            return it.id
+        }
+        val now = System.currentTimeMillis()
+        val profile = Profile(
+            id = UUID.randomUUID().toString(),
+            name = legacySettings.profileUserName.ifBlank { "Main" },
+            avatarColorHex = "#1E88E5",
+            avatar = legacySettings.profileAvatar,
+            pinHash = null,
+            pinSalt = null,
+            createdAt = now,
+            sortOrder = now
+        )
+        globalDb.profileDao().upsert(profile)
+        setActiveProfileId(context, profile.id)
+        return profile.id
+    }
+
     // -- One-time legacy migration ---------------------------------------
 
     /**
@@ -130,6 +163,11 @@ object ProfileStore {
         if (globalPrefs.getBoolean(KEY_PROFILES_MIGRATED, false)) return
         if (globalDb.profileDao().count() > 0) {
             // Profiles already exist (e.g. a restore) — just mark done.
+            // T7: a restore can leave profile rows but no persisted
+            // active-profile id; returning without setting one made
+            // the app throw in onCreate on every launch. Adopt the
+            // first profile instead.
+            runCatching { ensureActiveProfile(context, globalDb, legacySettings) }
             globalPrefs.edit().putBoolean(KEY_PROFILES_MIGRATED, true).apply()
             return
         }
