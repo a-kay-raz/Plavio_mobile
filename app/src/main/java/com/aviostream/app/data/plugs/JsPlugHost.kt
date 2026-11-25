@@ -211,7 +211,7 @@ class JsPlugHost(
         state: RunState
     ): Captured {
         val deferred = CompletableDeferred<Captured>()
-        val qjs = QuickJs.create(jobDispatcher = JS_DISPATCHER)
+        val qjs = createQuickJs()
         // v0.14.62 (item J2): cap the runtime's heap — a plug that
         // allocates without bound (a decompression bomb, an endless
         // string builder) now fails its own run with an OOM error
@@ -309,7 +309,7 @@ class JsPlugHost(
             if (completedNormally) {
                 if (retirement == null || retirement.claim()) {
                     retirement?.cancel()
-                    runCatching { qjs.close() }
+                    closeQuickJs(qjs)
                 }
             } else if (retirement == null) {
                 // Arming itself failed at creation: fall back to
@@ -376,7 +376,7 @@ class JsPlugHost(
             {
                 if (retirement.state.unwound) {
                     if (retirement.claim()) {
-                        runCatching { retirement.qjs.close() }
+                        closeQuickJs(retirement.qjs)
                     }
                 } else {
                     // Still stuck inside an uninterruptible
@@ -405,7 +405,7 @@ class JsPlugHost(
     private fun retireRuntime(qjs: QuickJs) {
         runCatching {
             WATCHDOG.schedule(
-                { runCatching { qjs.close() } },
+                { closeQuickJs(qjs) },
                 REAPER_DRAIN_MS, TimeUnit.MILLISECONDS
             )
         }
@@ -452,7 +452,7 @@ class JsPlugHost(
             libraryBytecode[name]?.let { return it }
             if (name in libraryBytecodeBroken) return null
             val compiled = try {
-                val scratch = QuickJs.create(jobDispatcher = JS_DISPATCHER)
+                val scratch = createQuickJs()
                 try {
                     scratch.compile(
                         "globalThis.__plugModules = globalThis.__plugModules || {};\n" +
@@ -461,7 +461,7 @@ class JsPlugHost(
                         false
                     )
                 } finally {
-                    runCatching { scratch.close() }
+                    closeQuickJs(scratch)
                 }
             } catch (e: Exception) {
                 libraryBytecodeBroken += name
@@ -808,6 +808,57 @@ class JsPlugHost(
 
     companion object {
         private val SECURE_RANDOM = java.security.SecureRandom()
+
+        // ---- TEST v0.14.85 (Item 35): the QuickJS lifecycle guard ----
+        // Two tombstone-proven native crashes on stable v0.14.30
+        // (2026-11-24, the owner's phone): SIGABRT inside
+        // com.dokar.quickjs.QuickJs.initGlobals — a DeleteGlobalRef
+        // on an already-deleted (second time: recycled, "serial
+        // number 2 v. current 3") global reference, while plugs
+        // were executing. The bridge registers the binding classes
+        // in a process-wide global-ref table at every create and
+        // tears entries down at close; when one run's create
+        // (initGlobals) overlapped another run's close on a
+        // different thread, the bookkeeping double-deleted a ref
+        // and ART aborted the whole process. The cure is
+        // structural, not a retry: EVERY QuickJs creation and
+        // EVERY close/teardown in this host passes through this
+        // one lock, so a create and a close can never be in flight
+        // at the same time on any two threads. Evaluations are NOT
+        // serialised — plug runs keep their full concurrency; only
+        // the (short, native) create/close windows are mutually
+        // exclusive. The lock is reentrant and is never held across
+        // an evaluate, a compile, or any suspension point, and no
+        // other lock is taken while it is held (the library
+        // compile path takes it inside compileLock, never the
+        // other way round), so it cannot deadlock.
+        private val LIFECYCLE_LOCK =
+            java.util.concurrent.locks.ReentrantLock()
+
+        /** Creates a runtime under the lifecycle guard (see above). */
+        internal fun createQuickJs(): QuickJs {
+            LIFECYCLE_LOCK.lock()
+            try {
+                return QuickJs.create(jobDispatcher = JS_DISPATCHER)
+            } finally {
+                LIFECYCLE_LOCK.unlock()
+            }
+        }
+
+        /**
+         * Closes a runtime under the lifecycle guard (see above).
+         * Swallows like every close site did before .85: a failed
+         * close leaks the runtime to the GC rather than throwing
+         * into a run's unwind or the reaper.
+         */
+        internal fun closeQuickJs(qjs: QuickJs) {
+            LIFECYCLE_LOCK.lock()
+            try {
+                runCatching { qjs.close() }
+            } finally {
+                LIFECYCLE_LOCK.unlock()
+            }
+        }
 
         /**
          * The QuickJS job dispatcher: a cached pool, so concurrent
