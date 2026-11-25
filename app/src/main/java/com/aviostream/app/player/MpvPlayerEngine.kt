@@ -24,6 +24,11 @@ import kotlinx.coroutines.flow.update
  *    ("AvioMpv"); nothing touches the engine from the UI thread.
  *  - Surface teardown order is vo=null → force-window=no →
  *    detachSurface, always on the engine thread.
+ *  - Surface attach order is attachSurface → force-window=yes →
+ *    vo=gpu-next (re-init): a plain attach alone does NOT start
+ *    rendering when the video is already playing, because the
+ *    load wins the race against surface creation — the VO must
+ *    be re-created against the surface (Nuvio's method).
  *  - Release is idempotent (atomic flag): detach → removeObserver →
  *    destroy → executor shutdown. No `stop` command.
  *  - Observers (this class) check the released flag in every
@@ -86,6 +91,9 @@ class MpvPlayerEngine(
     @Volatile
     private var attachedSurface: Surface? = null
 
+    /** The video output Nuvio uses and Avio matches (vo=gpu-next). */
+    private val voName = "gpu-next"
+
     @Volatile
     private var pendingStartMs: Long = 0L
 
@@ -123,7 +131,7 @@ class MpvPlayerEngine(
                 mpv.setOptionString("config-dir", filesDir.absolutePath)
                 mpv.setOptionString("gpu-shader-cache-dir", cacheDir.absolutePath)
                 mpv.setOptionString("icc-cache-dir", cacheDir.absolutePath)
-                mpv.setOptionString("vo", "gpu-next")
+                mpv.setOptionString("vo", voName)
                 mpv.setOptionString("profile", "fast")
                 // hwdec: direct hardware decoding only, NO vf filter
                 // and NO mediacodec-copy path — on this device every
@@ -176,7 +184,7 @@ class MpvPlayerEngine(
                 observe("width", FORMAT_INT64)
                 observe("height", FORMAT_INT64)
                 observe("track-list", FORMAT_NODE)
-                attachedSurface?.let { mpv.attachSurface(it) }
+                attachedSurface?.let { attachSurfaceNow(it) }
                 Log.d(TAG, "mpv init ok hwdec=$hwdecMode")
             } catch (e: Throwable) {
                 // A native load failure (LinkageError) is an Error, not
@@ -196,18 +204,44 @@ class MpvPlayerEngine(
         attachedSurface = surface
         runOnEngineThread {
             if (released.get() || !initialized.get()) return@runOnEngineThread
-            try {
-                mpv.attachSurface(surface)
-            } catch (e: Exception) {
-                Log.d(TAG, "attachSurface failed: ${e.message}")
-            }
+            attachSurfaceNow(surface)
+        }
+    }
+
+    /**
+     * Attaches the surface AND (re)initialises the video output
+     * against it — Nuvio's method (MpvSurfaceView.attach). A plain
+     * attachSurface alone does NOT start rendering when the video
+     * is already playing: `activateMpv` queues load() on the
+     * engine thread while the SurfaceView is still being created
+     * on the UI thread, so the load almost always wins the race
+     * and the VO is created (or fails) with no surface — the
+     * video then plays audio-only with a black surface, position
+     * advancing, for the whole title. Re-setting `vo` forces the
+     * VO to (re)create against this surface, whenever the surface
+     * arrives, and force-window=yes keeps it alive. This is the
+     * MPV black-screen fix the dev-86 seek change was aimed at
+     * the wrong thing for: the seek was never the cause — the
+     * video was black from the very first frame, before any skip.
+     * Runs only on the engine thread.
+     */
+    private fun attachSurfaceNow(surface: Surface) {
+        try {
+            mpv.attachSurface(surface)
+            mpv.setOptionString("force-window", "yes")
+            mpv.setPropertyString("vo", voName)
+        } catch (e: Exception) {
+            Log.d(TAG, "attachSurface failed: ${e.message}")
         }
     }
 
     /**
      * Surface going away: the detach sequence runs on the engine
      * thread (vo=null → force-window=no → detachSurface) so the UI
-     * thread never blocks on the native engine.
+     * thread never blocks on the native engine. Nuvio leaves `vo`
+     * null after a detach — the next attach re-sets it (see
+     * attachSurfaceNow) — so Avio does the same; re-setting vo
+     * here would re-create the VO with no surface to render to.
      */
     fun detachSurface() {
         attachedSurface = null
@@ -217,7 +251,6 @@ class MpvPlayerEngine(
                 mpv.setPropertyString("vo", "null")
                 mpv.setPropertyString("force-window", "no")
                 mpv.detachSurface()
-                mpv.setPropertyString("vo", "gpu-next")
             } catch (e: Exception) {
                 Log.d(TAG, "detachSurface failed: ${e.message}")
             }
