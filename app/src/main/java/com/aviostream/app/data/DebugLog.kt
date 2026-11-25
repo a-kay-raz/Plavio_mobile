@@ -27,6 +27,15 @@ object DebugLog {
 
     private val urlPattern = Regex("""https?://\S+""")
     private val secretPattern = Regex("""(?i)(key|token|secret|password|auth)=([^\s&]+)""")
+    // S13: JSON-style secrets — `"access_token": "…"`, `"apiKey": "…"`.
+    // The key name must contain a secret word at a word boundary, so an
+    // innocent word like "monkey" (no boundary before "key") or a plain
+    // `"title": "Dune"` is left alone; only the value is hidden, never
+    // the key name or the rest of the line. Unquoted values are not
+    // covered — logcat JSON secrets are quoted, and the `=` pattern
+    // above covers the rest.
+    private val jsonSecretPattern =
+        Regex("""(?i)("[^"]*\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|authorization|cookie|token|secret|password|auth|key)\b[^"]*"\s*:\s*")[^"]*(")""")
 
     fun build(): String = buildString {
         appendLine("Avio debug log")
@@ -109,12 +118,15 @@ object DebugLog {
 
     /**
      * Redacts URLs and secret values (`key`/`token`/`secret`/`password`/
-     * `auth` with `=`) from a text. Shared with CrashReports' Sentry
-     * beforeSend scrubber (S11) so crash reports get the same treatment
-     * as the shared debug log; S13 extends this with JSON-style secrets.
+     * `auth` with `=`, plus JSON-style `"key": "value"`) from a text.
+     * Shared with CrashReports' Sentry beforeSend scrubber (S11) so crash
+     * reports get the same treatment as the shared debug log.
      */
-    fun scrubSecrets(text: String): String =
-        secretPattern.replace(urlPattern.replace(text, "<url>")) { "${it.groupValues[1]}=<hidden>" }
+    fun scrubSecrets(text: String): String {
+        val noUrls = urlPattern.replace(text, "<url>")
+        val noEquals = secretPattern.replace(noUrls) { "${it.groupValues[1]}=<hidden>" }
+        return jsonSecretPattern.replace(noEquals) { "${it.groupValues[1]}<hidden>${it.groupValues[2]}" }
+    }
 
     private fun redact(text: String): String = scrubSecrets(text)
 
