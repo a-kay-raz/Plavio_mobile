@@ -1605,9 +1605,16 @@ private fun AvioNavGraph(
                 navArgument("listId") { type = NavType.StringType }
             )
         ) { entry ->
+            val listId = entry.arguments?.getString("listId")
+            if (listId == null) {
+                // Malformed deep link / restored back stack without
+                // its argument — go back instead of crashing on !!.
+                LaunchedEffect(Unit) { navController.popBackStack() }
+                return@composable
+            }
             ListDetailScreen(
                 listsRepository = listsRepository,
-                listId = entry.arguments!!.getString("listId")!!,
+                listId = listId,
                 onBack = { navController.popBackStack() },
                 onOpenDetail = { addonId, type, metaId ->
                     openResolvedDetail(addonId, type, metaId)
@@ -1694,10 +1701,16 @@ private fun AvioNavGraph(
                 navArgument("libraryId") { type = NavType.StringType }
             )
         ) { entry ->
+            val serverId = entry.arguments?.getString("serverId")
+            val libraryId = entry.arguments?.getString("libraryId")
+            if (serverId == null || libraryId == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+                return@composable
+            }
             ServerLibraryScreen(
                 settings = repository.settings,
-                serverId = entry.arguments!!.getString("serverId")!!,
-                libraryId = entry.arguments!!.getString("libraryId")!!,
+                serverId = serverId,
+                libraryId = libraryId,
                 onBack = { navController.popBackStack() },
                 onPlay = { req -> playRequest(req) }
             )
@@ -1723,8 +1736,13 @@ private fun AvioNavGraph(
                 navArgument("collectionId") { type = NavType.StringType }
             )
         ) { entry ->
+            val collectionId = entry.arguments?.getString("collectionId")
+            if (collectionId == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+                return@composable
+            }
             CollectionEditorScreen(
-                collectionId = entry.arguments!!.getString("collectionId")!!,
+                collectionId = collectionId,
                 collectionRepository = collectionRepository,
                 repository = repository,
                 onBack = { navController.popBackStack() },
@@ -1739,8 +1757,13 @@ private fun AvioNavGraph(
                 navArgument("folderId") { type = NavType.StringType }
             )
         ) { entry ->
+            val folderId = entry.arguments?.getString("folderId")
+            if (folderId == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+                return@composable
+            }
             CollectionFolderScreen(
-                folderId = entry.arguments!!.getString("folderId")!!,
+                folderId = folderId,
                 collectionRepository = collectionRepository,
                 repository = repository,
                 onBack = { navController.popBackStack() },
@@ -1917,12 +1940,22 @@ private fun AvioNavGraph(
             )
         ) { entry ->
             val trailerCtx = androidx.compose.ui.platform.LocalContext.current.applicationContext
+            val addonId = entry.arguments?.getString("addonId")
+                ?.let { runCatching { Routes.dec(it) }.getOrNull() }
+            val detailType = entry.arguments?.getString("type")
+                ?.let { runCatching { Routes.dec(it) }.getOrNull() }
+            val metaId = entry.arguments?.getString("metaId")
+                ?.let { runCatching { Routes.dec(it) }.getOrNull() }
+            if (addonId == null || detailType == null || metaId == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+                return@composable
+            }
             DetailScreen(
                 repository = repository,
                 listsRepository = listsRepository,
-                addonId = Routes.dec(entry.arguments!!.getString("addonId")!!),
-                type = Routes.dec(entry.arguments!!.getString("type")!!),
-                metaId = Routes.dec(entry.arguments!!.getString("metaId")!!),
+                addonId = addonId,
+                type = detailType,
+                metaId = metaId,
                 onBack = { navController.popBackStack() },
                 onPlay = {
                     // startPlayback() stashed the request; honor the
@@ -1973,8 +2006,8 @@ private fun AvioNavGraph(
         ) { entry ->
             ActorScreen(
                 repository = repository,
-                personId = entry.arguments!!.getInt("personId"),
-                personName = entry.arguments!!.getString("name")
+                personId = entry.arguments?.getInt("personId") ?: 0,
+                personName = entry.arguments?.getString("name")
                     ?.let { runCatching { Routes.dec(it) }.getOrNull() },
                 favoritePeopleRepository = favoritePeopleRepository,
                 onBack = { navController.popBackStack() },
