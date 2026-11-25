@@ -818,6 +818,9 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
     val streamBadgeSettings = remember { StreamBadgeSettings(repository.settings) }
     // Step 56: profiles live in the global database.
     val profilesRepository = remember { ProfilesRepository(app.database) }
+    // S10: persists a legacy PIN hash upgraded to the stretched format
+    // after a successful cold-start unlock.
+    val pinScope = rememberCoroutineScope()
 
     // Step 56: cold-start PIN gate — a PIN-locked active profile asks
     // for its PIN before Home shows. The check runs once per process;
@@ -1269,6 +1272,15 @@ private fun AvioNav(onThemeChanged: () -> Unit) {
             onUnlocked = {
                 ProfileStore.markUnlocked(lockedProfile!!.id)
                 lockedProfile = null
+            },
+            onPinMigrated = { upgraded ->
+                pinScope.launch {
+                    runCatching {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            profilesRepository.update(upgraded)
+                        }
+                    }
+                }
             }
         )
     }

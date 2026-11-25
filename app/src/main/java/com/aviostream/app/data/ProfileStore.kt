@@ -11,6 +11,8 @@ import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -21,8 +23,11 @@ import kotlinx.coroutines.flow.Flow
  * Avio has no profile backend, so there is deliberately no sync
  * half here — profiles live on this device only.
  *
- * PINs are a local salted SHA-256 (Nuvio verifies server-side). No
- * biometric unlock and no remote avatar catalog or profile
+ * PINs are a local stretched hash (PBKDF2-HmacSHA256, 100k rounds, 16-byte
+ * salt — Nuvio verifies server-side). PINs set by older builds used one
+ * salted SHA-256 round; those hashes keep verifying and are upgraded to the
+ * stretched format on the next successful unlock (see [upgradedProfile]).
+ * No biometric unlock and no remote avatar catalog or profile
  * backgrounds — avatars are the 12 built-in presets or the profile's
  * own photo, colors are Nuvio's 16-color palette.
  */
@@ -67,7 +72,12 @@ object ProfileStore {
         Room.databaseBuilder(context, ProfileDatabase::class.java, profileDbName(profileId))
             .build()
 
-    // -- PIN (local salted SHA-256) -------------------------------------
+    // -- PIN (stretched hash) -----------------------------------------
+
+    /** Stored hashes carry a version prefix; anything without one is the legacy format. */
+    private const val PIN_HASH_V2_PREFIX = "v2:"
+    private const val PIN_HASH_ITERATIONS = 100_000
+    private const val PIN_HASH_KEY_BITS = 256
 
     fun newSalt(): String {
         val bytes = ByteArray(16)
@@ -75,16 +85,68 @@ object ProfileStore {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * Legacy single-round hash (builds before the stretch). Kept only so
+     * existing PINs still verify — new PINs use [hashPinV2] and legacy
+     * hashes are upgraded on the next successful unlock.
+     */
     fun hashPin(pin: String, salt: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hashed = digest.digest("$salt:$pin".toByteArray(Charsets.UTF_8))
         return hashed.joinToString("") { "%02x".format(it) }
     }
 
+    /** Stretched PIN hash: PBKDF2-HmacSHA256, 100k rounds, 256-bit key. */
+    fun hashPinV2(pin: String, salt: String): String {
+        val saltBytes = hexToBytes(salt) ?: salt.toByteArray(Charsets.UTF_8)
+        val spec = PBEKeySpec(pin.toCharArray(), saltBytes, PIN_HASH_ITERATIONS, PIN_HASH_KEY_BITS)
+        try {
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val hashed = factory.generateSecret(spec).encoded
+            return PIN_HASH_V2_PREFIX + hashed.joinToString("") { "%02x".format(it) }
+        } finally {
+            spec.clearPassword()
+        }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray? {
+        if (hex.length % 2 != 0) return null
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val byte = hex.substring(i * 2, i * 2 + 2).toIntOrNull(16) ?: return null
+            out[i] = byte.toByte()
+        }
+        return out
+    }
+
     fun verifyPin(profile: Profile, pin: String): Boolean {
         val hash = profile.pinHash ?: return false
         val salt = profile.pinSalt ?: return false
-        return hashPin(pin, salt) == hash
+        return if (hash.startsWith(PIN_HASH_V2_PREFIX)) {
+            runCatching { hashPinV2(pin, salt) == hash }.getOrDefault(false)
+        } else {
+            // Legacy format: a stored hash is exactly the 64 lowercase hex
+            // chars of one SHA-256 round, which never starts with "v2:" —
+            // so the prefix check above is the exact format test, and no
+            // existing PIN can be mistaken for the new format or vice versa.
+            hashPin(pin, salt) == hash
+        }
+    }
+
+    /**
+     * Returns the profile with its PIN hash upgraded to the stretched
+     * format, or null when no upgrade applies (already stretched, or the
+     * PIN does not verify). Call only after [verifyPin] passed, and
+     * persist the result — the old hash keeps working until then, so a
+     * missed write never locks anyone out.
+     */
+    fun upgradedProfile(profile: Profile, pin: String): Profile? {
+        val hash = profile.pinHash ?: return null
+        val salt = profile.pinSalt ?: return null
+        if (hash.startsWith(PIN_HASH_V2_PREFIX)) return null
+        if (!verifyPin(profile, pin)) return null
+        val upgraded = runCatching { hashPinV2(pin, salt) }.getOrNull() ?: return null
+        return profile.copy(pinHash = upgraded)
     }
 
     /** In-process cache: a profile unlocked once stays unlocked until the process dies. */
@@ -276,7 +338,7 @@ class ProfilesRepository(private val db: AppDatabase) {
             name = name.trim().ifBlank { "Profile" },
             avatarColorHex = avatarColorHex,
             avatar = avatar,
-            pinHash = if (pin != null && salt != null) ProfileStore.hashPin(pin, salt) else null,
+            pinHash = if (pin != null && salt != null) ProfileStore.hashPinV2(pin, salt) else null,
             pinSalt = salt,
             createdAt = now,
             sortOrder = now

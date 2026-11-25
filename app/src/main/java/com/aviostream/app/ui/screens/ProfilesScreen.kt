@@ -277,7 +277,7 @@ fun ProfilesScreen(
                                 name = name,
                                 avatarColorHex = colorHex,
                                 avatar = avatar,
-                                pinHash = ProfileStore.hashPin(pin, salt),
+                                pinHash = ProfileStore.hashPinV2(pin, salt),
                                 pinSalt = salt
                             )
                         } else {
@@ -316,6 +316,11 @@ fun ProfilesScreen(
                 val target = pinTarget!!
                 pinTarget = null
                 doSwitch(target)
+            },
+            onPinMigrated = { upgraded ->
+                scope.launch {
+                    withContext(Dispatchers.IO) { profilesRepository.update(upgraded) }
+                }
             }
         )
     }
@@ -540,7 +545,12 @@ private fun ProfileEditorDialog(
 fun PinEntryDialog(
     profile: Profile,
     onDismiss: () -> Unit,
-    onUnlocked: () -> Unit
+    onUnlocked: () -> Unit,
+    // S10: a legacy single-SHA-256 PIN hash is upgraded to the stretched
+    // format on a successful unlock; the caller persists the returned
+    // profile (the old hash keeps working until then, so a missed write
+    // never locks anyone out).
+    onPinMigrated: ((Profile) -> Unit)? = null
 ) {
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -572,8 +582,10 @@ fun PinEntryDialog(
             TextButton(
                 enabled = pin.length == 4,
                 onClick = {
-                    if (ProfileStore.verifyPin(profile, pin)) onUnlocked()
-                    else error = "Wrong PIN. Try again."
+                    if (ProfileStore.verifyPin(profile, pin)) {
+                        ProfileStore.upgradedProfile(profile, pin)?.let { onPinMigrated?.invoke(it) }
+                        onUnlocked()
+                    } else error = "Wrong PIN. Try again."
                 }
             ) { Text("Unlock") }
         },
