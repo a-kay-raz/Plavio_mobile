@@ -84,6 +84,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.delay
@@ -133,8 +134,7 @@ import com.aviostream.app.data.StreamBadgeSettings
 import com.aviostream.app.data.ProfileStore
 import com.aviostream.app.data.ProfilesRepository
 import com.aviostream.app.data.StreamRepository
-import com.aviostream.app.data.notifications.EpisodeNotifications
-import com.aviostream.app.data.notifications.MovieNotifications
+
 import com.aviostream.app.data.notifications.NotificationNav
 import com.aviostream.app.ui.widget.CwWidgetUpdater
 import com.aviostream.app.util.ExternalPlayer
@@ -384,13 +384,17 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
-        handleAddonDeepLink(intent)
-        handleNotificationRoute(intent)
-        handleTitleLink(intent)
-        // Safety net: (re)schedule the episode check on cold start.
-        // Idempotent (KEEP) and a no-op when alerts are disabled.
-        EpisodeNotifications.ensureScheduled(this)
-        MovieNotifications.ensureScheduled(this)
+        // P4: the deep-link handlers stash into app.repository, which
+        // is only built once the background startup finishes — wait
+        // for it instead of touching the repository from onCreate.
+        // (The episode/movie notification schedules moved into
+        // AvioApp's startup for the same reason.)
+        lifecycleScope.launch {
+            (applicationContext as AvioApp).startupReady.first { it }
+            handleAddonDeepLink(intent)
+            handleNotificationRoute(intent)
+            handleTitleLink(intent)
+        }
         // PiP play/pause RemoteAction receiver (explicit intent, not exported).
         val pipFilter = IntentFilter(ACTION_PIP_TOGGLE)
         ContextCompat.registerReceiver(this, pipReceiver, pipFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -411,6 +415,16 @@ class MainActivity : ComponentActivity() {
                         crashReport = null
                     }
                 )
+            }
+            // P4: app.settings / app.repository only exist once the
+            // background startup finishes — until then show a plain
+            // frame so the first frame never waits on the DB or the
+            // profile migration. The splash itself still runs its
+            // full 2.15 s once the app is ready.
+            val startupReady by app.startupReady.collectAsState()
+            if (!startupReady) {
+                Box(Modifier.fillMaxSize().background(Color.Black))
+                return@setContent
             }
             // Theme state: bumped whenever Settings changes accent/AMOLED so the
             // whole app re-skins without restarting the activity.
@@ -463,9 +477,14 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleAddonDeepLink(intent)
-        handleNotificationRoute(intent)
-        handleTitleLink(intent)
+        // P4: same wait as onCreate — the repository may still be
+        // building on a fast re-delivery.
+        lifecycleScope.launch {
+            (applicationContext as AvioApp).startupReady.first { it }
+            handleAddonDeepLink(intent)
+            handleNotificationRoute(intent)
+            handleTitleLink(intent)
+        }
     }
 
     override fun onStart() {

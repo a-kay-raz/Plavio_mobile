@@ -38,6 +38,9 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class AvioApp : Application(), ImageLoaderFactory {
@@ -90,21 +93,38 @@ class AvioApp : Application(), ImageLoaderFactory {
         }
     )
 
+    /**
+     * P4: cold start no longer blocks the first frame on the
+     * database open, the profile migration, the settings parses
+     * or the launcher-icon re-apply — all of that runs on the IO
+     * dispatcher in [initializeAsync]. MainActivity shows a plain
+     * frame until [startupReady] flips, then the splash runs its
+     * full 2.15 s floor (owner-locked, unchanged). The migration
+     * still completes before anything uses profiles: the splash
+     * waits for the feed, and the feed needs the repository,
+     * which is only built after the migration.
+     */
+    private val startupReadyFlow = MutableStateFlow(false)
+    val startupReady: StateFlow<Boolean> = startupReadyFlow.asStateFlow()
+
     override fun onCreate() {
         installCrashCatcher()
         super.onCreate()
         com.aviostream.app.data.MotionPreferences.initialize(this)
+        appScope.launch { initializeAsync() }
+    }
+
+    /** Heavy startup, off the main thread (see [startupReady]). */
+    private suspend fun initializeAsync() {
         val db = openDatabase()
         database = db
         // Step 56: the single identity becomes the "Main" profile on
         // first launch (one-time, guarded), then the active profile's
-        // database + settings file open. runBlocking keeps the ordering:
-        // nothing below may run before the migration has seeded the
-        // profile database.
+        // database + settings file open. The suspend call keeps the
+        // ordering: nothing below may run before the migration has
+        // seeded the profile database.
         val legacySettings = SettingsStore(this)
-        kotlinx.coroutines.runBlocking {
-            ProfileStore.migrateLegacyData(this@AvioApp, db, legacySettings)
-        }
+        ProfileStore.migrateLegacyData(this@AvioApp, db, legacySettings)
         val activeProfileId = ProfileStore.activeProfileId(this)
             ?: error("Profiles migration did not set an active profile")
         profileDatabase = ProfileStore.openProfileDatabase(this, activeProfileId)
@@ -180,6 +200,16 @@ class AvioApp : Application(), ImageLoaderFactory {
                 }
             }
         }
+        // P4: the episode/movie notification schedules moved here
+        // from MainActivity.onCreate — each builds another
+        // SettingsStore + WorkManager on the calling thread, and
+        // the active profile is only known once the migration
+        // above has run.
+        runCatching {
+            com.aviostream.app.data.notifications.EpisodeNotifications.ensureScheduled(this)
+            com.aviostream.app.data.notifications.MovieNotifications.ensureScheduled(this)
+        }
+        startupReadyFlow.value = true
         // Fill in addon logos for installs from before logos were stored.
         appScope.launch { repository.backfillAddonLogos() }
         // Give pre-ordering addons distinct positions so rearrange works.
