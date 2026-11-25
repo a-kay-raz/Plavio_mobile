@@ -78,7 +78,7 @@ private class CwWidgetFactory(
             // so the re-bind finds them ready.
             for (row in loaded) {
                 val url = row.posterUrl ?: continue
-                if (url !in posters) fetchPoster(url)?.let { posters[url] = it }
+                if (!posters.containsKey(url)) fetchPoster(url)?.let { posters[url] = it }
             }
             // Only re-bind when the rows actually changed: the refresh
             // makes the host call onDataSetChanged again, and that second
