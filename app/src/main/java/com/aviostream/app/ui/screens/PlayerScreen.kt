@@ -522,6 +522,25 @@ fun PlayerScreen(
     /** True when the MPV engine owns playback right now. */
     fun mpvActive(): Boolean =
         activeEngine == com.aviostream.app.player.PlaybackEngine.MPV && mpvEngine != null
+    /**
+     * MPV stall signals for the watchdogs below (T1): the MPV snapshot
+     * has no Exo-style isPlaying / playbackState, so the watchdogs read
+     * these instead when MPV owns playback. "Playing" means unpaused
+     * AND not starved for cache — libmpv leaves pause=false while
+     * paused-for-cache is true, so pause alone would call a stalled
+     * stream "playing" and the startup watchdog would exit at once.
+     * Same timeouts and same failover path as the Exo watchdogs.
+     */
+    fun mpvSnapshotOrNull(): com.aviostream.app.player.MpvPlayerEngine.Snapshot? =
+        if (mpvActive()) mpvEngine?.snapshot?.value else null
+    fun mpvIsPlaying(): Boolean =
+        mpvSnapshotOrNull()?.let { !it.paused && !it.buffering } ?: false
+    fun mpvIsBuffering(): Boolean =
+        mpvSnapshotOrNull()?.buffering ?: false
+    fun mpvPlayWhenReady(): Boolean =
+        mpvSnapshotOrNull()?.let { !it.paused } ?: false
+    fun mpvPositionMs(): Long =
+        mpvSnapshotOrNull()?.positionMs ?: 0L
     // Sleep timer label (v0.14.30 port): time left while a timed deadline
     // runs, "Ep. end" for end-of-episode, else "Sleep".
     val sleepTimerLabel = when {
@@ -3273,13 +3292,14 @@ fun PlayerScreen(
     // once, VOD, TV, or an intentionally paused player is never interrupted.
     LaunchedEffect(player, activeEngine, state.currentRequest, isTv) {
         if (!state.currentRequest.isLive || isTv) return@LaunchedEffect
-        // Second engine: the Exo watchdogs never run on MPV playback.
-        if (mpvActive()) return@LaunchedEffect
+        // MPV shares this watchdog: its signals come from the MPV
+        // snapshot (buffering = paused-for-cache) instead of the Exo
+        // player. Same timeout, same failover path as Exo.
         val watchedPlayer = player
         var waitingSinceMs: Long? = null
         val attemptsAtStart = state.autoFailoverCount
         val replacementAtStart = replaceGen.get()
-        var hasEverPlayed = watchedPlayer.isPlaying
+        var hasEverPlayed = if (mpvActive()) mpvIsPlaying() else watchedPlayer.isPlaying
         while (true) {
             if (disposed.get() || watchedPlayer !== latestPlayer.value || state.currentRequest != latestRequest.value) {
                 return@LaunchedEffect
@@ -3287,19 +3307,23 @@ fun PlayerScreen(
             if (state.autoFailoverCount != attemptsAtStart || replaceGen.get() != replacementAtStart) {
                 return@LaunchedEffect
             }
-            hasEverPlayed = hasEverPlayed || watchedPlayer.isPlaying
+            val isMpv = mpvActive()
+            hasEverPlayed = hasEverPlayed || (if (isMpv) mpvIsPlaying() else watchedPlayer.isPlaying)
             if (hasEverPlayed) return@LaunchedEffect
-            val playbackState = watchedPlayer.playbackState
-            val buffering = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
+            val buffering = if (isMpv) mpvIsBuffering() else {
+                val playbackState = watchedPlayer.playbackState
+                playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
+            }
+            val playWhenReady = if (isMpv) mpvPlayWhenReady() else watchedPlayer.playWhenReady
             val nowMs = System.nanoTime() / 1_000_000L
             waitingSinceMs = liveStartupWaitingSince(
-                waitingSinceMs, nowMs, watchedPlayer.playWhenReady, buffering
+                waitingSinceMs, nowMs, playWhenReady, buffering
             )
             val elapsedMs = waitingSinceMs?.let { nowMs - it } ?: 0L
             if (shouldFailoverStalledLiveStartup(
                     isLive = true,
                     isTv = false,
-                    playWhenReady = watchedPlayer.playWhenReady,
+                    playWhenReady = playWhenReady,
                     hasEverPlayed = hasEverPlayed,
                     isBuffering = buffering,                    elapsedMs = elapsedMs,
                     // Step 40: configurable startup timeout (default 15s).
@@ -3325,17 +3349,21 @@ fun PlayerScreen(
     // subsequently stall without a Media3 error. It never acts while paused or seeking.
     LaunchedEffect(player, activeEngine, state.currentRequest, isTv) {
         if (!state.currentRequest.isLive || isTv) return@LaunchedEffect
-        // Second engine: the Exo watchdogs never run on MPV playback.
-        if (mpvActive()) return@LaunchedEffect
+        // MPV shares this watchdog: its signals come from the MPV
+        // snapshot (buffering = paused-for-cache) instead of the Exo
+        // player. Same timeout, same failover path as Exo.
         val watchedPlayer = player
-        var hasPlayed = watchedPlayer.isPlaying
+        var hasPlayed = if (mpvActive()) mpvIsPlaying() else watchedPlayer.isPlaying
         var rebufferSinceMs: Long? = null
         while (true) {
             if (disposed.get() || watchedPlayer !== latestPlayer.value || state.currentRequest != latestRequest.value) {
                 return@LaunchedEffect
             }
-            hasPlayed = hasPlayed || watchedPlayer.isPlaying
-            if (!hasPlayed || !watchedPlayer.playWhenReady || watchedPlayer.playbackState != Player.STATE_BUFFERING) {
+            val isMpv = mpvActive()
+            hasPlayed = hasPlayed || (if (isMpv) mpvIsPlaying() else watchedPlayer.isPlaying)
+            val playWhenReady = if (isMpv) mpvPlayWhenReady() else watchedPlayer.playWhenReady
+            val buffering = if (isMpv) mpvIsBuffering() else watchedPlayer.playbackState == Player.STATE_BUFFERING
+            if (!hasPlayed || !playWhenReady || !buffering) {
                 rebufferSinceMs = null
             } else {
                 val nowMs = System.nanoTime() / 1_000_000L
@@ -3343,9 +3371,9 @@ fun PlayerScreen(
                 if (com.aviostream.app.ui.screens.player.shouldFailoverStalledLiveRebuffer(
                         isLive = state.currentRequest.isLive,
                         isTv = isTv,
-                        playWhenReady = watchedPlayer.playWhenReady,
+                        playWhenReady = playWhenReady,
                         hasEverPlayed = hasPlayed,
-                        isBuffering = watchedPlayer.playbackState == Player.STATE_BUFFERING,                        elapsedMs = nowMs - rebufferSinceMs!!
+                        isBuffering = buffering,                        elapsedMs = nowMs - rebufferSinceMs!!
                     )) {
                     val maxRecoveries = 2
                     if (state.liveRebufferRecoveries < maxRecoveries) {
@@ -3373,11 +3401,13 @@ fun PlayerScreen(
     // (Step 40, Nuvio PlaybackStallResume).
     LaunchedEffect(player, activeEngine, state.currentRequest, isTv) {
         if (state.currentRequest.isLive) return@LaunchedEffect
-        // Second engine: the Exo watchdogs never run on MPV playback.
-        if (mpvActive()) return@LaunchedEffect
+        // MPV shares this watchdog: its signals come from the MPV
+        // snapshot (buffering = paused-for-cache, position from the
+        // snapshot) instead of the Exo player. Same timeouts, same
+        // failover path as Exo.
         val watchedPlayer = player
         val replacementAtStart = replaceGen.get()
-        var hasPlayed = watchedPlayer.isPlaying
+        var hasPlayed = if (mpvActive()) mpvIsPlaying() else watchedPlayer.isPlaying
         var stallSinceMs: Long? = null
         var lastPositionMs = -1L
         var lastProgressAtMs = 0L
@@ -3387,23 +3417,27 @@ fun PlayerScreen(
             ) {
                 return@LaunchedEffect
             }
-            hasPlayed = hasPlayed || watchedPlayer.isPlaying
+            val isMpv = mpvActive()
+            hasPlayed = hasPlayed || (if (isMpv) mpvIsPlaying() else watchedPlayer.isPlaying)
             val nowMs = System.nanoTime() / 1_000_000L
-            val posMs = runCatching { watchedPlayer.currentPosition }.getOrDefault(0L)
+            val posMs = if (isMpv) mpvPositionMs() else runCatching { watchedPlayer.currentPosition }.getOrDefault(0L)
             if (lastPositionMs < 0L || posMs > lastPositionMs + 1_000L) {
                 lastPositionMs = posMs
                 lastProgressAtMs = nowMs
             }
-            val buffering = watchedPlayer.playbackState == Player.STATE_BUFFERING ||
-                watchedPlayer.playbackState == Player.STATE_IDLE
+            val buffering = if (isMpv) mpvIsBuffering() else {
+                watchedPlayer.playbackState == Player.STATE_BUFFERING ||
+                    watchedPlayer.playbackState == Player.STATE_IDLE
+            }
+            val playWhenReady = if (isMpv) mpvPlayWhenReady() else watchedPlayer.playWhenReady
             val progressed = nowMs - lastProgressAtMs < 3_000L
-            stallSinceMs = if (watchedPlayer.playWhenReady && buffering && !progressed) {
+            stallSinceMs = if (playWhenReady && buffering && !progressed) {
                 stallSinceMs ?: nowMs
             } else null
             val elapsedMs = stallSinceMs?.let { nowMs - it } ?: 0L
             if (com.aviostream.app.ui.screens.player.shouldFailoverStalledVod(
                     isLive = false,
-                    playWhenReady = watchedPlayer.playWhenReady,
+                    playWhenReady = playWhenReady,
                     hasEverPlayed = hasPlayed,
                     isBuffering = buffering,                    positionProgressed = progressed,
                     elapsedMs = elapsedMs,
