@@ -2438,6 +2438,7 @@ class SettingsStore(
         private const val SECRET_KEY_ALIAS = "plavio.settings.secrets.v1"
         private val SECRET_KEYS = setOf(
             "simkl_token", "torbox_api_key", "realdebrid_api_key", "premiumize_api_key",
+            "alldebrid_api_key", "debridlink_api_key", "offcloud_api_key",
             "trakt_access_token", "trakt_refresh_token",
             "media_servers",
             "tmdb_api_key", "omdb_api_key",
