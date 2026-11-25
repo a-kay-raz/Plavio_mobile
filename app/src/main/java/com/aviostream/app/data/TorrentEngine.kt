@@ -92,7 +92,14 @@ object TorrentEngine {
             try {
                 stopRequested = false
                 prepareLocked(context.applicationContext, magnetUri, hash, fileIdx)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not just Exception: a missing/corrupt
+                // jlibtorrent .so throws UnsatisfiedLinkError (an
+                // Error) out of SessionManager()/start(), and that
+                // must land on the gate's "Couldn't start this
+                // torrent" state instead of killing the composition's
+                // coroutine scope (same guard as the MPV constructor
+                // path in PlayerScreen).
                 Log.w(TAG, "prepare failed for $hash", e)
                 stopLocked()
                 null
